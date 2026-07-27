@@ -3,6 +3,7 @@ import { createWriteStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { parseLine } from './parse.mjs';
 import { run } from './run.mjs';
+import { adaptWindowsBin, defaultWindowsBin } from './winbin.mjs';
 
 // Convenience aliases that map shortcuts to real Cursor model ids. Cursor
 // rotates these over time — `/cursor:setup --print-models` shows the live
@@ -88,12 +89,22 @@ export async function resolveBin() {
     cachedBin = override;
     return cachedBin;
   }
+  // `where` is the Windows equivalent of `which`; it reports one path per line.
+  const locator = process.platform === 'win32' ? 'where' : 'which';
   for (const candidate of ['cursor-agent', 'agent']) {
-    const res = await run('which', [candidate]);
-    if (res.exitCode === 0 && res.stdout.trim()) {
-      cachedBin = res.stdout.trim();
+    const res = await run(locator, [candidate]);
+    const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
+    if (res.exitCode === 0 && hit) {
+      cachedBin = hit.trim();
       return cachedBin;
     }
+  }
+  // The Windows installer adds its dir to the *persistent* user PATH, so a
+  // Claude Code session started beforehand will not see it. Look there directly.
+  const winDefault = defaultWindowsBin();
+  if (winDefault) {
+    cachedBin = winDefault;
+    return cachedBin;
   }
   throw new Error(
     'cursor-agent not found on PATH. Install from https://cursor.com/install or run /cursor:setup.',
@@ -156,7 +167,8 @@ export function buildArgs(opts) {
 export async function runHeadless(opts) {
   const bin = await resolveBin();
   const args = buildArgs(opts);
-  const child = spawn(bin, args, {
+  const [spawnCmd, spawnArgs] = adaptWindowsBin(bin, args);
+  const child = spawn(spawnCmd, spawnArgs, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,

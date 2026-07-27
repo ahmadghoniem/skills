@@ -6,6 +6,7 @@
 // Replaces the subset of `execa` that this plugin actually uses.
 
 import { spawn } from 'node:child_process';
+import { adaptWindowsBin } from './winbin.mjs';
 
 /**
  * @typedef {Object} RunOpts
@@ -30,7 +31,8 @@ import { spawn } from 'node:child_process';
  */
 export function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
+    const [spawnCmd, spawnArgs] = adaptWindowsBin(cmd, args);
+    const child = spawn(spawnCmd, spawnArgs, {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: opts.env ?? process.env,
