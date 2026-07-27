@@ -1,7 +1,38 @@
-# cursor-plugin-cc
+# claude-cursor-delegate
 
 > **Claude plans. Cursor writes. Claude reviews.**
 > A Claude Code plugin that delegates coding _execution_ to Cursor's Composer — without ever leaving the Claude Code TUI.
+
+> **A fork of [freema/cursor-plugin-cc](https://github.com/freema/cursor-plugin-cc)** (MIT, © Tomas Grasl), maintained
+> independently. The difference is Windows support — see [Windows](#windows) below. Everything else tracks upstream.
+
+## Install
+
+```text
+/plugin marketplace add ahmadghoniem/claude-cursor-delegate
+/plugin install cursor@claude-cursor-delegate
+/reload-plugins
+/cursor:setup
+```
+
+## Windows
+
+Upstream targets POSIX and fails on native Windows in two ways, both fixed here:
+
+- **`spawn EINVAL` on every delegate.** The Windows Cursor CLI installs only shims
+  (`cursor-agent.cmd` → `.ps1` → `node.exe index.js`), and Node refuses to spawn a `.cmd`
+  without `shell: true` (the fix for CVE-2024-27980). `scripts/lib/winbin.mjs` skips the
+  shims and spawns the `node.exe` + `index.js` behind them — no shell, so an arbitrary
+  prompt is never exposed to `cmd.exe` `%VAR%` expansion. The same failure made the auth
+  probe report a logged-in CLI as logged out.
+- **Binary resolution.** `which` does not exist on Windows; `where` is used instead, with a
+  fallback to `%LOCALAPPDATA%\cursor-agent\`, since the installer only edits the *persistent*
+  user PATH and a Claude Code session started beforehand will not see it.
+
+Install the CLI with the native build, not the WSL one — `irm 'https://cursor.com/install?win32=true' | iex`.
+A WSL install is invisible to the plugin, which runs as a Windows process.
+
+`CURSOR_AGENT_BIN` still overrides resolution if you need to point at a specific binary.
 
 [![CI](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml/badge.svg)](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)

@@ -1,7 +1,12 @@
-cursor-plugin-cc
-Copyright (c) 2026 Tomas Grasl
+claude-cursor-delegate
+Copyright (c) 2026 Ahmed Ghoniem
 
-Licensed under the MIT License. See LICENSE for details.
+A fork of cursor-plugin-cc
+Copyright (c) 2026 Tomas Grasl
+https://github.com/freema/cursor-plugin-cc
+
+Licensed under the MIT License. See LICENSE for details. The original MIT
+copyright notice is retained in LICENSE alongside this fork's.
 
 This project integrates with the Cursor CLI (`cursor-agent`), which is a
 separate product of Cursor / Anysphere. The Cursor CLI is not bundled or
