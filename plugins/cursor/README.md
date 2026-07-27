@@ -6,35 +6,7 @@
 > **A fork of [freema/cursor-plugin-cc](https://github.com/freema/cursor-plugin-cc)** (MIT, © Tomas Grasl), maintained
 > independently. The difference is Windows support — see [Windows](#windows) below. Everything else tracks upstream.
 
-## Install
-
-```text
-/plugin marketplace add ahmadghoniem/claude-cursor-delegate
-/plugin install cursor@claude-cursor-delegate
-/reload-plugins
-/cursor:setup
-```
-
-## Windows
-
-Upstream targets POSIX and fails on native Windows in two ways, both fixed here:
-
-- **`spawn EINVAL` on every delegate.** The Windows Cursor CLI installs only shims
-  (`cursor-agent.cmd` → `.ps1` → `node.exe index.js`), and Node refuses to spawn a `.cmd`
-  without `shell: true` (the fix for CVE-2024-27980). `scripts/lib/winbin.mjs` skips the
-  shims and spawns the `node.exe` + `index.js` behind them — no shell, so an arbitrary
-  prompt is never exposed to `cmd.exe` `%VAR%` expansion. The same failure made the auth
-  probe report a logged-in CLI as logged out.
-- **Binary resolution.** `which` does not exist on Windows; `where` is used instead, with a
-  fallback to `%LOCALAPPDATA%\cursor-agent\`, since the installer only edits the *persistent*
-  user PATH and a Claude Code session started beforehand will not see it.
-
-Install the CLI with the native build, not the WSL one — `irm 'https://cursor.com/install?win32=true' | iex`.
-A WSL install is invisible to the plugin, which runs as a Windows process.
-
-`CURSOR_AGENT_BIN` still overrides resolution if you need to point at a specific binary.
-
-[![CI](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml/badge.svg)](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml)
+[![CI](https://github.com/ahmadghoniem/claude-cursor-delegate/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmadghoniem/claude-cursor-delegate/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A5%2018.18-43853d.svg)](https://nodejs.org)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-7c3aed.svg)](https://claude.com/claude-code)
@@ -80,8 +52,8 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 **Preferred — from GitHub:**
 
 ```
-/plugin marketplace add freema/cursor-plugin-cc
-/plugin install cursor@tomas-cursor
+/plugin marketplace add ahmadghoniem/claude-cursor-delegate
+/plugin install cursor@claude-cursor-delegate
 /reload-plugins
 /cursor:setup
 ```
@@ -89,8 +61,8 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 **Local, for hacking on the plugin from a checkout:**
 
 ```
-/plugin marketplace add /Users/you/path/to/cursor-plugin-cc
-/plugin install cursor@tomas-cursor
+/plugin marketplace add C:/path/to/claude-cursor-delegate
+/plugin install cursor@claude-cursor-delegate
 /reload-plugins
 /cursor:setup
 ```
@@ -106,7 +78,27 @@ The first `/cursor:setup` run tells you if `cursor-agent` is missing or unauthen
 - Node.js **≥ 18.18**
 - A Cursor account — paid for Composer models; free works with `--model auto` or other entitled models
 - `cursor-agent` on your `PATH` — install via `curl https://cursor.com/install -fsS | bash`
+  (Windows: `irm 'https://cursor.com/install?win32=true' | iex` — see [Windows](#windows))
 - `cursor-agent login` completed at least once
+
+## Windows
+
+Upstream targets POSIX and fails on native Windows in two ways, both fixed here:
+
+- **`spawn EINVAL` on every delegate.** The Windows Cursor CLI installs only shims
+  (`cursor-agent.cmd` → `.ps1` → `node.exe index.js`), and Node refuses to spawn a `.cmd`
+  without `shell: true` (the fix for CVE-2024-27980). `scripts/lib/winbin.mjs` skips the
+  shims and spawns the `node.exe` + `index.js` behind them — no shell, so an arbitrary
+  prompt is never exposed to `cmd.exe` `%VAR%` expansion. The same failure made the auth
+  probe report a logged-in CLI as logged out.
+- **Binary resolution.** `which` does not exist on Windows; `where` is used instead, with a
+  fallback to `%LOCALAPPDATA%\cursor-agent\`, since the installer only edits the *persistent*
+  user PATH and a Claude Code session started beforehand will not see it.
+
+Install the CLI with the native build, not the WSL one — `irm 'https://cursor.com/install?win32=true' | iex`.
+A WSL install is invisible to the plugin, which runs as a Windows process.
+
+`CURSOR_AGENT_BIN` still overrides resolution if you need to point at a specific binary.
 
 ## The flow — three commands, end to end
 
@@ -148,12 +140,10 @@ What lives where after a run:
 
 ## What you get
 
-Eleven slash commands under the `cursor:` namespace:
+Nine slash commands under the `cursor:` namespace:
 
 - **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background.
 - **`/cursor:from-plan`** — turn a Claude Code plan (from plan mode) into a `tasks/<file>.md` and hand it off to Cursor.
-- **`/cursor:review`** — read-only code review of your git diff by a Cursor model. Reports findings; never edits files.
-- **`/cursor:adversarial-review`** — steerable review that challenges the design and approach (assumptions, tradeoffs, failure modes), not just implementation defects. Read-only.
 - **`/cursor:browser`** — verify a URL / flow in a real browser via Cursor's `chrome-devtools` MCP.
 - **`/cursor:status`** — list recent jobs or inspect a specific one.
 - **`/cursor:result`** — print the final output of a finished job.
@@ -173,12 +163,6 @@ Short answer: **Composer is genuinely good at most day-to-day coding work** — 
 Cursor CLI has its own plan mode and it is fine, but execution is where Cursor really shines: file edits, applying diffs, crunching through a well-scoped task list in force mode. Cursor 2 and the Composer models are heavily tuned for exactly that CLI use-case. (The same is true of Codex and GPT on OpenAI's side, which is why [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) exists — and which is what I borrowed from heavily when building this plugin. Credit where due.)
 
 So: Claude plans, Cursor writes, Claude reviews, repeat. Glued together by seven slash commands and one subagent.
-
-## A second opinion: `/cursor:review`
-
-The core loop stays **Claude plans, Cursor writes, Claude reviews** — that is where Claude Code earns its keep. But sometimes you want a _second_ reviewer on the same diff: a different model with a fresh perspective, or a deeper pass from `gpt`/`opus`/`gemini` while Claude keeps its context for orchestration. That is what `/cursor:review` is for.
-
-It is modelled on [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)'s `/codex:review`, adapted to the Cursor CLI: the plugin collects the git diff itself (working tree or branch vs a base), hands it to a Cursor model with a strict **review-only** prompt, and returns the findings verbatim. It never edits your files — a post-flight check fails the job if the run touches the working tree, so a review can't quietly turn into an edit. See [`/cursor:review`](#cursorreview-flags-focus) under Usage for flags and examples.
 
 ## Usage
 
@@ -230,52 +214,6 @@ Examples:
 ```
 
 This is the closest thing to "plan in Claude, execute in Cursor" in one session: Claude does the thinking, Cursor does the typing, and the task file is a durable contract between the two.
-
-### `/cursor:review [flags] [focus...]`
-
-Read-only code review of your git diff by a Cursor model. The plugin collects the diff itself, embeds it in a strict review-only prompt, runs `cursor-agent` over it, and prints the findings verbatim — grouped Blocking / Should-fix / Nits with a one-line verdict. It does **not** edit files; if the run touches the working tree anyway, a post-flight check marks the job `failed` and flags it. Tracked as a normal job, so `/cursor:status`, `/cursor:result` and `/cursor:cancel` all work on it.
-
-By default it picks the target automatically: a dirty working tree is reviewed as-is; a clean tree falls back to a branch diff against the detected default branch. Any trailing text is passed as a reviewer **focus**.
-
-**Wait or background?** If you don't pass `--wait` or `--background`, the command first estimates the diff size (`git status` / `git diff --shortstat`) and asks once whether to wait for the result or run it in the background — recommending background for anything beyond a tiny 1–2 file change, since a multi-file review can take a while. Pass `--wait` or `--background` explicitly to skip the question.
-
-| Flag                                 | Default           | Effect                                                                                             |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------- |
-| `--base <ref>`                       | auto              | Review the branch diff `<ref>...HEAD` (merge-base) instead of the working tree.                    |
-| `--scope auto\|working-tree\|branch` | `auto`            | Force the target. `working-tree` = uncommitted changes; `branch` = vs the detected default branch. |
-| `--adversarial`                      | off               | Challenge the design and assumptions, not just implementation defects. Prefer the dedicated [`/cursor:adversarial-review`](#cursoradversarial-review-flags-focus) command; this flag is kept for backward compatibility. |
-| `--model <id>`                       | `auto`            | Same aliases as `/cursor:delegate`. Use `gpt`/`opus`/`gemini` for a deeper review.                 |
-| `--background`                       | off               | Detach; returns a job id immediately. Read it later with `/cursor:result`.                         |
-| `--wait`                             | on                | Block until the review finishes (default unless `--background`).                                   |
-| `--timeout <sec>`                    | `1800`            | Kill the review if it exceeds this.                                                                |
-| `--no-git-check`                     | off               | Allow running outside a git repo (rarely useful — there is no diff to review).                     |
-
-Examples:
-
-```
-/cursor:review                                  # review the current working-tree diff
-/cursor:review --base main                      # review this branch vs main
-/cursor:review --scope branch --model gpt       # branch diff, deeper model
-/cursor:review --adversarial "is the retry/backoff design sound under load?"
-/cursor:review --background --model opus         # detach; /cursor:result when ready
-```
-
-This is a **second opinion**, not a replacement for Claude reviewing the diff in-session. Reach for it when you want a different model's eyes on the change, or to offload a large review while Claude keeps orchestrating.
-
-### `/cursor:adversarial-review [flags] [focus...]`
-
-A **steerable** sibling of `/cursor:review` that questions the chosen implementation and design rather than only hunting implementation defects. Use it to pressure-test assumptions, tradeoffs, failure modes, and whether a different approach would have been simpler or safer — for example before shipping a change you are not fully sure about.
-
-It uses the **same review-target selection** as `/cursor:review` (working tree by default, `--base <ref>` for a branch diff, `--scope`, `--model`, `--wait`/`--background`) and, like `/cursor:review`, estimates the diff and asks wait-vs-background when you don't pass an explicit mode. Any trailing text is the reviewer **focus** — use it to point the challenge at a specific risk area. It is read-only and never edits files; the same post-flight check applies.
-
-```
-/cursor:adversarial-review                                  # challenge the working-tree diff
-/cursor:adversarial-review --base main                      # challenge this branch vs main
-/cursor:adversarial-review "is the retry/backoff design sound under load?"
-/cursor:adversarial-review --background --model opus look for race conditions and question the approach
-```
-
-Under the hood it is `/cursor:review --adversarial`, so it shows up as a normal job in `/cursor:status`, `/cursor:result`, and `/cursor:cancel`.
 
 ### `/cursor:browser <url> <what to verify...>`
 
@@ -487,7 +425,7 @@ You skipped `/reload-plugins`. Claude Code only picks up newly-installed plugin 
 
 ### `Shell command failed for pattern ... no matches found: review?`
 
-Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove tomas-cursor && /plugin marketplace add freema/cursor-plugin-cc && /plugin install cursor@tomas-cursor && /reload-plugins`.
+Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove claude-cursor-delegate && /plugin marketplace add ahmadghoniem/claude-cursor-delegate && /plugin install cursor@claude-cursor-delegate && /reload-plugins`.
 
 ### `Error: Cannot find module '.../dist/<cmd>.js'` or `'.../scripts/<cmd>.mjs'`
 
@@ -537,7 +475,7 @@ Things that are **not** in 0.1.0 but on the list:
 
 - **Additional browser MCPs** — right now `/cursor:browser` hard-codes `chrome-devtools` as the MCP name. Planned: a `--mcp <name>` flag plus autodiscovery so any DevTools-style MCP works. First follow-up target: Mozilla's [firefox-devtools-mcp](https://github.com/mozilla/firefox-devtools-mcp).
 - **Per-repo defaults** — a `.cursor-plugin-cc.json` at repo root to override default model, timeout and MCP preference without re-typing flags.
-- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@tomas-cursor` without a `cd plugins/cursor && npm install` step.
+- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@claude-cursor-delegate` without a `cd plugins/cursor && npm install` step.
 
 Contributions and ideas welcome.
 

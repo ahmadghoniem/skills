@@ -1,18 +1,24 @@
 {
-  "name": "cursor-plugin-cc",
-  "version": "0.4.0",
+  "name": "claude-cursor-delegate",
+  "version": "0.4.0-win.1",
   "description": "Use Cursor CLI from Claude Code to delegate coding tasks to Composer and other Cursor models.",
   "type": "module",
   "license": "MIT",
   "author": {
-    "name": "Tomas Grasl",
-    "email": "tomas.grasl@metrifyr.cloud",
-    "url": "https://www.tomasgrasl.cz/"
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
   },
-  "homepage": "https://github.com/freema/cursor-plugin-cc",
+  "contributors": [
+    {
+      "name": "Tomas Grasl",
+      "email": "tomas.grasl@metrifyr.cloud",
+      "url": "https://www.tomasgrasl.cz/"
+    }
+  ],
+  "homepage": "https://github.com/ahmadghoniem/claude-cursor-delegate",
   "repository": {
     "type": "git",
-    "url": "https://github.com/freema/cursor-plugin-cc.git"
+    "url": "https://github.com/ahmadghoniem/claude-cursor-delegate.git"
   },
   "keywords": [
     "claude-code",
@@ -47,8 +53,7 @@
     "resume": "node scripts/resume.mjs",
     "sessions": "node scripts/sessions.mjs",
     "setup": "node scripts/setup.mjs",
-    "browser": "node scripts/browser.mjs",
-    "review": "node scripts/review.mjs"
+    "browser": "node scripts/browser.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.16.0",
