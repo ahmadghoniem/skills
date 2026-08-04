@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.0 — task-aware model selection + internal rename to `ccd` (breaking)
+
+### Added
+
+- **Task-aware model selection.** `/cursor:delegate` without `--model` no longer falls back to a static default — it reads the live model list, recommends the best fit for the task at hand, and shows a short rationale before the job runs. Passing `--model <id>` bypasses this entirely. Any Cursor model id passes through untouched, so brand-new models (e.g. Grok 4.5 and later) work with no code change.
+- **Self-updating model-notes cache.** Unfamiliar models are looked up once on cursor.com and cached in `~/.ccd/model-notes.json`, so the plugin's model knowledge grows over time instead of going stale. `--refresh-models` forces a re-fetch and re-learns anything unfamiliar.
+
+### Fixed
+
+- **`/cursor:status` and `/cursor:result` now accept the id `/cursor:delegate --background` actually prints.** The launched job id was being retrieved inconsistently, so looking it up right after a background delegate could report "not found." Both commands now resolve the same id the launch step returns.
+- **`filesTouched` is now populated** on job records instead of staying empty — `/cursor:status <job-id>` reflects what Cursor actually changed.
+- **Background jobs now write a completion sentinel**, closing a race where a background job could be read as still-running right after it finished.
+
+### Changed
+
+- **BREAKING: internal namespace renamed from `cursor-plugin-cc` to `ccd`.** The jobs-registry root moved from `~/.cursor-plugin-cc/` to `~/.ccd/`; the env vars are now `CCD_HOME` and `CCD_DEFAULT_MODEL` (replacing `CURSOR_PLUGIN_CC_HOME` and `CURSOR_PLUGIN_CC_DEFAULT_MODEL`). The old env vars and directory are **no longer read** — there is no fallback. If you had `CURSOR_PLUGIN_CC_*` set or jobs under `~/.cursor-plugin-cc/`, update your shell config; old job history is not migrated automatically. A future per-repo config file will be `.ccd.json`.
+- **Platform scope is now Windows + Linux.** macOS support is dropped; the CI matrix and documentation no longer claim it.
+- **Model alias table slimmed** to the ids that still matter day-to-day now that task-aware selection handles the rest of the picture.
+
+### Removed
+
+- **`/cursor:browser`** and its browser page-verification feature (the `chrome-devtools` MCP integration) have been removed.
+
+### Deferred (backlog, not in this release)
+
+- `--prompt-file` / stdin input for `/cursor:delegate`.
+- A skills → `.cursor/rules` compiler.
+- Self-verify against acceptance criteria after a job finishes.
+- A task-doc contract template.
+- A citation/URL audit list for docs and generated content.
+- A known-blocked-domains list for the model-notes lookup.
+
 ## 0.4.0 — /cursor:adversarial-review + estimate-first reviews + composer-prompting skill
 
 Ported from upstream [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) (whose `/codex:adversarial-review`, estimate-first review flow, and `gpt-5-4-prompting` skill this release mirrors), adapted to the Cursor CLI.

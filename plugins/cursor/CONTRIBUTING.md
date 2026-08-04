@@ -1,4 +1,4 @@
-# Contributing to cursor-plugin-cc
+# Contributing to claude-cursor-delegate
 
 Thanks for looking. This is a small plugin; contributions are welcome.
 
@@ -9,8 +9,8 @@ Read [`AGENTS.md`](./AGENTS.md) at the repo root — it spells out the hard rule
 ## Dev setup
 
 ```bash
-git clone https://github.com/freema/cursor-plugin-cc
-cd cursor-plugin-cc/plugins/cursor
+git clone https://github.com/ahmadghoniem/claude-cursor-delegate
+cd claude-cursor-delegate/plugins/cursor
 npm install    # installs only dev deps: vitest, eslint, prettier, @eslint/js
 npm test
 npm run lint
@@ -33,7 +33,7 @@ Keep branches focused. One feature or fix per PR.
 Conventional-commits style:
 
 ```
-feat(browser): auto-discover localhost port from vite.config
+feat(delegate): recommend a model when --model is omitted
 fix(delegate): quote $ARGUMENTS so zsh doesn't glob ?
 refactor: drop esbuild, ship .mjs directly
 docs(readme): add troubleshooting section
@@ -45,7 +45,7 @@ One short subject line, imperative mood, optional body explaining the **why**.
 
 1. Push your branch.
 2. Open a PR against `main`. The PR template asks for a summary and a test plan — fill both.
-3. CI runs the test matrix (Node 18.18 / 20 / 22 × Ubuntu / macOS). All six must pass.
+3. CI runs the test matrix (Node 18.18 / 20 / 22 × Windows / Linux). All six must pass.
 4. The maintainer reviews, suggests changes, or merges. **Squash merge** is the default.
 5. No direct pushes to `main` — branch protection enforces PR review.
 
@@ -83,7 +83,7 @@ The plugin has a consistent recipe. Follow it exactly for any new command — re
 - **Don't add runtime deps.** If the command needs behaviour you would normally pull a library for, write 30 lines in `lib/` instead. See `lib/run.mjs` (execa replacement) and `lib/args.mjs` (yargs-parser replacement) for the shape.
 - **Don't introduce `dist/`, `build.mjs`, or any TypeScript file.** The source IS the ship artefact.
 - **Don't bypass `lib/run.mjs`.** Every external command invocation goes through it so timeouts and exit-code handling stay consistent.
-- **Don't hardcode `~` or `os.homedir()` directly.** Use `lib/paths.mjs` — it honours the `CURSOR_PLUGIN_CC_HOME` env override (test suites rely on this).
+- **Don't hardcode `~` or `os.homedir()` directly.** Use `lib/paths.mjs` — it honours the `CCD_HOME` env override (test suites rely on this).
 
 ## Running against real cursor-agent
 
@@ -102,7 +102,7 @@ Use the GitHub issue template. Include:
 
 - `node --version`, `cursor-agent --version`
 - Output of `/cursor:setup --doctor`
-- For `/cursor:delegate` or `/cursor:browser` failures: the job id from `/cursor:status` and the path of the raw log under `~/.cursor-plugin-cc/jobs/<hash>/logs/<id>.ndjson`.
+- For `/cursor:delegate` failures: the job id from `/cursor:status` and the path of the raw log under `~/.ccd/jobs/<hash>/logs/<id>.ndjson`.
 
 ## Release flow
 
