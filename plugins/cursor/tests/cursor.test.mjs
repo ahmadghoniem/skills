@@ -44,49 +44,51 @@ describe('buildArgs', () => {
 });
 
 describe('resolveModel', () => {
-  const prevDefault = process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL;
+  const prevDefault = process.env.CCD_DEFAULT_MODEL;
   afterEach(() => {
-    if (prevDefault === undefined) delete process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL;
-    else process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL = prevDefault;
+    if (prevDefault === undefined) delete process.env.CCD_DEFAULT_MODEL;
+    else process.env.CCD_DEFAULT_MODEL = prevDefault;
   });
 
-  it('maps aliases to real Cursor ids', () => {
+  it('maps the three stable human shortcuts to real Cursor ids', () => {
     expect(resolveModel('composer')).toBe('composer-2.5-fast');
-    expect(resolveModel('composer-fast')).toBe('composer-2.5-fast');
     expect(resolveModel('fast')).toBe('composer-2.5-fast');
-    expect(resolveModel('composer-full')).toBe('composer-2.5');
+    expect(resolveModel('auto')).toBe('auto');
+  });
+
+  // MODEL_ALIASES intentionally no longer hardcodes per-vendor ids (they went
+  // stale within weeks). Anything outside the three stable shortcuts —
+  // including ids that used to be aliased, and retired/future ids — must
+  // pass through verbatim. This IS the future-proofing.
+  it('passes every non-shortcut id through verbatim, aliased or not', () => {
     expect(resolveModel('composer-2.5')).toBe('composer-2.5');
     expect(resolveModel('composer-2.5-fast')).toBe('composer-2.5-fast');
-    expect(resolveModel('sonnet')).toBe('claude-4.6-sonnet-medium');
-    expect(resolveModel('opus')).toBe('claude-opus-4-7-high');
-    expect(resolveModel('gpt')).toBe('gpt-5.3-codex');
-    expect(resolveModel('grok')).toBe('grok-4.3');
-    expect(resolveModel('grok-build')).toBe('grok-build-0.1');
-    expect(resolveModel('gemini')).toBe('gemini-3.1-pro');
-  });
-
-  it('keeps retired Composer ids as passthrough for older cursor-agent builds', () => {
-    expect(resolveModel('composer-2')).toBe('composer-2');
-    expect(resolveModel('composer-2-fast')).toBe('composer-2-fast');
-    expect(resolveModel('grok-4-20')).toBe('grok-4-20');
+    expect(resolveModel('composer-full')).toBe('composer-full');
+    expect(resolveModel('sonnet')).toBe('sonnet');
+    expect(resolveModel('opus')).toBe('opus');
+    expect(resolveModel('gpt')).toBe('gpt');
+    expect(resolveModel('grok')).toBe('grok');
+    expect(resolveModel('gemini')).toBe('gemini');
+    expect(resolveModel('claude-opus-4-7-high')).toBe('claude-opus-4-7-high');
+    expect(resolveModel('some-brand-new-model-id')).toBe('some-brand-new-model-id');
   });
 
   it('defaults to auto when empty (no env override)', () => {
-    delete process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL;
+    delete process.env.CCD_DEFAULT_MODEL;
     expect(resolveModel(undefined)).toBe('auto');
     expect(resolveModel('')).toBe('auto');
   });
 
-  it('honours CURSOR_PLUGIN_CC_DEFAULT_MODEL when no input is given', () => {
-    process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL = 'composer';
+  it('honours CCD_DEFAULT_MODEL when no input is given', () => {
+    process.env.CCD_DEFAULT_MODEL = 'composer';
     expect(resolveModel(undefined)).toBe('composer-2.5-fast');
-    process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL = 'some-custom-id';
+    process.env.CCD_DEFAULT_MODEL = 'some-custom-id';
     expect(resolveModel('')).toBe('some-custom-id');
   });
 
   it('explicit input wins over the env default', () => {
-    process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL = 'composer';
-    expect(resolveModel('opus')).toBe('claude-opus-4-7-high');
+    process.env.CCD_DEFAULT_MODEL = 'composer';
+    expect(resolveModel('some-explicit-id')).toBe('some-explicit-id');
   });
 
   it('passes unknown ids through unchanged', () => {

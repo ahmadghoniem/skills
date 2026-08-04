@@ -5,60 +5,32 @@ import { parseLine } from './parse.mjs';
 import { run } from './run.mjs';
 import { adaptWindowsBin, defaultWindowsBin } from './winbin.mjs';
 
-// Convenience aliases that map shortcuts to real Cursor model ids. Cursor
-// rotates these over time — `/cursor:setup --print-models` shows the live
-// list for the current account. Unknown ids are passed through verbatim.
+// Convenience aliases for the handful of shortcuts stable enough to hardcode.
+// Cursor rotates concrete per-vendor model ids constantly (this table used to
+// carry ~40 entries like `grok` → `grok-4.3`, which went stale the moment
+// Cursor shipped the next Grok build). Rather than chase that drift here,
+// only the durable human shortcuts are hardcoded; every other id — including
+// current, retired, or brand-new vendor ids — is passed through verbatim by
+// `resolveModel()`. Runtime model discovery (`listModels()` + the
+// `lib/model-notes.mjs` cache) is what keeps the invoking agent honest about
+// what a given id actually is; see `commands/delegate.md` / `agents/cursor-runner.md`.
 export const MODEL_ALIASES = {
-  // Short shortcuts point at Cursor's current Composer line (2.5).
-  composer: 'composer-2.5-fast',
-  'composer-fast': 'composer-2.5-fast',
   fast: 'composer-2.5-fast',
-  'composer-full': 'composer-2.5',
-  // Current Composer ids (identity — also documents the live names).
-  'composer-2.5-fast': 'composer-2.5-fast',
-  'composer-2.5': 'composer-2.5',
-  // Retired Composer ids kept as passthrough for older cursor-agent builds.
-  'composer-2-fast': 'composer-2-fast',
-  'composer-2': 'composer-2',
-  'composer-1.5': 'composer-1.5',
+  composer: 'composer-2.5-fast',
   auto: 'auto',
-  sonnet: 'claude-4.6-sonnet-medium',
-  'sonnet-4.6': 'claude-4.6-sonnet-medium',
-  'sonnet-4.6-thinking': 'claude-4.6-sonnet-medium-thinking',
-  'sonnet-4.5': 'claude-4.5-sonnet',
-  'sonnet-4.5-thinking': 'claude-4.5-sonnet-thinking',
-  'sonnet-4': 'claude-4-sonnet',
-  opus: 'claude-opus-4-7-high',
-  'opus-4.7': 'claude-opus-4-7-high',
-  'opus-4.7-max': 'claude-opus-4-7-max',
-  'opus-4.7-thinking': 'claude-opus-4-7-thinking-high',
-  'opus-4.6': 'claude-4.6-opus-high',
-  gpt: 'gpt-5.3-codex',
-  codex: 'gpt-5.3-codex',
-  'gpt-5.3-codex': 'gpt-5.3-codex',
-  'gpt-5.3-codex-fast': 'gpt-5.3-codex-fast',
-  'gpt-5.3-codex-high': 'gpt-5.3-codex-high',
-  'gpt-5.2-codex': 'gpt-5.2-codex',
-  'gpt-5.2': 'gpt-5.2',
-  grok: 'grok-4.3',
-  'grok-4.3': 'grok-4.3',
-  'grok-build': 'grok-build-0.1',
-  gemini: 'gemini-3.1-pro',
-  'gemini-pro': 'gemini-3.1-pro',
-  'gemini-flash': 'gemini-3-flash',
 };
 
 // `auto` lets Cursor pick whatever model the account is entitled to —
 // safe default for users without a paid Composer seat. Power users
 // can override per-invocation via `--model <id>` or globally via the env var
-// CURSOR_PLUGIN_CC_DEFAULT_MODEL.
+// CCD_DEFAULT_MODEL.
 export const DEFAULT_MODEL = 'auto';
 
 /**
  * @returns {string}
  */
 export function defaultModel() {
-  const fromEnv = process.env.CURSOR_PLUGIN_CC_DEFAULT_MODEL;
+  const fromEnv = process.env.CCD_DEFAULT_MODEL;
   if (fromEnv && fromEnv.trim().length > 0) {
     const key = fromEnv.trim().toLowerCase();
     return MODEL_ALIASES[key] ?? fromEnv.trim();

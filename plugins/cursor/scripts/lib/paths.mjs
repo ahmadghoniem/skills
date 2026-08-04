@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export function pluginHome() {
-  const fromEnv = process.env.CURSOR_PLUGIN_CC_HOME;
+  const fromEnv = process.env.CCD_HOME;
   if (fromEnv && fromEnv.trim().length > 0) return resolve(fromEnv);
-  return join(homedir(), '.cursor-plugin-cc');
+  return join(homedir(), '.ccd');
 }
 
 /**
