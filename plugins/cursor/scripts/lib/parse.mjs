@@ -54,14 +54,44 @@ export function extractChatId(events) {
   return undefined;
 }
 
+const MODEL_KEYS = ['model', 'model_id', 'modelId'];
+
+/**
+ * Best-effort extraction of the *concrete* model id Cursor actually ran with
+ * (as opposed to the alias/`auto` the caller requested). Cursor's stream
+ * schema drifts, so this is deliberately loose: any string under `model` /
+ * `model_id` / `modelId` anywhere in an event is accepted. Returns undefined
+ * when the stream never surfaces one — callers should keep the requested
+ * model id in that case, not blank it out.
+ *
+ * @param {CursorEvent[]} events
+ * @returns {string|undefined}
+ */
+export function extractResolvedModel(events) {
+  for (const ev of events) {
+    const model = dig(ev, MODEL_KEYS);
+    if (model) return model;
+  }
+  return undefined;
+}
+
+// Tool-name substrings that indicate a file was written/modified. Cursor (and
+// other agent CLIs) rename these across releases — e.g. `search_replace`,
+// `MultiEdit`, `delete_file` — so this list stays intentionally broad rather
+// than pinned to one vendor's current naming, matched case-insensitively.
 const WRITE_TOOL_HINTS = [
   'write',
   'edit',
   'str_replace',
+  'search_replace',
   'create_file',
+  'delete_file',
+  'multiedit',
   'patch',
   'apply_patch',
   'file_write',
+  'insert',
+  'rewrite',
 ];
 
 function looksLikeFileWrite(name) {
@@ -77,6 +107,29 @@ function pickString(obj, keys) {
     if (typeof v === 'string' && v.length > 0) return v;
   }
   return undefined;
+}
+
+const FILE_PATH_KEYS = ['path', 'file_path', 'filename', 'file', 'target', 'target_file'];
+
+/**
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isFileWriteTool(name) {
+  return looksLikeFileWrite(name);
+}
+
+/**
+ * Extract a file path from a tool_use `input` object, trying every key name
+ * the various tool schemas use. Shared by the job summary (`summariseEvents`)
+ * and any live progress printer that wants to show "tool → file" instead of
+ * a bare tool name.
+ *
+ * @param {unknown} input
+ * @returns {string|undefined}
+ */
+export function pickToolPath(input) {
+  return pickString(input, FILE_PATH_KEYS);
 }
 
 /**
@@ -115,7 +168,14 @@ export function pickText(value) {
 }
 
 /**
- * Yield every `{type: 'tool_use', name: …}` object anywhere in the tree.
+ * Yield every tool invocation anywhere in the tree, tolerating the two shapes
+ * cursor-agent actually emits:
+ *   1. Anthropic-style: `{type:'tool_use', name, input}` (name is a sibling key).
+ *   2. cursor-agent native: `{type:'tool_call', tool_call:{<name>ToolCall:{args}}}`
+ *      — here the tool NAME is the key inside `tool_call` (e.g. `editToolCall`,
+ *      `writeToolCall`) and the arguments live under that object's `.args`.
+ * The native shape is what real runs produce; missing it left `filesTouched`
+ * empty in practice even though the fixture-shaped unit tests passed.
  *
  * @param {unknown} node
  * @returns {Iterable<{name: string, input: unknown}>}
@@ -133,6 +193,19 @@ export function* walkToolUses(node) {
       name,
       input: node.input ?? node.arguments ?? node.params ?? node.tool_input,
     };
+  }
+  // cursor-agent native shape: the tool name is a key inside `tool_call`.
+  if (
+    type === 'tool_call' &&
+    node.tool_call != null &&
+    typeof node.tool_call === 'object' &&
+    !Array.isArray(node.tool_call)
+  ) {
+    for (const [toolName, body] of Object.entries(node.tool_call)) {
+      if (body != null && typeof body === 'object' && !Array.isArray(body)) {
+        yield { name: toolName, input: body.args ?? body.input ?? body };
+      }
+    }
   }
   for (const v of Object.values(node)) yield* walkToolUses(v);
 }
@@ -158,14 +231,7 @@ export function summariseEvents(events) {
   for (const ev of events) {
     for (const tu of walkToolUses(ev)) {
       if (!looksLikeFileWrite(tu.name)) continue;
-      const path = pickString(tu.input, [
-        'path',
-        'file_path',
-        'filename',
-        'file',
-        'target',
-        'target_file',
-      ]);
+      const path = pickToolPath(tu.input);
       if (path) files.add(path);
     }
     const type = ev.type;

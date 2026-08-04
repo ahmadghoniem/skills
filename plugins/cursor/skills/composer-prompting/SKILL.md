@@ -49,14 +49,11 @@ Small slices give Composer a tight scope, make the diff reviewable, and make fai
 
 ## Pick a model
 
-Default is `composer-2.5-fast` — Cursor's own current default and the fastest Composer variant. Escalate only when the task warrants it:
+`fast` / `composer` (`composer-2.5-fast`) is the durable default — Cursor's own current default and the fastest Composer variant. These are the only two shortcuts hardcoded in the plugin; every other model id (Sonnet, Opus, GPT, Grok, Gemini variants, whatever Cursor ships next) is a moving target that goes stale within weeks, so it is **not** hardcoded here or in the plugin's alias table.
 
-- `composer-2.5` (non-fast) — quality matters slightly more than latency, but the task is still well-scoped.
-- `sonnet` (`claude-4.6-sonnet-medium`) — more than ~5 files touched, or moderate architecture changes.
-- `opus` (`claude-opus-4-7-high`) — cross-cutting refactor, subtle correctness, or a prior `composer` run failed.
-- `gpt` / `codex` (`gpt-5.3-codex`) — only when the user explicitly asks for it.
+When the caller (cursor-runner or `/cursor:delegate`) hasn't been told which model to use, resolving one is a runtime step, not a lookup table: list the account's live ids (`setup.mjs -- --print-models`), fill any gaps in the model-notes cache with a `cursor.com`-restricted web lookup, then recommend via `AskUserQuestion`. See `agents/cursor-runner.md` step 2 and `commands/delegate.md` for the full flow — this skill only shapes the prompt, it does not duplicate that logic.
 
-Unknown aliases are forwarded as-is, so `--model <whatever>` always works. Do not escalate without a reason — `composer-2.5-fast` is the default for speed and cost.
+Whatever id is ultimately chosen, `--model <id>` always works — unknown ids are forwarded as-is by `resolveModel()`. Do not escalate past `composer-2.5-fast` without a reason — it is the default for speed and cost.
 
 ## Resume or fresh
 

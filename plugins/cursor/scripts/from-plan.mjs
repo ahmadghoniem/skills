@@ -40,8 +40,7 @@ function parseFlags(argv) {
   const background = Boolean(flags['background']);
   const fresh = Boolean(flags['fresh']);
   const force = 'force' in flags ? Boolean(flags['force']) : true;
-  const noGitCheck =
-    flags['gitCheck'] === false || flags['git-check'] === false || flags['no-git-check'] === true;
+  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
   const list = Boolean(flags['list']);
   const model = typeof flags['model'] === 'string' ? flags['model'] : undefined;
   const timeout = 'timeout' in flags ? parseTimeout(flags['timeout']) : undefined;

@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
-import { utimesSync } from 'node:fs';
+import { existsSync, utimesSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   cancelJob,
   createJob,
   findRunningJobs,
+  jobDonePath,
   jobFilePath,
   listJobs,
   mostRecentFinishedJob,
@@ -16,17 +17,17 @@ import { makeTempHome } from './helpers.mjs';
 
 describe('jobs registry', () => {
   let tmp;
-  const prevHome = process.env.CURSOR_PLUGIN_CC_HOME;
+  const prevHome = process.env.CCD_HOME;
   const repo = '/tmp/some-repo-path';
 
   beforeEach(() => {
     tmp = makeTempHome();
-    process.env.CURSOR_PLUGIN_CC_HOME = tmp.dir;
+    process.env.CCD_HOME = tmp.dir;
   });
 
   afterEach(() => {
-    if (prevHome === undefined) delete process.env.CURSOR_PLUGIN_CC_HOME;
-    else process.env.CURSOR_PLUGIN_CC_HOME = prevHome;
+    if (prevHome === undefined) delete process.env.CCD_HOME;
+    else process.env.CCD_HOME = prevHome;
     tmp.cleanup();
   });
 
@@ -93,5 +94,38 @@ describe('jobs registry', () => {
     updateJob(repo, 'done1', { status: 'done' });
     const res = await cancelJob(repo, 'done1');
     expect(res?.status).toBe('done');
+  });
+
+  // Issue A: a caller's cwd (and therefore its computed repoPath) can drift
+  // between the process that ran `delegate` and a later `status`/`result`
+  // call — the id itself is the one thing guaranteed to be stable. readJob/
+  // updateJob must find the job by id regardless of which repoPath guess the
+  // caller passes in.
+  it('readJob/updateJob find a job by id even when passed a different repoPath', () => {
+    createJob({ id: 'drift1', repoPath: repo, prompt: 'p', model: 'm' });
+    const otherGuess = '/tmp/some-other-cwd-guess';
+    expect(readJob(otherGuess, 'drift1')?.id).toBe('drift1');
+    const updated = updateJob(otherGuess, 'drift1', { status: 'done', summary: 'ok' });
+    expect(updated?.status).toBe('done');
+    // The update must land on the record's actual file, not create a stray
+    // duplicate under the wrong (guessed) repoPath's job dir.
+    expect(readJob(repo, 'drift1')?.summary).toBe('ok');
+    expect(listJobs(otherGuess).length).toBe(0);
+  });
+
+  it('readJob returns null for a genuinely unknown id', () => {
+    expect(readJob(repo, 'totally-unknown-id')).toBeNull();
+  });
+
+  // Issue C: a completion sentinel appears once the job reaches a terminal
+  // status, and only then — a caller can watch/poll for the file's existence
+  // instead of parsing the JSON record.
+  it('updateJob writes a completion sentinel only on a terminal status', () => {
+    createJob({ id: 'sentinel1', repoPath: repo, prompt: 'p', model: 'm' });
+    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
+    updateJob(repo, 'sentinel1', { pid: 123 });
+    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
+    updateJob(repo, 'sentinel1', { status: 'done', finishedAt: new Date().toISOString() });
+    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(true);
   });
 });

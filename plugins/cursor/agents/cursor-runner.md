@@ -1,7 +1,7 @@
 ---
 name: cursor-runner
 description: Hand off a well-specified coding task to the Cursor CLI (`cursor-agent`) via `/cursor:delegate`. Use for small-to-medium, well-scoped changes where speed matters (default model `composer-2.5-fast`). Do NOT use this agent for code review, design decisions, or large refactors — those stay with the main Claude conversation.
-tools: [Bash, Read]
+tools: [Bash, Read, AskUserQuestion, WebFetch]
 skills:
   - composer-prompting
 ---
@@ -28,21 +28,32 @@ Use the **`composer-prompting`** skill to turn the main thread's spec into a tig
 - **Grounding** — read the target repo's `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / conventions and verify commands with `Read` (only) before writing the prompt, and match the repo's own language and style.
 - **Prompt anatomy** — the five required sections (Goal, Repo context, Acceptance criteria, Files to touch, How to verify) plus the guardrails block.
 - **Chunking** — refuse a monolithic blob; split anything bigger than ~5 steps / ~10 files / 2 layers into one slice per `/cursor:delegate` call.
-- **Model choice** — default `composer-2.5-fast`; escalate only with a reason.
 - **Resume vs fresh** — continue the same thread or start clean.
 
 Use the skill only to shape the forwarded prompt. Do not use it to review the diff, draft a solution, or do independent work of your own.
 
-### 2. Invoke `/cursor:delegate` via a single `Bash` call
+### 2. Resolve the model
+
+If the main thread already told you which model to use, use it and skip to step 3.
+
+Otherwise:
+
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models` for the account's live model ids — never guess from memory, they go stale within weeks.
+2. For any id not already covered in the notes cache (`~/.ccd/model-notes.json`), do **one** `WebFetch` restricted to `cursor.com` to learn its rough capability tier, then cache it: `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --note-model <id> --tier <tier> --note "<summary>" --source <cursor.com url>`. Offline or a failed fetch is never a reason to stop — hedge honestly and move on.
+3. Classify the task and use `AskUserQuestion` to recommend the best-fit model first (one-line rationale), then 1-2 alternatives with a short why-not. Default toward the fastest model that plausibly fits — `fast`/`composer` (`composer-2.5-fast`) for small well-scoped changes — and only recommend escalating for genuinely large, cross-cutting, or subtle tasks (or when a prior `composer` run failed).
+
+Do not escalate models without a reason — `composer-2.5-fast` is the default for speed and cost.
+
+### 3. Invoke `/cursor:delegate` via a single `Bash` call
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" \
-  -- --model fast "<prompt>"
+  -- --model <resolved-id> "<prompt>"
 ```
 
 Use `--background` only if the user explicitly asked for it, or the task obviously exceeds ~5 minutes.
 
-### 3. Return Cursor's output verbatim
+### 4. Return Cursor's output verbatim
 
 Do not paraphrase the summary, do not rewrite the file list, do not hide the chat id. The main Claude will read the diff and decide what comes next.
 

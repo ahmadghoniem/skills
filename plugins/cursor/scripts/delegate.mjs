@@ -13,28 +13,27 @@ import {
   updateJob,
 } from './lib/jobs.mjs';
 import { ensureDir, jobsDir, logsDir } from './lib/paths.mjs';
-import { extractChatId, summariseEvents } from './lib/parse.mjs';
+import {
+  extractChatId,
+  extractResolvedModel,
+  isFileWriteTool,
+  pickToolPath,
+  summariseEvents,
+  walkToolUses,
+} from './lib/parse.mjs';
 
-const BOOLEAN_FLAGS = [
-  'background',
-  'wait',
-  'fresh',
-  'force',
-  'cloud',
-  'git-check',
-  'help',
-  'resume',
-];
+const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'force', 'cloud', 'help', 'resume'];
 
 function parseFlags(argv) {
   const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS);
   const fresh = Boolean(flags['fresh']);
   const cloud = Boolean(flags['cloud']);
-  const noGitCheck =
-    flags['gitCheck'] === false ||
-    flags['git-check'] === false ||
-    flags['no-git-check'] === true ||
-    flags['noGitCheck'] === true;
+  // Single canonical spelling: `--no-git-check`. The parser's `--no-*`
+  // negation unconditionally populates both `git-check` (false) and its
+  // camelCase mirror from that one token, so checking `git-check === false`
+  // alongside the rare explicit `--no-git-check=true` form is the whole of
+  // the "minimal internal normalization" needed here.
+  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
   const explicitForceFlag = 'force' in flags ? Boolean(flags['force']) : undefined;
   const force = explicitForceFlag === undefined ? true : explicitForceFlag;
   // `--wait` forces the foreground even if `--background` is also present,
@@ -96,7 +95,14 @@ async function foreground(flags, prompt, jobId, root) {
 
   process.stdout.write(`Job \`${jobId}\` started on model \`${model}\` (foreground).\n\n`);
 
+  // Tool-use blocks are typically nested inside `assistant.message.content[]`
+  // (Anthropic Messages API shape), not flat on the event — `walkToolUses`
+  // finds them wherever they live. Progress lines show "tool → file" when the
+  // tool looks like a file write and a path can be extracted, so a human
+  // skimming a long-running job sees *what* is being touched, not just a
+  // bare tool name (or, worse, a collapsed "• tool ×N" counter).
   let toolCalls = 0;
+  let omittedToolCalls = 0;
   const result = await runHeadless({
     prompt,
     model,
@@ -107,24 +113,29 @@ async function foreground(flags, prompt, jobId, root) {
     timeoutSec: flags.timeout,
     logPath,
     onEvent: (ev) => {
-      const type = ev.type;
-      if (type === 'tool_use' || type === 'tool_call' || type === 'tool') {
+      for (const tu of walkToolUses(ev)) {
         toolCalls += 1;
-        if (toolCalls <= 20) {
-          const name =
-            (typeof ev.name === 'string' && ev.name) ||
-            (typeof ev.tool_name === 'string' && ev.tool_name) ||
-            'tool';
-          process.stdout.write(`• ${String(name)}\n`);
-        } else if (toolCalls === 21) {
-          process.stdout.write('• … (further tool calls omitted)\n');
+        if (toolCalls > 20) {
+          omittedToolCalls += 1;
+          continue;
         }
+        const path = isFileWriteTool(tu.name) ? pickToolPath(tu.input) : undefined;
+        process.stdout.write(path ? `• ${tu.name} → ${path}\n` : `• ${tu.name}\n`);
       }
     },
   });
+  if (omittedToolCalls > 0) {
+    process.stdout.write(
+      `• … (${omittedToolCalls} further tool call${omittedToolCalls === 1 ? '' : 's'} omitted)\n`,
+    );
+  }
 
   const summary = summariseEvents(result.events);
   const chatId = extractChatId(result.events);
+  // If the caller asked for `auto`, prefer whatever concrete model id the
+  // stream reveals Cursor actually picked — the job record should say what
+  // ran, not just the placeholder that was requested (issue F).
+  const resolvedModel = model === 'auto' ? (extractResolvedModel(result.events) ?? model) : model;
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
   const killedNote = result.killed
     ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete. Re-run with a larger `--timeout` if needed.'
@@ -136,6 +147,7 @@ async function foreground(flags, prompt, jobId, root) {
     finishedAt: new Date().toISOString(),
     summary: summary.summary + killedNote,
     filesTouched: summary.filesTouched,
+    model: resolvedModel,
     ...(chatId ? { cursorChatId: chatId } : {}),
   });
 
@@ -173,8 +185,8 @@ function spawnBackground(jobId, argv, root, extraEnv = {}) {
     stdio: ['ignore', out, err],
     env: {
       ...process.env,
-      CURSOR_PLUGIN_CC_WORKER: '1',
-      CURSOR_PLUGIN_CC_REPO_ROOT: root,
+      CCD_WORKER: '1',
+      CCD_REPO_ROOT: root,
       ...extraEnv,
     },
   });
@@ -210,6 +222,7 @@ async function runWorker(jobId, flags, prompt, root) {
   });
   const summary = summariseEvents(result.events);
   const chatId = extractChatId(result.events);
+  const resolvedModel = model === 'auto' ? (extractResolvedModel(result.events) ?? model) : model;
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
   const killedNote = result.killed
     ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete.'
@@ -220,6 +233,7 @@ async function runWorker(jobId, flags, prompt, root) {
     finishedAt: new Date().toISOString(),
     summary: summary.summary + killedNote,
     filesTouched: summary.filesTouched,
+    model: resolvedModel,
     ...(chatId ? { cursorChatId: chatId } : {}),
   });
 }
@@ -234,8 +248,8 @@ export async function main(rawArgv) {
   if (flags.worker) {
     // The prompt is handed over verbatim via env to avoid a second collapse
     // pass mangling quotes/backslashes; fall back to positional for safety.
-    const prompt = process.env.CURSOR_PLUGIN_CC_PROMPT ?? flags.positional.join(' ').trim();
-    const root = process.env.CURSOR_PLUGIN_CC_REPO_ROOT ?? (await repoRoot(process.cwd()));
+    const prompt = process.env.CCD_PROMPT ?? flags.positional.join(' ').trim();
+    const root = process.env.CCD_REPO_ROOT ?? (await repoRoot(process.cwd()));
     await runWorker(flags.worker, flags, prompt, root);
     return 0;
   }
@@ -284,7 +298,7 @@ export async function main(rawArgv) {
     }
     if (!flags.force) forwardedArgs.push('--no-force');
     forwardedArgs.push('--timeout', String(flags.timeout));
-    const extraEnv = prompt ? { CURSOR_PLUGIN_CC_PROMPT: prompt } : {};
+    const extraEnv = prompt ? { CCD_PROMPT: prompt } : {};
     const pid = spawnBackground(jobId, forwardedArgs, root, extraEnv);
     updateJob(root, jobId, { pid });
     process.stdout.write(

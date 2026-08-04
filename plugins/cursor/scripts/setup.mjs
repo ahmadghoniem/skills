@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCommandArgv } from './lib/args.mjs';
 import { authStatus, listConfiguredMcps, listModels, resolveBin } from './lib/cursor.mjs';
+import { clearNotes, mergeNote, notesFilePath } from './lib/model-notes.mjs';
 import { ensureDir, jobsDir, pluginHome } from './lib/paths.mjs';
 import { run } from './lib/run.mjs';
 
@@ -94,7 +95,7 @@ async function doctor() {
     lines.push('');
     lines.push('**Configured Cursor MCPs:**');
     if (mcps.length === 0) {
-      lines.push('- (none configured — browser testing via `/cursor:browser` will refuse to run)');
+      lines.push('- (none configured)');
     } else {
       for (const m of mcps) {
         const icon = m.loaded ? '✓' : '•';
@@ -123,6 +124,49 @@ async function printModels() {
     return 1;
   }
   for (const m of models) process.stdout.write(`- ${m}\n`);
+  return 0;
+}
+
+/**
+ * Clears the `lib/model-notes.mjs` cache (capability tier/notes learned per
+ * model id via the runtime model-selection flow — see `commands/delegate.md`
+ * and `agents/cursor-runner.md`). Forces the next `/cursor:delegate` without
+ * an explicit `--model` to re-learn tiers/notes for every id instead of
+ * trusting stale cached ones.
+ *
+ * @returns {Promise<number>}
+ */
+async function refreshModels() {
+  clearNotes();
+  process.stdout.write(`Cleared model-notes cache at \`${notesFilePath()}\`.\n`);
+  return 0;
+}
+
+/**
+ * Writes/merges one model-notes cache entry — the actionable half of the
+ * runtime model-selection flow: the invoking agent does a web lookup
+ * restricted to cursor.com for an id it hasn't seen before, then calls this
+ * to persist what it learned so the next delegation skips the lookup.
+ * Usage: `node setup.mjs -- --note-model <id> [--tier <t>] [--note "<text>"] [--source <url>]`.
+ *
+ * @param {Record<string, unknown>} flags
+ * @returns {Promise<number>}
+ */
+async function noteModel(flags) {
+  const id = typeof flags['note-model'] === 'string' ? flags['note-model'] : undefined;
+  if (!id) {
+    process.stderr.write(
+      'Error: --note-model requires a model id, e.g. `--note-model claude-4.6-sonnet-medium --tier balanced --note "..." --source https://cursor.com/...`\n',
+    );
+    return 2;
+  }
+  /** @type {import('./lib/model-notes.mjs').ModelNote} */
+  const entry = { fetchedOn: new Date().toISOString().slice(0, 10) };
+  if (typeof flags['tier'] === 'string') entry.tier = flags['tier'];
+  if (typeof flags['note'] === 'string') entry.note = flags['note'];
+  if (typeof flags['source'] === 'string') entry.source = flags['source'];
+  mergeNote(id, entry);
+  process.stdout.write(`Cached a model note for \`${id}\` in \`${notesFilePath()}\`.\n`);
   return 0;
 }
 
@@ -170,9 +214,16 @@ async function baseCheck() {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { flags } = parseCommandArgv(rawArgv, ['doctor', 'print-models', 'install']);
+  const { flags } = parseCommandArgv(rawArgv, [
+    'doctor',
+    'print-models',
+    'install',
+    'refresh-models',
+  ]);
   if (flags['doctor']) return doctor();
   if (flags['print-models'] || flags['printModels']) return printModels();
+  if (flags['refresh-models'] || flags['refreshModels']) return refreshModels();
+  if (flags['note-model'] || flags['noteModel']) return noteModel(flags);
   if (flags['install']) return maybeInstall();
   return baseCheck();
 }

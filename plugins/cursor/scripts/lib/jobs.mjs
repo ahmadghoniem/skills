@@ -7,8 +7,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
-import { ensureDir, jobsDir, logsDir } from './paths.mjs';
+import { dirname, join } from 'node:path';
+import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
@@ -99,13 +99,62 @@ export function createJob(init) {
 }
 
 /**
+ * Locate a job's JSON file on disk.
+ *
+ * Ids are 10-char random base64url strings — globally unique in practice —
+ * so when the direct `<repoPath's jobsDir>/<id>.json` guess misses (e.g. the
+ * caller's cwd resolved to a different, or no, git root than the process
+ * that created the job — easy to hit when `delegate` and a later `status`/
+ * `result` call run in separate shells/agent turns with drifted cwd), fall
+ * back to scanning every repo's job dir under the plugin home for a file
+ * named `<id>.json`. This is what makes id-based lookups (status, result,
+ * cancel, updateJob) reliable regardless of which repoPath the caller
+ * happens to compute (issue A).
+ *
+ * @param {string} repoPath
+ * @param {string} id
+ * @returns {string|null} Absolute path to the job file, or null if not found.
+ */
+function locateJobFile(repoPath, id) {
+  const direct = jobFilePath(repoPath, id);
+  if (existsSync(direct)) return direct;
+  const jobsRoot = join(pluginHome(), 'jobs');
+  if (!existsSync(jobsRoot)) return null;
+  let entries;
+  try {
+    entries = readdirSync(jobsRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(jobsRoot, entry.name, `${id}.json`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Path to the completion sentinel for a job (issue C) — an empty file
+ * written next to the job's JSON record once it reaches a terminal status.
+ * A caller can watch/poll for this file's existence instead of parsing the
+ * JSON record or tailing the NDJSON log to learn "is it done yet".
+ *
+ * @param {string} repoPath
+ * @param {string} id
+ */
+export function jobDonePath(repoPath, id) {
+  return join(jobsDir(repoPath), `${id}.done`);
+}
+
+/**
  * @param {string} repoPath
  * @param {string} id
  * @returns {JobRecord|null}
  */
 export function readJob(repoPath, id) {
-  const file = jobFilePath(repoPath, id);
-  if (!existsSync(file)) return null;
+  const file = locateJobFile(repoPath, id);
+  if (!file) return null;
   try {
     const raw = readFileSync(file, 'utf8');
     const parsed = JSON.parse(raw);
@@ -123,8 +172,14 @@ export function readJob(repoPath, id) {
  * @returns {JobRecord|null}
  */
 export function updateJob(repoPath, id, patch) {
-  const existing = readJob(repoPath, id);
-  if (!existing) return null;
+  const file = locateJobFile(repoPath, id);
+  if (!file) return null;
+  let existing;
+  try {
+    existing = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
   const merged = { ...existing, ...patch };
   // Read-modify-write is last-writer-wins; the one race we actively guard is a
   // background worker finishing (status → done/failed) AFTER the user cancelled
@@ -132,7 +187,20 @@ export function updateJob(repoPath, id, patch) {
   if (existing.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
     merged.status = 'cancelled';
   }
-  atomicWrite(jobFilePath(repoPath, id), JSON.stringify(merged, null, 2));
+  // Write back to the file we actually found `existing` at — not a path
+  // recomputed from `repoPath` — so a `locateJobFile` fallback hit never
+  // creates a stray duplicate record in the "wrong" repo's job dir.
+  atomicWrite(file, JSON.stringify(merged, null, 2));
+  // Completion sentinel (issue C): best-effort, written whenever the job
+  // reaches a terminal status. A failure here must not fail the status
+  // update itself — the JSON record remains the source of truth.
+  if (merged.status && merged.status !== 'running') {
+    try {
+      writeFileSync(join(dirname(file), `${id}.done`), '', 'utf8');
+    } catch {
+      // noop
+    }
+  }
   return merged;
 }
 

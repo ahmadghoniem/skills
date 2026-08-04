@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"26e8de62-native"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Create demo.txt and tweak config.json"}]},"session_id":"26e8de62-native"}
+{"type":"tool_call","subtype":"started","call_id":"tool_a","tool_call":{"editToolCall":{"args":{"path":"demo.txt","streamContent":"HELLO_CCD\n"}}}}
+{"type":"tool_call","subtype":"completed","call_id":"tool_a","tool_call":{"editToolCall":{"args":{"path":"demo.txt","streamContent":"HELLO_CCD\n"},"result":{"success":{"path":"demo.txt"}}}}}
+{"type":"tool_call","subtype":"completed","call_id":"tool_b","tool_call":{"writeToolCall":{"args":{"path":"src/config.json"},"result":{"success":{"path":"src/config.json"}}}}}
+{"type":"tool_call","subtype":"completed","call_id":"tool_c","tool_call":{"readToolCall":{"args":{"path":"src/should-not-count.ts"}}}}
+{"type":"result","subtype":"success","is_error":false,"message":{"content":[{"type":"text","text":"Created demo.txt and updated src/config.json."}]},"session_id":"26e8de62-native"}

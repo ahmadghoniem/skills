@@ -163,15 +163,15 @@ describe('md hardening', () => {
 
 describe('jobs hardening', () => {
   let tmp;
-  const prevHome = process.env.CURSOR_PLUGIN_CC_HOME;
+  const prevHome = process.env.CCD_HOME;
 
   beforeEach(() => {
     tmp = makeTempHome();
-    process.env.CURSOR_PLUGIN_CC_HOME = tmp.dir;
+    process.env.CCD_HOME = tmp.dir;
   });
   afterEach(() => {
-    if (prevHome === undefined) delete process.env.CURSOR_PLUGIN_CC_HOME;
-    else process.env.CURSOR_PLUGIN_CC_HOME = prevHome;
+    if (prevHome === undefined) delete process.env.CCD_HOME;
+    else process.env.CCD_HOME = prevHome;
     tmp.cleanup();
   });
 
@@ -199,18 +199,18 @@ describe('jobs hardening', () => {
 
 describe('status renders a prompt-less job without crashing', () => {
   let tmp;
-  const prevHome = process.env.CURSOR_PLUGIN_CC_HOME;
+  const prevHome = process.env.CCD_HOME;
   const prevCwd = process.cwd();
 
   beforeEach(() => {
     tmp = makeTempHome();
-    process.env.CURSOR_PLUGIN_CC_HOME = tmp.dir;
+    process.env.CCD_HOME = tmp.dir;
     process.chdir(tmp.dir);
   });
   afterEach(() => {
     process.chdir(prevCwd);
-    if (prevHome === undefined) delete process.env.CURSOR_PLUGIN_CC_HOME;
-    else process.env.CURSOR_PLUGIN_CC_HOME = prevHome;
+    if (prevHome === undefined) delete process.env.CCD_HOME;
+    else process.env.CCD_HOME = prevHome;
     tmp.cleanup();
   });
 
