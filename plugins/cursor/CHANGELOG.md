@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **`/cursor:from-plan`.** It only rewrote a `~/.claude/plans/<slug>.md` file into a `tasks/<file>.md` and printed a delegate command — a file-shuffling step Claude does directly, and one the new `--prompt-file` now covers for out-of-repo plans. Delegate a plan with `/cursor:delegate --prompt-file ~/.claude/plans/<slug>.md`; for an in-repo spec, reference it inline with `@path`. The `lib/plan.mjs` parser and its tests were removed with the command.
+- **Orphaned review-context helpers.** The Cursor review commands (`/cursor:review`, `/cursor:adversarial-review`; see 0.4.0) were dropped earlier, but their `lib/git.mjs` support code (`collectReviewContext`, `currentBranch`, `detectDefaultBranch`, `workingTreeStatus`, and their private helpers) and an unused `maskSecrets()` in `lib/cursor.mjs` were left behind — ~250 lines with no callers. Removed; `git.mjs` now exports only `isGitRepo` / `repoRoot` (and gains its first tests).
 
 ## 0.5.0 — task-aware model selection + internal rename to `ccd` (breaking)
 

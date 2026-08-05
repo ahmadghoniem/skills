@@ -396,18 +396,3 @@ export async function listSessions(cwd = process.cwd()) {
     return [];
   }
 }
-
-/**
- * @param {string} input
- * @returns {string}
- */
-export function maskSecrets(input) {
-  let out = input;
-  for (const [name, value] of Object.entries(process.env)) {
-    if (!value || value.length < 4) continue;
-    if (/KEY|TOKEN|SECRET|PASSWORD/.test(name)) {
-      out = out.split(value).join('***');
-    }
-  }
-  return out;
-}
