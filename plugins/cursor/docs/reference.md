@@ -155,28 +155,25 @@ If you want Claude to do the whole thing automatically — draft the task file A
 that is what the `cursor-runner` subagent is for. Ask it to either "draft a task file for X" (it
 stops there) or "implement X via Cursor" (it drafts, hands off, and reports the diff).
 
-### Bonus: plan mode → `/cursor:from-plan` → delegate
+### Bonus: plan mode → delegate
 
 If you already used Claude Code's **plan mode** for a task (the `/plan …` flow that drops a plan
-file under `~/.claude/plans/<slug>.md` after you approve it), you do not need to re-type anything.
-Run `/cursor:from-plan` and the plugin will:
-
-1. Pick the newest plan under `~/.claude/plans/` (or the one matching a name fragment you pass).
-2. Extract the useful sections (Context → Repo context, Approach → Acceptance criteria, File list
-   → Files to touch, Verification → How to verify), drop the dev-only bits (Effort, Risks, Scope
-   exclusions), and add the standard guardrail block.
-3. Write the result to `tasks/<YYYYMMDD-HHmm>-<slug>.md` in the current repo and print the exact
-   `/cursor:delegate @tasks/…` command for you to run.
-
-So the full loop is:
+file under `~/.claude/plans/<slug>.md` after you approve it), you do not need to re-type anything —
+that plan file _is_ the task spec. Because it lives outside the repo, cursor-agent cannot see it
+via `@path`, so read it in directly:
 
 ```
 /plan add a dark-mode toggle to the settings page
 # Claude proposes a plan; you approve inside plan mode.
-/cursor:from-plan --delegate --model opus
-# Plan gets turned into a task file and handed off to Cursor in one step.
+/cursor:delegate --model opus --prompt-file ~/.claude/plans/dark-mode.md
+# The plan is inlined as the task and handed off to Cursor.
 # Back in Claude Code: review the diff, /cursor:resume "fix X" if needed.
 ```
+
+`--prompt-file` reads the file (or stdin, with `--prompt-file -`) and passes its full contents as
+the task, so long, multi-line, quote-heavy plans arrive intact without shell-argument mangling. If
+you would rather keep an in-repo record, ask Claude to save the plan to `tasks/<slug>.md` first and
+then delegate it with an inline `@tasks/<slug>.md` reference — same result, plus an auditable file.
 
 ## FAQ
 
@@ -237,11 +234,15 @@ First-time Bash permission prompt. Approve `node` for this session (Claude Code 
 session; the approval covers all plugin commands since all of them invoke `node`). If you denied
 it accidentally, `/permissions` lets you review/change.
 
-### `/cursor:from-plan` says "no plan files found"
+### `--prompt-file` prints `prompt file not found`
 
-Claude Code only writes plan files when you explicitly enter plan mode and then exit it with
-approval. If you never did that, there is nothing to convert. Enter plan mode (`/plan ...`) first;
-run `/cursor:from-plan --list` afterwards to confirm the file is there.
+The path is resolved relative to the current working directory. Pass an absolute path (or a
+`~/…`-expanded one your shell has already resolved) for files outside the repo, such as plans under
+`~/.claude/plans/`. **If the path contains spaces** (e.g. `C:/Users/Jane Doe/…`), quote it —
+`--prompt-file "C:/Users/Jane Doe/plan.md"` — otherwise the argument splitter breaks it at the
+space and only the first half reaches the flag. On Windows, prefer forward slashes or single-quote
+the path, since a bare `\` is treated as an escape character. `--prompt-file -` reads stdin instead
+of a file — make sure something is actually piped in, or the command will block waiting for input.
 
 ### `cursor-agent` hangs mid-run
 

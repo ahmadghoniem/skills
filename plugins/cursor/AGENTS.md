@@ -18,7 +18,7 @@ A Claude Code plugin that delegates coding tasks from Claude to the Cursor CLI (
 
 ## Task format
 
-Every delegated task (whether you write it by hand or `/cursor:from-plan` generates it) uses five sections in this order:
+Every delegated task uses five sections in this order:
 
 1. **Goal** — one sentence.
 2. **Repo context** — stack + pointer to AGENTS.md / `.cursor/rules` / conventions file.

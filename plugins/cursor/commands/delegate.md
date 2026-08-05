@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task to the Cursor CLI agent (Composer by default).
-argument-hint: '[--background] [--wait] [--fresh] [--resume[=chat-id]] [--model <id>] [--cloud] [--no-force] [--no-git-check] [--timeout <sec>] <task...>'
+argument-hint: '[--background] [--wait] [--fresh] [--resume[=chat-id]] [--model <id>] [--cloud] [--no-force] [--no-git-check] [--timeout <sec>] [--prompt-file <path|->] <task...>'
 allowed-tools: Bash(node:*), AskUserQuestion, WebFetch(domain:cursor.com)
 ---
 
@@ -15,6 +15,7 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
 - **`--wait` / `--background`** — `--wait` (default) blocks until the run finishes and prints the full result inline. `--background` detaches immediately and prints the job id right away; poll it with `/cursor:status <id>` or fetch the final write-up with `/cursor:result <id>` once it's done. `--wait` always wins if both are passed.
 - **`--timeout <sec>`** — kills the run (SIGTERM, then SIGKILL after 5s) if it hasn't finished by then. Default 1800s (30 min). A killed run is still recorded as `failed` with a note — never silently dropped.
 - **`--no-git-check`** — the only supported spelling. By default `/cursor:delegate` refuses to run outside a git repository; pass this to override (e.g. scratch directories).
+- **`--prompt-file <path>`** (or `--prompt-file -` for stdin) — read the task from a file instead of the command line. Use it for long, multi-line, or quote-heavy specs that would be mangled as shell arguments; it is mutually exclusive with an inline task. For a spec already living in the repo, prefer an `@path` reference in the inline task instead — that lets cursor-agent open the file itself.
 
 ## What you must do
 

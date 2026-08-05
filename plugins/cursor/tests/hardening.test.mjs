@@ -11,7 +11,6 @@ import { createJob, jobFilePath, listJobs, readJob, updateJob } from '../scripts
 import { mdCell } from '../scripts/lib/md.mjs';
 import { repoHash } from '../scripts/lib/paths.mjs';
 import { pickText, summariseEvents } from '../scripts/lib/parse.mjs';
-import { pickSection, resolvePlanPath, splitSections } from '../scripts/lib/plan.mjs';
 import { makeTempHome } from './helpers.mjs';
 
 describe('args hardening', () => {
@@ -100,45 +99,6 @@ describe('parse hardening', () => {
     ];
     const s = summariseEvents(events);
     expect(s.summary).toBe('partial answer');
-  });
-});
-
-describe('plan hardening', () => {
-  it('ignores ## headings inside fenced code blocks', () => {
-    const md = [
-      '# Title',
-      '',
-      '## Approach',
-      '',
-      'text',
-      '```',
-      '## not a heading',
-      '```',
-      'more',
-      '',
-      '## Files',
-      '',
-      'f.js',
-    ].join('\n');
-    const { sections } = splitSections(md);
-    expect(sections['not a heading']).toBeUndefined();
-    expect(sections['approach']).toContain('## not a heading');
-    expect(sections['approach']).toContain('more');
-    expect(sections['files']).toBe('f.js');
-  });
-
-  it('prefers a specific section hint over a generic one regardless of order', () => {
-    const sections = { 'files we read for context': 'narrative', 'files to touch': 'a.js' };
-    expect(pickSection(sections, 'files')).toBe('a.js');
-  });
-
-  it('resolvePlanPath rejects a directory', () => {
-    const tmp = makeTempHome();
-    try {
-      expect(resolvePlanPath(tmp.dir)).toBeUndefined();
-    } finally {
-      tmp.cleanup();
-    }
   });
 });
 

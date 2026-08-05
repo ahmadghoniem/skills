@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { main as delegateMain } from '../scripts/delegate.mjs';
 import { jobDonePath, listJobs, readJob } from '../scripts/lib/jobs.mjs';
@@ -121,6 +122,78 @@ describe('delegate foreground', () => {
     } finally {
       errSpy.mockRestore();
     }
+  });
+
+  // --prompt-file lets a long, multi-line, quote-heavy prompt reach the job
+  // without CLI-arg mangling. The recorded job prompt must equal the file's
+  // (trimmed) contents verbatim.
+  it('reads the task from --prompt-file and records it verbatim', async () => {
+    const spec = `Goal: refactor the "widget" module.\nConstraints: keep $env vars & \`backticks\`.\n`;
+    const specPath = join(tmp.dir, 'spec.md');
+    writeFileSync(specPath, spec, 'utf8');
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      // Flags/paths go before `--` so they stay verbatim tokens — the temp path
+      // contains a space, which the post-`--` re-splitter would otherwise break.
+      const code = await delegateMain(['--no-git-check', '--prompt-file', specPath, '--']);
+      expect(code).toBe(0);
+    } finally {
+      writeSpy.mockRestore();
+    }
+    const jobs = listJobs(tmp.dir);
+    expect(jobs.length).toBe(1);
+    expect(jobs[0].prompt).toBe(spec.trim());
+  });
+
+  it('rejects a task given both on the command line and via --prompt-file', async () => {
+    const specPath = join(tmp.dir, 'spec.md');
+    writeFileSync(specPath, 'from file', 'utf8');
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const code = await delegateMain([
+        '--no-git-check',
+        '--prompt-file',
+        specPath,
+        '--',
+        'from cli',
+      ]);
+      expect(code).toBe(2);
+    } finally {
+      errSpy.mockRestore();
+    }
+    expect(listJobs(tmp.dir).length).toBe(0);
+  });
+
+  it('exits 2 when --prompt-file points at a missing file', async () => {
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    let errOut = '';
+    try {
+      const code = await delegateMain([
+        '--no-git-check',
+        '--prompt-file',
+        join(tmp.dir, 'does-not-exist.md'),
+        '--',
+      ]);
+      expect(code).toBe(2);
+      errOut = errSpy.mock.calls.map((c) => String(c[0])).join('');
+    } finally {
+      errSpy.mockRestore();
+    }
+    expect(errOut).toContain('prompt file not found');
+    expect(listJobs(tmp.dir).length).toBe(0);
+  });
+
+  it('exits 2 when --prompt-file is an empty file', async () => {
+    const specPath = join(tmp.dir, 'empty.md');
+    writeFileSync(specPath, '   \n\t ', 'utf8');
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const code = await delegateMain(['--no-git-check', '--prompt-file', specPath, '--']);
+      expect(code).toBe(2);
+    } finally {
+      errSpy.mockRestore();
+    }
+    expect(listJobs(tmp.dir).length).toBe(0);
   });
 
   // Regression: a numeric `--resume=<id>` used to crash with

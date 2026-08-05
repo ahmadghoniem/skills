@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { openSync } from 'node:fs';
+import { existsSync, openSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { collapseCommandArgv, parseArgv, parseTimeout } from './lib/args.mjs';
 import { resolveModel, runHeadless } from './lib/cursor.mjs';
@@ -45,6 +45,9 @@ function parseFlags(argv) {
   const resume = flags['resume'];
   const model = typeof flags['model'] === 'string' ? flags['model'] : undefined;
   const worker = typeof flags['worker'] === 'string' ? flags['worker'] : undefined;
+  // `undefined` = flag absent; `'-'` = stdin; a string path; `true` = bare
+  // `--prompt-file` with no value (a usage error, caught in main).
+  const promptFile = flags['prompt-file'];
   return {
     positional,
     model,
@@ -57,7 +60,38 @@ function parseFlags(argv) {
     timeout,
     noGitCheck,
     worker,
+    promptFile,
   };
+}
+
+/**
+ * Resolve `--prompt-file <path>` / `--prompt-file -` (stdin) into the actual
+ * prompt text. Lets callers pass long, multi-line, or quote-heavy prompts
+ * without CLI-arg mangling — the same robustness the background worker already
+ * gets from `CCD_PROMPT`. Returns the trimmed text; throws on a missing value,
+ * missing file, or empty content.
+ *
+ * @param {unknown} spec  raw flag value: `'-'` for stdin, a path, or `true` when bare
+ * @returns {string}
+ */
+function readPromptSource(spec) {
+  if (spec === true || spec === '') {
+    throw new Error('--prompt-file needs a path, or `-` to read stdin.');
+  }
+  let raw;
+  if (spec === '-') {
+    // fd 0 = stdin; a synchronous read matches the one-shot nature of the command.
+    raw = readFileSync(0, 'utf8');
+  } else {
+    const path = String(spec);
+    if (!existsSync(path)) throw new Error(`prompt file not found: ${path}`);
+    raw = readFileSync(path, 'utf8');
+  }
+  const text = raw.trim();
+  if (text.length === 0) {
+    throw new Error(spec === '-' ? 'stdin was empty.' : `prompt file is empty: ${spec}`);
+  }
+  return text;
 }
 
 function isResumeRequested(resume, fresh) {
@@ -254,10 +288,24 @@ export async function main(rawArgv) {
     return 0;
   }
 
-  const prompt = flags.positional.join(' ').trim();
+  let prompt = flags.positional.join(' ').trim();
+  if (flags.promptFile !== undefined) {
+    if (prompt.length > 0) {
+      process.stderr.write(
+        'Error: pass the task either on the command line or via --prompt-file, not both.\n',
+      );
+      return 2;
+    }
+    try {
+      prompt = readPromptSource(flags.promptFile);
+    } catch (err) {
+      process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
   if (!prompt && !isResumeRequested(flags.resume, flags.fresh)) {
     process.stderr.write('Error: no task description provided.\n');
-    process.stderr.write('Usage: /cursor:delegate [flags] <task>\n');
+    process.stderr.write('Usage: /cursor:delegate [flags] <task | --prompt-file <path|->>\n');
     return 2;
   }
 

@@ -53,6 +53,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" \
 
 Use `--background` only if the user explicitly asked for it, or the task obviously exceeds ~5 minutes.
 
+**Delegating from a spec file.** When the spec already lives in a file, do not paste its contents into the prompt. If the file is **inside the target repo**, reference it inline (`… "implement @tasks/spec.md, follow it exactly"`) so cursor-agent opens it. If it is **outside the repo** (e.g. a plan under `~/.claude/plans/`), pass `--prompt-file <path>` so the plugin reads it. For several independent specs, run one `--background` delegation per file rather than merging them.
+
 ### 4. Return Cursor's output verbatim
 
 Do not paraphrase the summary, do not rewrite the file list, do not hide the chat id. The main Claude will read the diff and decide what comes next.

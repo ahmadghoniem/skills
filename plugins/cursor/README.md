@@ -17,10 +17,9 @@ you ▸ /plan add a /health endpoint to our Express app that returns { status, v
 claude ▸ Plan written to ~/.claude/plans/health-endpoint.md
          (4 acceptance criteria, 3 files to touch, verify with `npm test`)
 
-you ▸ /cursor:from-plan --delegate
+you ▸ /cursor:delegate --prompt-file ~/.claude/plans/health-endpoint.md
 
-plugin ▸ wrote tasks/20260427-1830-health-endpoint.md
-       ▸ handing off to cursor-agent (composer-2.5-fast, --force)…
+plugin ▸ handing off to cursor-agent (composer-2.5-fast, --force)…
 
 cursor ▸ ✓ src/routes/health.ts          (new, 24 lines)
        ▸ ✓ src/app.ts                    (mounted route)
@@ -102,26 +101,23 @@ Platform support is **Windows and Linux**. See [`docs/reference.md`](docs/refere
 │  1.  /plan <what you want>                                       │
 │      → Claude drafts a plan into ~/.claude/plans/<slug>.md       │
 ├──────────────────────────────────────────────────────────────────┤
-│  2.  /cursor:from-plan --delegate                                │
-│      → plugin reads the newest plan, rewrites it as               │
-│        tasks/<YYYYMMDD-HHmm>-<slug>.md (Cursor-shaped)           │
-│      → invokes `cursor-agent -p --force` with the task           │
+│  2.  /cursor:delegate --prompt-file ~/.claude/plans/<slug>.md    │
+│      → invokes `cursor-agent -p --force` with the plan as task   │
 │      → Cursor reads it, writes the code, reports back            │
 ├──────────────────────────────────────────────────────────────────┤
 │  3.  <your verify command>     e.g. `npm test`, `task test`      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Iterate:** if Claude's review of the diff finds something, run `/cursor:resume "fix X"` — same Cursor chat, no replanning. **Skip plan mode** for quick one-shots: `/cursor:delegate "<task description>"` goes straight to Cursor.
+**Iterate:** if Claude's review of the diff finds something, run `/cursor:resume "fix X"` — same Cursor chat, no replanning. **Skip plan mode** for quick one-shots: `/cursor:delegate "<task description>"` goes straight to Cursor. For a spec file already inside the repo, reference it inline with `@path` and Cursor opens it itself; for one outside the repo (like a plan under `~/.claude/plans/`), pass it with `--prompt-file`.
 
 Full walkthrough (typical flows, chunking guidance, the "how I actually use this" recipe) lives in [`docs/reference.md`](docs/reference.md).
 
 ## What you get
 
-Eight slash commands under the `cursor:` namespace:
+Seven slash commands under the `cursor:` namespace:
 
-- **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background.
-- **`/cursor:from-plan`** — turn a Claude Code plan into a `tasks/<file>.md` and hand it off to Cursor.
+- **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background. Task text can come inline, from a file (`--prompt-file <path>`), or from stdin (`--prompt-file -`).
 - **`/cursor:status`** — list recent jobs or inspect a specific one.
 - **`/cursor:result`** — print the final output of a finished job.
 - **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
@@ -157,6 +153,7 @@ Hand a coding task to `cursor-agent -p …`.
 | `--timeout <sec>` | `1800` | Kill the job if it exceeds this. |
 | `--no-git-check` | off | Allow running outside a git repo. |
 | `--cloud` | off | Pass `-c` to cursor-agent. |
+| `--prompt-file <path\|->` | off | Read the task from a file, or from stdin with `-`. Mutually exclusive with an inline task. For long, multi-line, or quote-heavy specs. |
 
 Full flag reference (`--fresh`, `--resume`, `--no-force`, `--refresh-models`) and more examples: [`docs/reference.md`](docs/reference.md#delegate-flags).
 
@@ -165,21 +162,11 @@ Full flag reference (`--fresh`, `--resume`, `--no-force`, `--refresh-models`) an
 /cursor:delegate --model composer "write jest tests for utils/date.ts"
 /cursor:delegate --background "migrate user repository to Doctrine 3"
 /cursor:delegate --resume "continue with the failing edge case"
+/cursor:delegate --prompt-file ~/.claude/plans/dark-mode.md   # inline a spec/plan file
+git show HEAD:spec.md | /cursor:delegate --prompt-file -      # or pipe one in via stdin
 ```
 
-### `/cursor:from-plan [plan-name] [--delegate] [--model <id>] [--background] [--list]`
-
-Takes a Claude Code **plan file** (anything written under `~/.claude/plans/` by plan mode) and rewrites it as a Cursor-shaped task file under `tasks/<YYYYMMDD-HHmm>-<slug>.md` — Goal / Repo context / Acceptance criteria / Files to touch / How to verify, plus a guardrail block.
-
-- **Preview + hand-back** (default): writes the task file, prints the `/cursor:delegate @tasks/…` command to run next.
-- **Auto-delegate** (`--delegate` / `--yes`): writes the task file AND invokes `/cursor:delegate` in one go.
-
-```
-/cursor:from-plan                       # newest plan → tasks/ → print delegate command
-/cursor:from-plan dark-mode             # match on a plan name fragment
-/cursor:from-plan --delegate --model opus --background
-/cursor:from-plan --list                # show the 15 most recent plans
-```
+**Delegating a plan or spec file.** There's no separate command for this — a spec is just a task that lives in a file. If it's **inside the repo**, reference it inline (`/cursor:delegate "implement @tasks/spec.md, follow it exactly"`) and cursor-agent opens it itself. If it's **outside the repo** (a plan under `~/.claude/plans/`, a generated file, anything cursor-agent can't see), read it in with `--prompt-file`. For several independent specs, fan out one `--background` delegation per file.
 
 ### `/cursor:status [job-id] [--all]`
 
@@ -222,7 +209,7 @@ A repo-local `.ccd.json` is on the roadmap for overriding the default model per 
 
 ## FAQ & Troubleshooting
 
-Common questions (Node version, auth, `--force` semantics, model-list drift) and fixes for the failure modes that came up during development (`Unknown command: /cursor:setup`, stale plugin cache, `from-plan` finding no plans, `cursor-agent` hanging) are collected in [`docs/reference.md`](docs/reference.md#faq) and [`docs/reference.md`](docs/reference.md#troubleshooting).
+Common questions (Node version, auth, `--force` semantics, model-list drift) and fixes for the failure modes that came up during development (`Unknown command: /cursor:setup`, stale plugin cache, `cursor-agent` hanging) are collected in [`docs/reference.md`](docs/reference.md#faq) and [`docs/reference.md`](docs/reference.md#troubleshooting).
 
 ## Contributing
 

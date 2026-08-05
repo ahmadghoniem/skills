@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.0 — file/stdin task input; remove `/cursor:from-plan`
+
+### Added
+
+- **`--prompt-file <path>` / `--prompt-file -` (stdin) for `/cursor:delegate`.** Read the task from a file or piped stdin instead of the command line — for long, multi-line, or quote-heavy specs that shell-argument quoting would otherwise mangle. Mutually exclusive with an inline task; empty or missing input fails with a clear error. Routes through the same `CCD_PROMPT` path the background worker already uses, so background jobs get the same robustness for free.
+
+### Removed
+
+- **`/cursor:from-plan`.** It only rewrote a `~/.claude/plans/<slug>.md` file into a `tasks/<file>.md` and printed a delegate command — a file-shuffling step Claude does directly, and one the new `--prompt-file` now covers for out-of-repo plans. Delegate a plan with `/cursor:delegate --prompt-file ~/.claude/plans/<slug>.md`; for an in-repo spec, reference it inline with `@path`. The `lib/plan.mjs` parser and its tests were removed with the command.
+
 ## 0.5.0 — task-aware model selection + internal rename to `ccd` (breaking)
 
 ### Added
@@ -29,12 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deferred (backlog, not in this release)
 
-- `--prompt-file` / stdin input for `/cursor:delegate`.
-- A skills → `.cursor/rules` compiler.
-- Self-verify against acceptance criteria after a job finishes.
-- A task-doc contract template.
-- A citation/URL audit list for docs and generated content.
-- A known-blocked-domains list for the model-notes lookup.
+- Self-verify against acceptance criteria after a job finishes — likely stays a main-thread review convention rather than plugin machinery.
 
 ## 0.4.0 — /cursor:adversarial-review + estimate-first reviews + composer-prompting skill
 
