@@ -1,6 +1,6 @@
 ---
 description: Health-check Cursor CLI, list models, or guide installation.
-argument-hint: '[--doctor] [--print-models] [--refresh-models] [--install]'
+argument-hint: '[--doctor] [--print-models] [--install]'
 allowed-tools: Bash(node:*)
 ---
 

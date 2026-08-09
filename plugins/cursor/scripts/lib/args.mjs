@@ -101,9 +101,15 @@ function autoCast(value) {
  *
  * @param {string[]} argv
  * @param {string[]} [booleans]   Flag names that NEVER consume the next token.
+ * @param {{honorDoubleDash?: boolean}} [opts]
+ *   `honorDoubleDash: false` treats `--` as ordinary text instead of an
+ *   end-of-flags delimiter. Slash commands use this: their one real delimiter
+ *   was already removed by `collapseCommandArgv`, so any `--` still present is
+ *   part of the user's task text and must not stop flag parsing.
  * @returns {ParsedArgs}
  */
-export function parseArgv(argv, booleans = []) {
+export function parseArgv(argv, booleans = [], opts = {}) {
+  const honorDoubleDash = opts.honorDoubleDash !== false;
   const booleanSet = new Set();
   for (const b of booleans) {
     booleanSet.add(b);
@@ -128,7 +134,7 @@ export function parseArgv(argv, booleans = []) {
       positional.push(tok);
       continue;
     }
-    if (tok === '--') {
+    if (tok === '--' && honorDoubleDash) {
       sawDoubleDash = true;
       continue;
     }
@@ -208,7 +214,7 @@ export function collapseCommandArgv(rawArgv) {
  * @returns {ParsedArgs}
  */
 export function parseCommandArgv(rawArgv, booleans = []) {
-  return parseArgv(collapseCommandArgv(rawArgv), booleans);
+  return parseArgv(collapseCommandArgv(rawArgv), booleans, { honorDoubleDash: false });
 }
 
 /**

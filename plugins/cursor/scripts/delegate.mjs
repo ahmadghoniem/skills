@@ -25,7 +25,11 @@ import {
 const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'force', 'cloud', 'help', 'resume'];
 
 function parseFlags(argv) {
-  const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS);
+  // `honorDoubleDash: false` — `collapseCommandArgv` already consumed the
+  // slash-command delimiter, so a `--` left in here is part of the task text.
+  // Without this, a task containing `--` silently swallowed every flag after
+  // it (e.g. `--model`) and the run proceeded on the default model.
+  const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
   const fresh = Boolean(flags['fresh']);
   const cloud = Boolean(flags['cloud']);
   // Single canonical spelling: `--no-git-check`. The parser's `--no-*`
@@ -187,6 +191,10 @@ async function foreground(flags, prompt, jobId, root) {
 
   process.stdout.write('\n---\n');
   process.stdout.write(`**Status:** ${status}\n`);
+  // Echo the model that actually ran. The start line prints the *requested*
+  // model, so without this an `auto` run — or a `--model` that never arrived —
+  // is invisible in the result.
+  process.stdout.write(`**Model:** ${resolvedModel}\n`);
   if (result.killed)
     process.stdout.write('**⚠ Run was killed before finishing** (timeout/watchdog).\n');
   if (summary.filesTouched.length > 0) {

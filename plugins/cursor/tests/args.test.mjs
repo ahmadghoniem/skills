@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { collapseArguments, parseArgv, splitArgString } from '../scripts/lib/args.mjs';
+import {
+  collapseArguments,
+  parseArgv,
+  parseCommandArgv,
+  splitArgString,
+} from '../scripts/lib/args.mjs';
 
 describe('splitArgString', () => {
   it('splits on whitespace', () => {
@@ -21,6 +26,33 @@ describe('splitArgString', () => {
 
   it('preserves single-quoted spans', () => {
     expect(splitArgString("--flag 'value with spaces'")).toEqual(['--flag', 'value with spaces']);
+  });
+});
+
+describe('a `--` inside the task text does not swallow flags', () => {
+  // Regression: a task containing a bare `--` used to flip parseArgv into
+  // end-of-flags mode, so `--model` never arrived and the job silently ran on
+  // the default model while reporting success.
+  it('keeps flags that follow a `--` in the user text', () => {
+    const r = parseCommandArgv(['--', 'fix the bug -- see notes', '--model', 'composer-2.5']);
+    expect(r.flags['model']).toBe('composer-2.5');
+    expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
+  });
+
+  it('keeps flags when the whole invocation arrives as one string', () => {
+    const r = parseCommandArgv([
+      '--',
+      'fix the bug -- see notes --model composer-2.5 --timeout 60',
+    ]);
+    expect(r.flags['model']).toBe('composer-2.5');
+    expect(r.flags['timeout']).toBe(60);
+    expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
+  });
+
+  it('still honours `--` for direct parseArgv callers', () => {
+    const r = parseArgv(['a', '--', '--model', 'opus']);
+    expect(r.flags['model']).toBeUndefined();
+    expect(r.positional).toEqual(['a', '--model', 'opus']);
   });
 });
 

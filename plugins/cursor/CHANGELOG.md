@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.0 — fix silent flag loss; pool-aware model selection
+
+### Fixed
+
+- **A `--` in the task text silently swallowed every flag after it.** `collapseCommandArgv` strips the slash-command's own `--` delimiter, but any *second* `--` — easily present in a task description — reached `parseArgv` and was honoured as a Unix end-of-flags marker. Everything after it, including `--model` and `--timeout`, became prompt text: the job ran on the default model, reported success, and nothing said the flags had been dropped. `parseArgv` now takes `honorDoubleDash`, and the slash-command path opts out. The `--` also survives into the prompt now instead of being deleted from the task.
+- **The result block never said which model ran.** The model was printed only on the *start* line, and only as the *requested* value — so an `auto` run, or a `--model` that never arrived, was invisible in the output. The foreground result block now echoes `**Model:**` with the model that actually ran (`/cursor:status` and `/cursor:result` already did).
+
+### Changed
+
+- **Model selection now follows the plan's two usage pools.** `/cursor:setup --print-models` splits the live list into **included in your plan** (Cursor's own models — Composer, Cursor Grok) and **metered per token** (third-party), and marks which ids have a `-fast` sibling. `/cursor:delegate` recommends from the included group first and only suggests a metered model when the task warrants it. The split comes from Cursor's own id namespacing (`composer*` / `cursor-*`), so new releases classify correctly without a code change.
+- **A second question offers the `-fast` variant — only when one exists.** Roughly half the lineup has no fast id (`claude-sonnet-5-*`, `gemini-*`, `kimi-*`, …), and the question is skipped entirely for those. Fast runs the same model on quicker hardware at about 2x the usage cost.
+- **Flags now documented before the task**, as a single quoted argument, in both `commands/delegate.md` and `agents/cursor-runner.md`.
+
+### Removed
+
+- **The model-notes cache (`lib/model-notes.mjs`, `--note-model`, `--refresh-models`, `~/.ccd/model-notes.json`).** It existed so the agent could web-fetch cursor.com for each unfamiliar model id and cache a guessed capability tier before every delegation — slow, failure-prone, and guessing at exactly the fact the grouped model list now reports directly. `/cursor:delegate` no longer needs `WebFetch` at all.
+
 ## 0.6.0 — file/stdin task input; remove `/cursor:from-plan`
 
 ### Added

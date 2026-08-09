@@ -16,7 +16,6 @@ Only the latest tagged release on `main` is supported. Run `/cursor:setup --doct
 - **`--trust` is always on.** Required by `cursor-agent` in headless mode to bypass the workspace-trust prompt. Do not point the plugin at repositories you do not already trust.
 - **Cursor's backend receives your prompts and repo context.** The plugin is a thin wrapper around `cursor-agent`. All data-handling commitments are Cursor's, not this plugin's. This also applies to task-aware model selection: an unrecognized model triggers a one-time lookup against cursor.com.
 - **Job logs under `~/.ccd/jobs/<repo-hash>/` contain the full `cursor-agent` stream-json output.** That may include snippets of your source code or environment metadata. Treat the directory as sensitive; we do not upload it anywhere, but local access controls are your responsibility.
-- **The model-notes cache at `~/.ccd/model-notes.json`** stores what the plugin has learned about Cursor models from cursor.com lookups. It contains no secrets or prompt content, but treat it like any other local cache — delete it (or run `--refresh-models`) if you suspect it's stale or wrong.
 
 ## Non-goals
 

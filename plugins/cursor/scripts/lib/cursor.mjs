@@ -11,9 +11,9 @@ import { adaptWindowsBin, defaultWindowsBin } from './winbin.mjs';
 // Cursor shipped the next Grok build). Rather than chase that drift here,
 // only the durable human shortcuts are hardcoded; every other id — including
 // current, retired, or brand-new vendor ids — is passed through verbatim by
-// `resolveModel()`. Runtime model discovery (`listModels()` + the
-// `lib/model-notes.mjs` cache) is what keeps the invoking agent honest about
-// what a given id actually is; see `commands/delegate.md` / `agents/cursor-runner.md`.
+// `resolveModel()`. Runtime discovery (`listModels()`, grouped by
+// `isCursorModel()`) is what keeps the invoking agent honest about what a
+// given id actually is; see `commands/delegate.md` / `agents/cursor-runner.md`.
 export const MODEL_ALIASES = {
   fast: 'composer-2.5-fast',
   composer: 'composer-2.5-fast',
@@ -276,6 +276,53 @@ export async function authStatus() {
   } catch (err) {
     return { loggedIn: false, detail: String(err) };
   }
+}
+
+/**
+ * Cursor's own models are the ones included in the plan's "Cursor Models"
+ * usage pool (Composer, Cursor Grok); everything else is metered per token
+ * against the separate "Other Models" pool. Cursor namespaces its own ids
+ * rather than versioning them into a list, so this stays correct across
+ * `composer-3` / `cursor-grok-5` without a table to keep up to date.
+ *
+ * @param {string} id
+ * @returns {boolean}
+ */
+export function isCursorModel(id) {
+  return id.startsWith('composer') || id.startsWith('cursor-');
+}
+
+/**
+ * Turn `cursor-agent models` output (`"<id> - <label>"` lines) into bare ids.
+ *
+ * @param {string[]} lines
+ * @returns {string[]}
+ */
+export function parseModelList(lines) {
+  const ids = [];
+  for (const line of lines) {
+    const [id] = line.split(' - ');
+    const trimmed = (id ?? '').trim();
+    // Skip headings and blank/tip lines — real entries always have a label.
+    if (trimmed.length === 0 || !line.includes(' - ')) continue;
+    if (trimmed.includes(' ')) continue;
+    ids.push(trimmed);
+  }
+  return ids;
+}
+
+/**
+ * The `-fast` sibling of a model, when the account actually offers one.
+ * Roughly half the lineup has none (e.g. `claude-sonnet-5-*`, `gemini-*`),
+ * so callers use this to decide whether asking about speed makes sense.
+ *
+ * @param {string} id
+ * @param {string[]} ids   every id the account offers
+ * @returns {string|undefined}
+ */
+export function fastVariant(id, ids) {
+  if (id.endsWith('-fast')) return undefined;
+  return ids.includes(`${id}-fast`) ? `${id}-fast` : undefined;
 }
 
 /**

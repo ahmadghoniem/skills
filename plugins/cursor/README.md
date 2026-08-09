@@ -129,15 +129,16 @@ Plus a `cursor-runner` subagent you can invoke from inside Claude to delegate we
 
 ## Model selection
 
-Call `/cursor:delegate` **without `--model`** and the plugin recommends a model for you instead of silently defaulting: it reads the live model list from `cursor-agent --list-models`, and if it sees a model it doesn't recognize yet (a new release, e.g. a future Grok build), it looks it up once on cursor.com and caches what it learns in `~/.ccd/model-notes.json` so future runs don't re-fetch it. You get a pick with a one-line rationale before the job runs.
+Call `/cursor:delegate` **without `--model`** and the plugin recommends one instead of silently defaulting. It reads the live list from `cursor-agent --list-models` and splits it the same way your Cursor dashboard does:
 
-Passing `--model <id>` bypasses all of this — your explicit choice always wins. Any Cursor model id passes through as-is even if the plugin has never seen it, so new models work with no code change.
+- **Included in your plan** — Cursor's own models (Composer, Cursor Grok). Recommended first.
+- **Metered per token** — third-party models (Anthropic, OpenAI, Google, …), suggested only when the task warrants the spend.
 
-```
-/cursor:delegate --refresh-models "migrate user repository to Doctrine 3"
-```
+You get a pick with a one-line rationale before the job runs, plus a second question offering the model's `-fast` variant — asked only when that model actually has one, since roughly half the lineup doesn't. Fast runs the same model on quicker hardware at about **2x the usage cost**.
 
-`--refresh-models` forces a fresh model-list fetch and re-learns any unfamiliar models instead of trusting the cache.
+The split is derived from Cursor's own id namespacing (`composer*` / `cursor-*`), not a hardcoded model list, so new releases classify correctly with no update.
+
+Passing `--model <id>` bypasses all of this — your explicit choice always wins. Any Cursor model id passes through as-is even if the plugin has never seen it.
 
 ## Usage
 
@@ -155,7 +156,7 @@ Hand a coding task to `cursor-agent -p …`.
 | `--cloud` | off | Pass `-c` to cursor-agent. |
 | `--prompt-file <path\|->` | off | Read the task from a file, or from stdin with `-`. Mutually exclusive with an inline task. For long, multi-line, or quote-heavy specs. |
 
-Full flag reference (`--fresh`, `--resume`, `--no-force`, `--refresh-models`) and more examples: [`docs/reference.md`](docs/reference.md#delegate-flags).
+Full flag reference (`--fresh`, `--resume`, `--no-force`) and more examples: [`docs/reference.md`](docs/reference.md#delegate-flags).
 
 ```
 /cursor:delegate add a dark-mode toggle to the settings page

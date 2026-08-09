@@ -88,6 +88,32 @@ describe('delegate foreground', () => {
     expect(lines.some((l) => l.startsWith('• edit → README.md'))).toBe(true);
   });
 
+  // A task containing a bare `--` used to swallow every following flag, so the
+  // run silently used the default model while still reporting success.
+  it('honours --model even when the task text contains a bare --', async () => {
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    let lines;
+    try {
+      const code = await delegateMain([
+        '--no-git-check',
+        '--model',
+        'composer',
+        '--',
+        'fix the bug -- see notes',
+      ]);
+      expect(code).toBe(0);
+      lines = writeSpy.mock.calls.map((c) => String(c[0]));
+    } finally {
+      writeSpy.mockRestore();
+    }
+    const job = listJobs(tmp.dir)[0];
+    expect(job.model).toBe('composer-2.5-fast');
+    // The `--` is part of the task, so it must survive into the prompt.
+    expect(job.prompt).toBe('fix the bug -- see notes');
+    // And the result block must state which model actually ran.
+    expect(lines.some((l) => l.includes('**Model:** composer-2.5-fast'))).toBe(true);
+  });
+
   // Issue F: when the caller asked for `auto`, the job record should end up
   // with the concrete model id the stream reveals Cursor actually ran with,
   // not the literal placeholder "auto".

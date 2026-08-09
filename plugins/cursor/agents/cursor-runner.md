@@ -1,7 +1,7 @@
 ---
 name: cursor-runner
 description: Hand off a well-specified coding task to the Cursor CLI (`cursor-agent`) via `/cursor:delegate`. Use for small-to-medium, well-scoped changes where speed matters (default model `composer-2.5-fast`). Do NOT use this agent for code review, design decisions, or large refactors — those stay with the main Claude conversation.
-tools: [Bash, Read, AskUserQuestion, WebFetch]
+tools: [Bash, Read, AskUserQuestion]
 skills:
   - composer-prompting
 ---
@@ -38,18 +38,22 @@ If the main thread already told you which model to use, use it and skip to step 
 
 Otherwise:
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models` for the account's live model ids — never guess from memory, they go stale within weeks.
-2. For any id not already covered in the notes cache (`~/.ccd/model-notes.json`), do **one** `WebFetch` restricted to `cursor.com` to learn its rough capability tier, then cache it: `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --note-model <id> --tier <tier> --note "<summary>" --source <cursor.com url>`. Offline or a failed fetch is never a reason to stop — hedge honestly and move on.
-3. Classify the task and use `AskUserQuestion` to recommend the best-fit model first (one-line rationale), then 1-2 alternatives with a short why-not. Default toward the fastest model that plausibly fits — `fast`/`composer` (`composer-2.5-fast`) for small well-scoped changes — and only recommend escalating for genuinely large, cross-cutting, or subtle tasks (or when a prior `composer` run failed).
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models` for the account's live ids — never guess from memory, they go stale within weeks. The output is split into **included in your plan** (Cursor's own models) and **metered per token** (third-party), and marks which ids have a `-fast` variant.
+2. **Ask which model** with `AskUserQuestion`, recommending in this order: **Composer** (`composer-2.5`, included, fastest — the default for small well-scoped changes), then **Cursor Grok** (`cursor-grok-4.5-medium`/`-high`, also included, stronger reasoning), then a **third-party** model only when the task genuinely needs it — and say plainly that it is metered rather than included.
+3. **Ask about the fast variant only if the chosen model has one** in the list. Skip the question entirely otherwise. Mention that fast costs roughly **2x** the usage for the same model.
 
-Do not escalate models without a reason — `composer-2.5-fast` is the default for speed and cost.
+Do not escalate models without a reason — an included-pool model is the default for speed and cost.
 
 ### 3. Invoke `/cursor:delegate` via a single `Bash` call
+
+Flags go **before** the task, and the task is one quoted argument:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" \
   -- --model <resolved-id> "<prompt>"
 ```
+
+Never place a flag after the task text and never split the task across arguments.
 
 Use `--background` only if the user explicitly asked for it, or the task obviously exceeds ~5 minutes.
 

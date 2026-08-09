@@ -3,8 +3,15 @@ import { accessSync, constants as fsConstants, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCommandArgv } from './lib/args.mjs';
-import { authStatus, listConfiguredMcps, listModels, resolveBin } from './lib/cursor.mjs';
-import { clearNotes, mergeNote, notesFilePath } from './lib/model-notes.mjs';
+import {
+  authStatus,
+  fastVariant,
+  isCursorModel,
+  listConfiguredMcps,
+  listModels,
+  parseModelList,
+  resolveBin,
+} from './lib/cursor.mjs';
 import { ensureDir, jobsDir, pluginHome } from './lib/paths.mjs';
 import { run } from './lib/run.mjs';
 
@@ -114,59 +121,47 @@ async function doctor() {
   return allOk ? 0 : 1;
 }
 
+/**
+ * Print the account's live model list split into the two usage pools the
+ * Cursor dashboard itself shows: "Cursor Models" (included in the plan) and
+ * "Other Models" (metered per token). `-fast` ids are folded into their base
+ * entry rather than listed separately — the lineup is ~190 ids and roughly
+ * half of them are speed variants.
+ *
+ * @returns {Promise<number>}
+ */
 async function printModels() {
-  process.stdout.write('### Cursor models (from your account)\n\n');
-  const models = await listModels();
-  if (models.length === 0) {
+  const lines = await listModels();
+  const ids = parseModelList(lines);
+  if (ids.length === 0) {
+    process.stdout.write('### Cursor models (from your account)\n\n');
     process.stdout.write(
       'Could not fetch model list. Try `cursor-agent --list-models` directly or `cursor-agent models`.\n',
     );
     return 1;
   }
-  for (const m of models) process.stdout.write(`- ${m}\n`);
-  return 0;
-}
 
-/**
- * Clears the `lib/model-notes.mjs` cache (capability tier/notes learned per
- * model id via the runtime model-selection flow — see `commands/delegate.md`
- * and `agents/cursor-runner.md`). Forces the next `/cursor:delegate` without
- * an explicit `--model` to re-learn tiers/notes for every id instead of
- * trusting stale cached ones.
- *
- * @returns {Promise<number>}
- */
-async function refreshModels() {
-  clearNotes();
-  process.stdout.write(`Cleared model-notes cache at \`${notesFilePath()}\`.\n`);
-  return 0;
-}
+  // `auto` is a server-side router, not a model — it belongs to neither pool,
+  // and listing it under "metered" would misstate what it costs.
+  const base = ids.filter((id) => !id.endsWith('-fast') && id !== 'auto');
+  const render = (id) => {
+    const fast = fastVariant(id, ids);
+    return fast ? `- \`${id}\` (fast variant: \`${fast}\`)\n` : `- \`${id}\`\n`;
+  };
 
-/**
- * Writes/merges one model-notes cache entry — the actionable half of the
- * runtime model-selection flow: the invoking agent does a web lookup
- * restricted to cursor.com for an id it hasn't seen before, then calls this
- * to persist what it learned so the next delegation skips the lookup.
- * Usage: `node setup.mjs -- --note-model <id> [--tier <t>] [--note "<text>"] [--source <url>]`.
- *
- * @param {Record<string, unknown>} flags
- * @returns {Promise<number>}
- */
-async function noteModel(flags) {
-  const id = typeof flags['note-model'] === 'string' ? flags['note-model'] : undefined;
-  if (!id) {
-    process.stderr.write(
-      'Error: --note-model requires a model id, e.g. `--note-model claude-4.6-sonnet-medium --tier balanced --note "..." --source https://cursor.com/...`\n',
+  process.stdout.write('### Cursor models (from your account)\n\n');
+  process.stdout.write('**Included in your plan** — drawn from the "Cursor Models" pool:\n\n');
+  for (const id of base.filter(isCursorModel)) process.stdout.write(render(id));
+  process.stdout.write('\n**Metered per token** — drawn from the "Other Models" pool:\n\n');
+  for (const id of base.filter((id) => !isCursorModel(id))) process.stdout.write(render(id));
+  process.stdout.write(
+    '\nA `-fast` variant runs the same model on faster hardware at roughly 2x the usage cost.\n',
+  );
+  if (ids.includes('auto')) {
+    process.stdout.write(
+      '`auto` lets Cursor pick on the server — which pool it draws from depends on what it picks.\n',
     );
-    return 2;
   }
-  /** @type {import('./lib/model-notes.mjs').ModelNote} */
-  const entry = { fetchedOn: new Date().toISOString().slice(0, 10) };
-  if (typeof flags['tier'] === 'string') entry.tier = flags['tier'];
-  if (typeof flags['note'] === 'string') entry.note = flags['note'];
-  if (typeof flags['source'] === 'string') entry.source = flags['source'];
-  mergeNote(id, entry);
-  process.stdout.write(`Cached a model note for \`${id}\` in \`${notesFilePath()}\`.\n`);
   return 0;
 }
 
@@ -214,16 +209,9 @@ async function baseCheck() {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { flags } = parseCommandArgv(rawArgv, [
-    'doctor',
-    'print-models',
-    'install',
-    'refresh-models',
-  ]);
+  const { flags } = parseCommandArgv(rawArgv, ['doctor', 'print-models', 'install']);
   if (flags['doctor']) return doctor();
   if (flags['print-models'] || flags['printModels']) return printModels();
-  if (flags['refresh-models'] || flags['refreshModels']) return refreshModels();
-  if (flags['note-model'] || flags['noteModel']) return noteModel(flags);
   if (flags['install']) return maybeInstall();
   return baseCheck();
 }

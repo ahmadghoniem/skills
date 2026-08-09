@@ -1,8 +1,71 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildArgs, resolveModel, runHeadless } from '../scripts/lib/cursor.mjs';
+import {
+  buildArgs,
+  fastVariant,
+  isCursorModel,
+  parseModelList,
+  resolveModel,
+  runHeadless,
+} from '../scripts/lib/cursor.mjs';
 import { extractChatId, summariseEvents } from '../scripts/lib/parse.mjs';
 import { HAPPY_FIXTURE, STUB_BIN, makeTempHome } from './helpers.mjs';
+
+// Trimmed verbatim from real `cursor-agent models` output, keeping one model of
+// each shape: Cursor-owned with a fast variant, third-party with one, and
+// third-party without.
+const MODEL_LIST = [
+  'Available models',
+  '',
+  'auto - Auto (default)',
+  'composer-2.5 - Composer 2.5 (current)',
+  'composer-2.5-fast - Composer 2.5 Fast',
+  'cursor-grok-4.5-high - Cursor Grok 4.5',
+  'cursor-grok-4.5-high-fast - Cursor Grok 4.5 Fast',
+  'gpt-5.2 - GPT-5.2',
+  'gpt-5.2-fast - GPT-5.2 Fast',
+  'claude-sonnet-5-high - Sonnet 5 1M',
+  'gemini-3.1-pro - Gemini 3.1 Pro',
+  '',
+  'Tip: use --model <id> to switch.',
+];
+
+describe('model list helpers', () => {
+  it('parseModelList keeps ids and drops headings and tips', () => {
+    expect(parseModelList(MODEL_LIST)).toEqual([
+      'auto',
+      'composer-2.5',
+      'composer-2.5-fast',
+      'cursor-grok-4.5-high',
+      'cursor-grok-4.5-high-fast',
+      'gpt-5.2',
+      'gpt-5.2-fast',
+      'claude-sonnet-5-high',
+      'gemini-3.1-pro',
+    ]);
+  });
+
+  it('isCursorModel matches Cursor-owned ids by namespace, not version', () => {
+    expect(isCursorModel('composer-2.5')).toBe(true);
+    expect(isCursorModel('composer-3')).toBe(true);
+    expect(isCursorModel('cursor-grok-4.5-high')).toBe(true);
+    expect(isCursorModel('cursor-grok-5-low')).toBe(true);
+    expect(isCursorModel('gpt-5.2')).toBe(false);
+    expect(isCursorModel('claude-sonnet-5-high')).toBe(false);
+    expect(isCursorModel('gemini-3.1-pro')).toBe(false);
+  });
+
+  it('fastVariant finds a sibling only when the account offers one', () => {
+    const ids = parseModelList(MODEL_LIST);
+    expect(fastVariant('composer-2.5', ids)).toBe('composer-2.5-fast');
+    expect(fastVariant('cursor-grok-4.5-high', ids)).toBe('cursor-grok-4.5-high-fast');
+    expect(fastVariant('gpt-5.2', ids)).toBe('gpt-5.2-fast');
+    expect(fastVariant('claude-sonnet-5-high', ids)).toBeUndefined();
+    expect(fastVariant('gemini-3.1-pro', ids)).toBeUndefined();
+    // A fast id has no fast variant of its own.
+    expect(fastVariant('composer-2.5-fast', ids)).toBeUndefined();
+  });
+});
 
 describe('buildArgs', () => {
   it('includes the expected flags by default', () => {

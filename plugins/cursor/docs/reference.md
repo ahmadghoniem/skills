@@ -84,7 +84,6 @@ Full flag table for `/cursor:delegate <task...>` (the README covers the core sub
 | `--cloud` | off | Pass `-c` to cursor-agent. |
 | `--timeout <sec>` | `1800` | Kill the job if it exceeds this. |
 | `--no-git-check` | off | Allow running outside a git repo. |
-| `--refresh-models` | off | Force a fresh `cursor-agent --list-models` fetch and re-learn any unfamiliar models instead of trusting `~/.ccd/model-notes.json`. |
 
 Examples:
 
@@ -93,8 +92,10 @@ Examples:
 /cursor:delegate --model composer "write jest tests for utils/date.ts"
 /cursor:delegate --background --model auto "migrate user repository to Doctrine 3"
 /cursor:delegate --resume "continue with the failing edge case"
-/cursor:delegate --refresh-models "try the newest Grok model"
+/cursor:delegate --model cursor-grok-4.5-high "untangle the auth middleware"
 ```
+
+Flags go **before** the task, and the task stays one quoted argument.
 
 ## Typical flows
 
@@ -195,10 +196,14 @@ but note that most headless invocations will hang waiting for approval, so `--no
 only useful for debugging.
 
 **How does model selection work when I don't pass `--model`?** The plugin reads the live model
-list (`cursor-agent --list-models`), recommends the best fit for the task, and shows a short
-rationale. If it encounters a model it has not seen before, it looks it up once on cursor.com and
-caches what it learns in `~/.ccd/model-notes.json` so future runs are instant. Force a refresh with
-`--refresh-models`.
+list (`cursor-agent --list-models`) and groups it into the models included in your plan (Cursor's
+own — Composer and Cursor Grok) and the third-party ones metered per token. It recommends from the
+included group first, with a short rationale, then asks whether you want that model's `-fast`
+variant — but only when the model actually has one. Fast costs roughly 2x the usage.
+
+**Why is the fast question sometimes skipped?** Because that model has no `-fast` id in your
+account's list. Around half the lineup doesn't (`claude-sonnet-5-*`, `gemini-*`, `kimi-*`, and
+others), so the question only appears when there is a real choice to make.
 
 **The model list doesn't match what I see in Cursor.** Run `/cursor:setup --print-models` — that
 shells out to `cursor-agent --list-models` and shows exactly what your account supports. The alias
