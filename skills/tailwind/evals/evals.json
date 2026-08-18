@@ -1,0 +1,40 @@
+{
+  "skill_name": "tailwind",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "author-popover-uses-tokens",
+      "prompt": "Add a notifications popover to my Next.js app. There's a bell button in the header; clicking it opens a small card with a list of notifications (title + timestamp each). Use Tailwind, and it needs to look right in light and dark mode.",
+      "expected_output": "Markup uses semantic tokens (bg-popover or bg-card, text-foreground / text-muted-foreground, border-border, rounded-lg) with no hand-rolled `dark:` color pairs, no raw palette utilities standing in for roles (bg-white, text-gray-500), and no arbitrary values for on-scale spacing (no p-[16px], rounded-[8px]).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "eval_name": "cleanup-drifted-classlist",
+      "prompt": "Clean up my tailwind in this component, it's drifted: <div className=\"flex flex-row items-center px-4 py-4 bg-white dark:bg-gray-900 rounded-[8px]\"><img className=\"w-5 h-5\" /><span className=\"text-sm text-lg text-gray-500 p-[16px]\">Online</span></div>",
+      "expected_output": "Reads references/cleanup.md and follows its process and output format. Auto-applies only the mechanical fixes (flex-row removed, px-4 py-4 -> p-4, w-5 h-5 -> size-5, p-[16px] -> p-4). Flags but does not change: bg-white dark:bg-gray-900 (token-drift candidate), text-sm text-lg (duplicate-property pair — asks which was intended rather than keeping the last one), rounded-[8px] (rounded-md candidate).",
+      "files": []
+    },
+    {
+      "id": 3,
+      "eval_name": "scaffold-asks-not-assumes",
+      "prompt": "Fresh Vite + React + TS project. Set up Tailwind v4 with a dark mode toggle and the usual shadcn token theme.",
+      "expected_output": "Reads references/setup.md before writing CSS. Entry uses @import \"tailwindcss\" (not @tailwind directives), dark mode via @custom-variant dark (&:is(.dark *)), tokens bridged with @theme inline and stored as complete oklch() values in :root / .dark. Asks the user before choosing the cn() implementation and before restoring cursor-pointer on buttons, rather than assuming either.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "eval_name": "v3-question-gets-v4-answer",
+      "prompt": "Why isn't bg-opacity-50 doing anything in my project? Also add a hover state to my custom .btn utility class.",
+      "expected_output": "Emits zero v3 patterns: replaces bg-opacity-50 with the /50 modifier (bg-primary/50 or equivalent), and puts the custom utility in @utility (not @layer utilities) so hover:btn exists. If the project turns out to be genuinely on Tailwind v3, says so explicitly first instead of silently mixing idioms.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "eval_name": "review-does-not-over-correct",
+      "prompt": "Review this Tailwind for me: <button className=\"shadow rounded ring outline-none [&:hover]:scale-105\">Save</button>",
+      "expected_output": "Does NOT apply the v3->v4 rename table: shadow, rounded, ring, and outline-none are left alone (no shadow-sm / rounded-sm / ring-3 / outline-hidden rewrites). Does NOT canonicalize [&:hover]: to hover: (the named variant wraps @media (hover: hover)). Any feedback given is about real issues only.",
+      "files": []
+    }
+  ]
+}
