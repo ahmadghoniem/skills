@@ -1,6 +1,6 @@
 # tailwind-skill
 
-A [Claude Code](https://claude.com/claude-code) skill that teaches an agent a consistent, **Tailwind CSS v4 + shadcn** house style and gives it a class-list **cleanup pass** — so generated markup uses semantic tokens instead of the usual AI failure modes (v3 config hallucinations, raw hex, arbitrary values, `dark:` spam, dynamic class names that never compile).
+A [Claude Code](https://claude.com/claude-code) skill that teaches an agent a consistent **Tailwind CSS v4** house style built on semantic design tokens and gives it a class-list **cleanup pass** — so generated markup uses semantic tokens instead of the usual AI failure modes (v3 config hallucinations, raw hex, arbitrary values, `dark:` spam, dynamic class names that never compile).
 
 Built and hardened from research into how coding agents (Claude, Cursor, Copilot, v0, Windsurf, …) actually get Tailwind wrong, then cross-checked against the official Tailwind v4 and shadcn/ui docs.
 
@@ -9,7 +9,7 @@ Built and hardened from research into how coding agents (Claude, Cursor, Copilot
 **1. Reference (always-on).** While writing or editing Tailwind, the skill enforces a house style:
 
 - **v4 only** — never emits v3 patterns (`tailwind.config.js`, `@tailwind` directives, `content`/purge, `darkMode: 'class'`, `bg-opacity-*`, `postcss-import`/`autoprefixer`). Verified against Tailwind 4.3.3.
-- **shadcn semantic-token system** — `@custom-variant dark (&:is(.dark *))`, `@theme inline`, OKLCH tokens in `:root`/`.dark`, `next-themes`. Authors with `bg-background` / `bg-primary` / `text-muted-foreground`, so `dark:` is rare.
+- **A semantic-token system** — `@custom-variant dark (&:is(.dark *))`, `@theme inline`, OKLCH tokens in `:root`/`.dark`, `next-themes`. The token names come from the project; where there is none, it scaffolds shadcn's, which is the common case. Authors with the surface / muted-text / intent token, so `dark:` is rare.
 - **A colour ladder** — semantic token for roles → soft-allow the nearest stock palette shade for decorative one-offs → promote to `@theme` when a colour carries meaning, themes, or repeats → never raw hex.
 - **OKLCH-only tokens** — every colour value is `oklch(L C H)` with slash alpha, stored as a complete colour function (never v3 bare channels, which don't just break `/30` — they kill the token outright). Contrast is fixed by moving lightness; out-of-gamut is fixed by lowering chroma.
 - **Canonical v4 syntax** — `*:` / `**:` instead of `[&>*]:` / `[&_*]:`, `flex!` not `!flex`, `bg-(--token)` not `bg-[--token]`, and the v3→v4 renames (`bg-linear-to-r`, `grow`, `text-ellipsis`, `wrap-break-word`). Plus an explicit do-not-over-correct list, since `[&:hover]:` ≠ `hover:`, `shadow-sm` is a real v4 class that must not become `shadow-xs`, and the v3→v4 rename table must never run on v4 code.
@@ -22,7 +22,7 @@ Built and hardened from research into how coding agents (Claude, Cursor, Copilot
 - **Auto-applies** safe mechanical fixes (`flex flex-row`→`flex`, `px-4 py-4`→`p-4`, `w-4 h-4`→`size-4`, dedupe, on-scale arbitrary px → scale step).
 - **Flags** judgment calls as candidates (token drift, off-scale values, structural no-ops) without touching them — including two classes that set the same property, where the winner is decided by Tailwind's emission order rather than by which you wrote last.
 
-It also asks, rather than assumes, on two setup choices: the `cn()` implementation (standard `clsx + tailwind-merge` vs the faster `cnfast`) and restoring `cursor-pointer` on buttons (removed by v4 Preflight; shadcn ships it opt-in).
+It also asks, rather than assumes, on the setup choices it can't infer: the theme values themselves (it wires the token contract and defers the palette to `shadcn init` or the user), the `cn()` implementation (standard `clsx + tailwind-merge` vs the faster `cnfast`) and restoring `cursor-pointer` on buttons (removed by v4 Preflight; shadcn ships it opt-in).
 
 ## Install
 
@@ -44,7 +44,7 @@ To get Tailwind IntelliSense inside `cva()` / `cn()`, add to `.vscode/settings.j
 }
 ```
 
-For enforcement, the skill recommends `eslint-plugin-better-tailwindcss`'s `enforce-canonical-classes` rule (autofixable, wraps Tailwind's own canonicalisation API) plus whichever class sorter the project already has — `prettier-plugin-tailwindcss` or Biome's `useSortedClasses`. Two settings are load-bearing and easy to miss: `entryPoint`, without which the rule lints against stock Tailwind instead of your `@theme`, and `rootFontSize`, without which every px rewrite silently does nothing. It explicitly warns against running `@tailwindcss/upgrade` on an already-v4 project. Details in `references/editor.md`.
+For enforcement, the skill recommends `eslint-plugin-better-tailwindcss`'s `enforce-canonical-classes` rule (autofixable, wraps Tailwind's own canonicalisation API) plus `prettier-plugin-tailwindcss` for sorting. Two settings are load-bearing and easy to miss: `entryPoint`, without which the rule lints against stock Tailwind instead of your `@theme`, and `rootFontSize`, without which every px rewrite silently does nothing. Details in `references/editor.md`.
 
 ## Layout
 
@@ -56,10 +56,18 @@ tailwind/
 │   ├── gotchas.md        # v4 traps
 │   ├── editor.md         # IntelliSense + linter recommendations
 │   └── cleanup.md        # the cleanup pass
+├── evals/                # trigger eval — does the description actually fire the skill?
+├── research/             # provenance: every load-bearing claim mapped to evidence
 └── README.md
 ```
 
-SKILL.md stays small and always applies; the reference files load only when the situation calls for them.
+SKILL.md stays small and always applies; the reference files load only when the situation calls for them. `evals/` and `research/` are never read by the skill — only `SKILL.md`'s frontmatter is always-on — so they cost nothing at runtime.
+
+## Why you can trust it
+
+Coding agents state Tailwind facts confidently and wrongly, and this skill did too: shipped claims about `@apply` losing variants, a chroma ceiling its own scaffold violated, and a `data-active:` specificity story that was backwards. So the rules here are checked by compiling, not by searching.
+
+[`research/CLAIMS.md`](research/CLAIMS.md) maps every load-bearing sentence to its evidence and marks it **compiled**, **source-read**, **tool-run** or **documented**. [`research/README.md`](research/README.md) keeps a bug ledger of everything that shipped wrong and how it was caught — the base rate is the point. Where a claim says "compiled on 4.3.3", there is an `out.css` dump behind it.
 
 ## License
 

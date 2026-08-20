@@ -31,20 +31,18 @@ box-shadow: var(--shadow-md);
 Plain CSS, no `@reference`, no Tailwind involvement. Two traps here:
 
 - Reference `var(--primary)`, **not** `var(--color-primary)`. The `--color-*` names are the `@theme inline` bridge that generates utilities; `--primary` is the token that actually flips under `.dark`.
-- **`--spacing(6)` will not work here.** It is a Tailwind *build-time* function, not a CSS variable — in an unprocessed block it hard-errors (`The --spacing(…) function requires that the --spacing theme variable exists`). `calc(var(--spacing) * 6)` is the runtime equivalent, since the main stylesheet emits `--spacing` into `:root`.
+- **Don't reach for `--spacing(6)` here.** It is a Tailwind *build-time* function, not a CSS variable. With no theme in scope it hard-errors — verbatim in 4.3.3: ``The --spacing(…) function requires that the `--spacing` theme variable exists, but it was not found.`` It *does* resolve under `@reference`, but that is the per-file re-run you came here to avoid. `calc(var(--spacing) * 6)` is the runtime equivalent and needs neither, since the main stylesheet emits `--spacing` into `:root`.
 
 ## Bare-channel tokens are completely dead
 
-The v3 shape was `--background: 0 0% 100%` — three naked channels, meaningless on their own. In v4 that token does nothing at all:
+Why `--background: 0 0% 100%` kills the token outright — the compiled output:
 
 ```css
 .bg-background     { background-color: var(--background); }             /* → "0 0% 100%" → invalid, dropped */
 .bg-background\/30 { background-color: color-mix(in oklab, var(--background) 30%, transparent); }  /* also dead */
 ```
 
-Not just the `/opacity` forms — **every** use of the token. Fix: store the complete colour (`--background: oklch(1 0 0)`) and bridge with `@theme inline`.
-
-**`hsl(var(--background))` is not the bug.** A wrapped channel set is a complete colour, so it works, `/opacity` included — it compiles to `color-mix(in oklab, hsl(var(--background)) 30%, transparent)`. This is shadcn's own prescribed v4 migration shape. Convert it to `oklch()` because the house style says so, not because it is broken. The naked channels are the thing to hunt for.
+`hsl(var(--background))` is **not** the bug — a wrapped channel set is a complete colour, and it compiles to `color-mix(in oklab, hsl(var(--background)) 30%, transparent)`. The naked channels are the thing to hunt for.
 
 ## `group` / `peer` / `@container` need the marker class
 
@@ -54,7 +52,23 @@ Container queries have the same shape: `@sm:` / `@md:` need `@container` on an a
 
 ## `@md:` is a container query, not a breakpoint
 
-`md:` is the **viewport** (`@media (width >= 48rem)`). `@md:` is the **container** (`@container (width >= 28rem)`). Different mechanism, different size — they are not interchangeable, and swapping one for the other changes what the layout responds to. Viewport breakpoints remain the right default for page layout; reach for `@container` when a component must respond to its parent's width regardless of where it is placed.
+`md:` is the **viewport** (`@media (width >= 48rem)`). `@md:` is the **container** (`@container (width >= 28rem)`). Different mechanism, different size — not interchangeable, and swapping one for the other changes what the layout responds to. Container queries are core in v4; the `@tailwindcss/container-queries` plugin is gone.
+
+**The rule:** viewport variants for **page chrome** — the shell, whether a sidebar exists, nav visibility, marketing breakpoints. `@container` + `@md:` when a **reusable component must follow its slot** rather than the window: the same card at 320px in a sidebar and 900px in the main column.
+
+Mark the slot (or the component root) with `@container`, which sets `container-type: inline-size`. Descendants query it — the marked element does not query itself. Nested slots: name it, or you query the nearest ancestor instead of the one you meant.
+
+```html
+<div class="@container/main">
+  <div class="flex flex-col @md:flex-row @lg/main:gap-8">…</div>
+</div>
+```
+
+`@max-md:` is the container max variant, `max-md:` the viewport one — same `@` trap.
+
+Container units share that axis: `cqi` / `cqw` measure the container's inline size, so `text-[4cqi]` or `p-[2cqi]` scales a component with its slot. `cqh` / `cqb` **do not** — `container-type: inline-size` queries only the inline axis, so they fall back to the small viewport and quietly become `svh`. Compiled on 4.3.3, `h-[50cqh]` emits verbatim with exit 0 and no warning. Stay on the inline axis.
+
+Do **not** convert page-level `md:`/`lg:` to `@md:`/`@lg:` during cleanup, and do not put `@container` on a full-bleed page wrapper as a "modern default." `container-type` is CSS containment on the inline axis; it can interact badly with percentage heights and sticky descendants, so verify in the browser rather than adding it speculatively.
 
 ## `h-screen` ignores mobile browser chrome
 
@@ -76,7 +90,7 @@ Keep the set tight — every listed combination is emitted.
 
 `truncate` on a normal block element already clips at the container width — it needs nothing extra. The real trap is a flex or grid **item**: its `min-width: auto` refuses to shrink below content size, so the text overflows instead of ellipsing. Add `min-w-0` to the flex child (or `overflow-hidden` on it).
 
-`line-clamp-*` is a different mechanism — it clamps *lines*, requires the text to wrap, and never wants a width constraint or `whitespace-nowrap`.
+`line-clamp-*` is a different mechanism — it sets `-webkit-line-clamp` and needs the text to **wrap**, so never pair it with `truncate` or `whitespace-nowrap` (both force `white-space: nowrap`, leaving nothing to clamp). A width constraint is not the enemy here; it is what sets the wrap width.
 
 ## Arbitrary values
 
@@ -84,7 +98,7 @@ Keep the set tight — every listed combination is emitted.
 
 ## `!` important
 
-`mt-4!` is a specificity band-aid — fix the real conflict instead. v4's canonical marker is the **suffix** (`mt-4!`); the v3 prefix `!mt-4` still parses and is rewritten for you, so it is non-canonical, not broken.
+`mt-4!` is a specificity band-aid — fix the real conflict instead.
 
 To force *every* utility important — only when rescuing a codebase fighting high-specificity legacy CSS — the flag goes on the import, never in a config:
 
@@ -100,8 +114,8 @@ To force *every* utility important — only when rescuing a codebase fighting hi
 @tailwind utilities;
 ```
 
-This does **not** error in v4. Only `@tailwind utilities` is still honoured, so the build succeeds and emits utilities — with no Preflight and no theme variables, leaving every `bg-background`-style token dead. A build that "works" but renders unstyled is this. Replace the trio with `@import "tailwindcss";`.
+This does **not** error in v4 — it exits 0. `base` and `components` emit nothing, and `utilities` runs with no theme and no Preflight, so only theme-independent utilities survive. Verified on 4.3.3 against `flex p-4 bg-red-500`, the entire output is `.flex { display: flex }` — `p-4` and `bg-red-500` are not generated at all, broken or otherwise. **The tell is `flex` working while `p-4` does nothing.** Replace the trio with `@import "tailwindcss";`.
 
 ## Mobile-first breakpoints
 
-Unprefixed applies everywhere; `md:` applies at md **and up**. `sm:hidden md:block` = hidden on small, shown md+ (not "only md").
+Unprefixed applies everywhere; `md:` is md **and up**, never "only md". `sm` is 40rem and `md` 48rem, both emitted as `width >=`, so `sm:hidden md:block` reads: **visible below `sm`** (neither rule matches), hidden from `sm` to `md`, shown md+. Reason it through at three widths before trusting a shorthand like "hidden on small".

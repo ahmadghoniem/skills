@@ -8,7 +8,6 @@ Contents:
 - Detect what the project already uses
 - Canonical classes (rewriting)
 - Class sorting
-- Never run `@tailwindcss/upgrade` on a v4 project
 
 ## IntelliSense inside `cva`/`cn`
 
@@ -25,19 +24,16 @@ Each entry is a regex matched against the function/tag name (matches are limited
 
 ## Detect what the project already uses
 
-Check all of these — they are **not** mutually exclusive. Biome and ESLint commonly coexist (Biome formats and sorts, ESLint carries rules Biome lacks).
-
 | Look for | Means |
 | --- | --- |
 | `eslint.config.*`, `.eslintrc*` | ESLint |
-| `biome.json`, `biome.jsonc` | Biome |
 | `.prettierrc*`, `prettier.config.*`, a `prettier` key in `package.json`, or `prettier` in devDependencies | Prettier |
 
 Recommend against what's installed; don't propose replacing a working setup.
 
 ## Canonical classes (rewriting)
 
-**Sorting and canonicalising are different jobs.** Prettier and Biome only *reorder* classes. Neither rewrites a non-canonical form into its first-class equivalent. Only an ESLint rule does that.
+**Sorting and canonicalising are different jobs.** A sorter only *reorders* classes; it never rewrites a non-canonical form into its first-class equivalent. Only an ESLint rule does that.
 
 Recommend **`eslint-plugin-better-tailwindcss`**, rule `enforce-canonical-classes`. It calls Tailwind's own `canonicalizeCandidates` API — the same one powering the VS Code "suggest canonical classes" hint — and is autofixable via `eslint --fix`. It ships in the plugin's `recommended` config.
 
@@ -65,25 +61,12 @@ rules: {
 
 `collapse: true` is the plugin default and is what this house style wants — it produces the same shorthands the cleanup pass auto-applies. Note this is *stricter* than the VS Code hint, which canonicalises one class at a time and so never suggests list-level collapses. If you specifically want editor parity instead, set `collapse: false, logical: false`.
 
-If the project also enables `better-tailwindcss/enforce-shorthand-classes`, turn it off. Both rules' docs say so: `enforce-canonical-classes` says that with `collapse: true` you should "disable the `better-tailwindcss/enforce-shorthand-classes` rule to avoid duplicate reports", and `enforce-shorthand-classes` says the two "might interfere … use only one of them to avoid conflicting fixes". They do the same job — `pt-4 pr-4 pb-4 pl-4` → `p-4`, `w-4 h-4` → `size-4`.
+With `collapse: true`, turn off `enforce-shorthand-classes`, `enforce-consistent-important-position` and `enforce-consistent-variable-syntax` — the plugin's own docs say canonical supersedes all three, and leaving them on produces duplicate reports and conflicting fixes.
 
-A Biome-only project has **no** canonical enforcement. Either add ESLint alongside it for this rule, or state the gap plainly rather than implying Biome covers it.
+Without ESLint a project has **no** canonical enforcement at all. Say that plainly rather than implying a formatter covers it.
+
+Do this with `eslint --fix`, never `@tailwindcss/upgrade` — that is a v3→v4 migration tool that rewrites every `.css` file including `globals.css`, and it doesn't do the px→scale rewrites anyway.
 
 ## Class sorting
 
-Pick one, don't stack both:
-
-- **Prettier** → `prettier-plugin-tailwindcss` (official; v4 needs `tailwindStylesheet` pointed at your CSS entry).
-- **Biome** → the `useSortedClasses` rule. Two caveats: it is still in `nursery` with its autofix marked **unsafe** (opt in with `"useSortedClasses": { "level": "error", "fix": "safe" }` if you want `biome check --write` to apply it), and it only understands the **default** Tailwind config — it cannot see custom utilities or variants, which matters under a `@theme`-heavy house style.
-
-## Never run `@tailwindcss/upgrade` on a v4 project
-
-It is a v3→v4 migration tool, and blog posts recommending it as a "canonical classes" formatter are wrong on the details:
-
-- **No templates-only mode.** `--force` only skips the dirty-git check.
-- It adds `tailwindcss@latest` and touches the lockfile. Its helper defaults to **`dependencies`**, so a fresh add lands there rather than devDependencies; where the package already exists the package manager updates it in place.
-- It rewrites **every** `.css` file it finds, `globals.css` and `@theme` included.
-- It scans `**/*` for templates — far wider than your `@source`.
-- It calls `canonicalizeCandidates` with **no options**, so the px→scale rewrites (`translate-y-[2px]` → `translate-y-0.5`) don't even happen.
-
-Use the ESLint rule above instead. If a one-shot rewrite is genuinely needed, run `eslint --fix` across the codebase.
+Use **`prettier-plugin-tailwindcss`** (official; v4 needs `tailwindStylesheet` pointed at your CSS entry). It is the only sorter that reads your stylesheet, so it is the only one that sees your `@theme`, custom utilities and variants.

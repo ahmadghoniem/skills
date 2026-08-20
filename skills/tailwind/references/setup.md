@@ -13,6 +13,10 @@ Contents:
 
 ## globals.css
 
+**Don't hand-write a palette.** `npx shadcn@latest init` writes this file with a real theme and is the fastest correct path — run it and leave the values alone. Otherwise ask which theme to use (ui.shadcn.com/themes, tweakcn) and paste those values. Never overwrite an existing `:root` / `.dark` block with defaults.
+
+What you *do* own is the wiring below — the bridge, the variant, the radius ladder, the base layer. Get these wrong and the theme silently doesn't flip. The role names below are shadcn's, which is the common case and what the rest of this skill's examples use; a project with its own vocabulary keeps it and the wiring is unchanged.
+
 ```css
 @import "tailwindcss";
 
@@ -45,45 +49,17 @@ Contents:
 
 :root {
   --radius: 0.625rem;
+  /* shape only — a complete oklch(), contrast as a lightness gap with C untouched */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* …every remaining role, values from the project's theme */
 }
 
 .dark {
+  /* the same roles re-set for dark — never an inverted ramp */
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* …every remaining role */
 }
 
 @layer base {
@@ -92,11 +68,13 @@ Contents:
 }
 ```
 
-**Why `@theme inline` and not plain `@theme`.** `inline` makes the generated utility emit `var(--background)` directly instead of `var(--color-background)`. Without it, resolution follows the *parent* scope and a `.dark` override can be ignored — `inline` is what makes runtime theme flipping work, not a stylistic choice. Tailwind's docs describe the resolution trap in general terms; shadcn's default theme is what applies it to the light/dark pair, and this scaffold matches shadcn's output.
+**Every role needs all three** — a `--color-*` bridge line, a `:root` value, and a `.dark` value. Missing from any one of them and the utility is dead. Current shadcn also ships `chart-1`…`chart-5`, the full `sidebar-*` set (`sidebar`, `-foreground`, `-primary`, `-primary-foreground`, `-accent`, `-accent-foreground`, `-border`, `-ring`), and `--radius-2xl` / `-3xl` / `-4xl` — bridge them too when the project uses charts or the sidebar.
 
-Two token pairs are easy to leave out and expensive to miss. **`--popover` / `--popover-foreground`** are used by Popover, Dialog, DropdownMenu, Select, Command and Tooltip — omitted, `bg-popover` is a silent no-style in a class attribute and a hard *"Cannot apply unknown utility class"* under `@apply`. **`--radius-xl`** is used by Card; without it `rounded-xl` silently falls back to Tailwind's stock 0.75rem instead of tracking `--radius`.
+Two are easy to leave out and expensive to miss. **`--popover` / `--popover-foreground`** are the overlay pair — Popover, DropdownMenu, ContextMenu, Select, Command, Combobox, HoverCard, Menubar and NavigationMenu content all paint with them. (**Dialog, Sheet, Drawer and AlertDialog do not** — they use `bg-background`; Tooltip uses `bg-foreground text-background`. Don't "fix" those to `bg-popover`.) Omit the pair and `bg-popover` is a silent no-style in a class attribute and a hard *"Cannot apply unknown utility class"* under `@apply`. **`--radius-xl`** is used by Card. `@theme inline` *extends* the default theme rather than replacing it, so any rung you don't bridge keeps Tailwind's stock value — compiled on 4.3.3, an unbridged `rounded-xl` emits 0.75rem and `rounded-2xl` 1rem while `rounded-lg` tracks `--radius`. The tell is one component whose corners don't move when `--radius` changes.
 
-**On the two `.dark` tokens with baked-in alpha.** `--border: oklch(1 0 0 / 10%)` and `--input: oklch(1 0 0 / 15%)` are shadcn's real values and are the deliberate exception to "keep theme tokens opaque" — a hairline that must read as a *tint of the surface underneath* has nowhere else to put its alpha. Leave them. Every other token stays opaque, with the fade applied at the utility.
+**Why `@theme inline` and not plain `@theme`.** `inline` makes the generated utility emit `var(--background)` directly instead of `var(--color-background)`. Without it, resolution follows the *parent* scope and a `.dark` override can be ignored — `inline` is what makes runtime theme flipping work, not a stylistic choice.
+
+**Shadcn's `.dark` hairlines carry baked-in alpha** (`--border: oklch(1 0 0 / 10%)`, `--input: … / 15%`) — the deliberate exception to "keep theme tokens opaque", since a hairline that reads as a tint of the surface beneath it has nowhere else to put its alpha. Leave them as shipped; every other token stays opaque with the fade applied at the utility.
 
 ## Build entry
 
@@ -117,7 +95,7 @@ Custom utilities go in `@utility`, never `@layer utilities`:
 @utility content-auto { content-visibility: auto; }
 ```
 
-`@layer utilities { .content-auto { … } }` still emits the plain class, so it looks like it worked — but the utility is not registered, and `hover:content-auto` / `lg:content-auto` will not exist. `@layer base` and `@layer components` remain legitimate (the scaffold above uses `@layer base`).
+`@layer base` and `@layer components` remain legitimate (the scaffold above uses `@layer base`) — `@layer utilities` for a *custom utility* is the trap, and never registers it.
 
 A `tailwind.config.js` is **not auto-detected** in v4. If one genuinely must exist (a legacy JS plugin mid-migration, JS-computed tokens), load it explicitly and know what is dropped:
 

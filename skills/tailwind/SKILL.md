@@ -1,10 +1,10 @@
 ---
 name: tailwind
-description: Tailwind CSS v4 house style (the shadcn semantic-token system, OKLCH) and a class-list cleanup pass. Use when writing, reviewing, or editing Tailwind CSS, and when asked to clean up, audit, or simplify classes ("clean up my tailwind", "audit these classes").
+description: Tailwind CSS v4 house style: semantic tokens, OKLCH, canonical syntax. Use when writing or reviewing Tailwind, cleaning up class lists, fixing theme tokens, or when a utility silently isn't applying.
 license: MIT
 ---
 
-# Tailwind (v4 + shadcn tokens)
+# Tailwind v4 (semantic tokens)
 
 Two jobs in one skill:
 
@@ -15,11 +15,11 @@ Two jobs in one skill:
 
 ---
 
-## House style: the shadcn token system
+## House style: semantic tokens
 
-Dark mode and colour are driven by **semantic CSS-variable tokens**, not raw colour utilities. Author with `bg-background`, `bg-card`, `bg-primary`, `text-muted-foreground`, `border-border` — the variable flips under `.dark`, so `dark:` prefixes are rare.
+Dark mode and colour are driven by **semantic CSS-variable tokens**, not raw colour utilities. Tokens live as complete colour values in `:root` / `.dark`, bridged into utilities with `@theme inline`; the variable flips under the dark selector, so `dark:` prefixes are rare. Full scaffold in `references/setup.md`.
 
-Tokens live as complete colour values in `:root` / `.dark`, bridged into utilities with `@theme inline`. Full scaffold in `references/setup.md`.
+**Read the project's token names out of its CSS — never assume them.** Where there is no theme yet, shadcn's names are the default to scaffold (`background`/`foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`), and the examples below use them. A project with its own vocabulary keeps it; the pattern is the rule, the names are not.
 
 ## Colour values: OKLCH only
 
@@ -37,8 +37,10 @@ Both upstreams already work this way — shadcn's default theme ships OKLCH, and
 
 ## Authoring rules
 
-- Reach for a **semantic token** before any raw colour. `bg-background`/`bg-card` for surfaces, `text-foreground`/`text-muted-foreground` for text, `border-border` for borders, `bg-primary`/`bg-destructive` for intent.
-- Because tokens flip under `.dark`, `dark:` is rarely needed. A hand-rolled `bg-white dark:bg-gray-900` pair is a smell — use `bg-background`.
+- Reach for a **semantic token** before any raw colour — a surface token for surfaces, a muted-text token for secondary text, a border token for borders, an intent token for primary/destructive. Under shadcn's names: `bg-background`/`bg-card`, `text-muted-foreground`, `border-border`, `bg-primary`/`bg-destructive`.
+- Because tokens flip under the dark selector, `dark:` is rarely needed. A hand-rolled `bg-white dark:bg-gray-900` pair is a smell — use the surface token.
+- **Read what consumes a token before editing it.** Names state intent, not binding: grep the `bg-*` / `text-*` / `border-*` on the component and change *that* token. Recolouring `--sidebar-primary` does nothing when the item paints with `data-active:bg-sidebar-accent`. And a token is a **role** — editing one restyles everything bound to it, so changing `--primary` for a button also repaints every default badge.
+- **Check the live docs before asserting a version-specific fact** — a utility's default value, a CLI flag, a plugin's rule or option name. Training data lags releases and the mistakes are silent.
 - Set radius via `rounded-md`/`rounded-lg` (bound to `--radius`), not arbitrary `rounded-[6px]`.
 - **Arbitrary values are the model's fallback, not a neutral choice.** An agent writes Tailwind syntax fluently but has no knowledge of the project's `@theme`, and faces thousands of equally-valid utilities with no signal which is "blessed" — so it emits the most literal value that hits the target (`p-[17px]`, `bg-[#3b82f6]`, even `padding:'16px'`). Unchecked, these become "a shadow scale nobody owns." Before writing a bracket, walk the ladder:
   1. **Native scale step?** Use the token — spacing on the 4px grid (`p-1`=4px … `p-4`=16px; `p-px`=1px), `rounded-md`, `z-40`, `opacity-70`, `text-sm`. Never `p-[16px]` for `p-4`.
@@ -72,6 +74,8 @@ Training data is full of v3 and of verbose arbitrary variants. Emit the first-cl
 | `grid-cols-[auto,1fr]` | `grid-cols-[auto_1fr]` | underscore is the space; no padding underscores |
 | `bg-gradient-to-r` `flex-grow` `overflow-ellipsis` `break-words` `decoration-clone` `bg-left-top` | `bg-linear-to-r` `grow` `text-ellipsis` `wrap-break-word` `box-decoration-clone` `bg-top-left` | v3 names |
 
+**A component library can redefine these variant names.** `shadcn/tailwind.css` ships its own `@custom-variant data-open` matching `[data-state="open"]` *and* `[data-open]`, plus `data-closed` / `data-checked` / `data-selected` / `data-disabled` / `data-active` / `data-horizontal` / `data-vertical`. Where it is imported those are broader than stock Tailwind's — read the project's CSS before assuming `data-x:` means the bare attribute.
+
 Fewer classes, same result:
 
 - **Collapse same-value sides.** `size-4` over `w-4 h-4`; `p-4` over `px-4 py-4`; `m-4` over four sides; `inset-0` over four offsets; `text-sm/7` over `text-sm leading-7`.
@@ -83,7 +87,8 @@ Fewer classes, same result:
 - `[&:hover]:` is **not** the same as `hover:` — the named variant also wraps `@media (hover: hover)`. Only use `hover:` when you mean that.
 - **Never apply the v3→v4 rename table to v4 code.** `shadow`, `rounded`, `ring`, `outline-none` are all valid v4 classes; remapping them to `shadow-sm` / `rounded-sm` / `ring-3` / `outline-hidden` changes the render (v4 `ring` is 1px, so `ring-3` triples it) or is a pointless no-op rename.
 - **Never rewrite `shadow-sm` / `blur-sm` / `rounded-sm` / `drop-shadow-sm` / `backdrop-blur-sm` to `-xs`.** The rename moved *v3's* `shadow-sm` to `shadow-xs`; it did not delete `shadow-sm`, which is its own v4 utility with its own value. Doing this shrinks every shadow, blur and radius by one step. (v4's smallest shadow is `shadow-2xs`.)
-- **Don't convert viewport variants into container queries.** `md:`/`lg:` and `@md:`/`@lg:` are both first-class and mean different things — breakpoints are the default for page layout, `@container` is for components that must respond to their parent. See `references/gotchas.md`.
+- **Don't convert viewport variants into container queries.** `md:`/`lg:` and `@md:`/`@lg:` are both first-class and mean different things. Viewport is the default for page chrome; reach for `@container` when authoring a component that will live in more than one slot width. See `references/gotchas.md`.
+- **Keep a stacked `data-active:hover:`** — it is how a selected state survives hover. A library variant wrapped in `:where()` (shadcn's are) contributes *zero* specificity, so `data-active:bg-accent` lands at (0,1,0) and plain `hover:bg-accent/50` at (0,2,0) repaints the active item every time; the stacked form restores it. Three classes, none redundant — see `references/cleanup.md`.
 - Keep `data-[foo=bar]:` and `aria-[selected]:` — an operator or a presence check is not the named `data-foo:` variant.
 - Keep `[figure>&]:` (`in-*` is descendant, not child), `has-[&>[data-x]]:`, multi-attribute selectors, `:where()` wrappers, and any selector with no named equivalent. Arbitrary variants are the escape hatch.
 
@@ -93,7 +98,7 @@ Prose prevents; a linter catches the residue. Where the project has one configur
 
 ## When to load more
 
-- **Scaffolding a project** — no `globals.css`, no `@theme` block, wiring the PostCSS/Vite entry, adding the theme toggle, or setting up `cn()` or the button cursor for the first time: read `references/setup.md` before writing CSS. It carries two decisions that must be **asked, not assumed**.
+- **Scaffolding a project** — no `globals.css`, no `@theme` block, wiring the PostCSS/Vite entry, adding the theme toggle, or setting up `cn()` or the button cursor for the first time: read `references/setup.md` before writing CSS. It wires the token contract and leaves the palette values to `shadcn init` or the user; it carries three decisions that must be **asked, not assumed**.
 - **A v4 trap** — a utility not applying, "Cannot apply unknown utility class", `@apply` in a Vue/Svelte/Astro `<style>` or CSS Module, `h-screen` on mobile, a dynamic `bg-${x}` class, `truncate` not clipping, container queries / `@md:` vs `md:`, or a token that looks v3-shaped: read `references/gotchas.md`.
 - **Tooling** — editor autocomplete inside `cva`/`cn`, class sorting, or a lint rule to enforce this house style: read `references/editor.md`.
 - **Cleanup / audit / simplify** — the user asked, or you are reviewing a component for class drift: read `references/cleanup.md` and follow its process and output format.

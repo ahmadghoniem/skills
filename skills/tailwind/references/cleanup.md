@@ -25,18 +25,25 @@ Read and follow this when the user asks to clean / audit / simplify Tailwind cla
 
 **Two classes setting the same property**
 - `w-full w-32`, `text-sm text-lg`, `p-2 p-4` — flag the pair, ask which was intended. **Do not "keep the last one written."** Markup order does not decide the winner; the order Tailwind emits the rules does, and that order is not the order you wrote them. Verified in 4.3.3: `.w-32` is emitted *before* `.w-full`, so **`w-full` wins**; `.text-lg` before `.text-sm`, so **`text-sm` wins**. Spacing is the one that looks intuitive only because the scale sorts ascending — `p-4` beats `p-2` whichever order you write them in.
+**A state variant demoting a higher one**
+- `hover:` beating `data-active:` is a **`:where()` artefact of the library's variant**, not a Tailwind rule. Compiled on 4.3.3:
+  - *Stock* `data-active:` emits `.data-active\:bg-x[data-active]` — (0,2,0), tying `hover:`'s `.hover\:bg-x:hover`. `data-active:` is emitted later, so **the active state wins** and there is no bug.
+  - A *library* variant wrapped in `:where()` (shadcn's `data-active`, `data-open`, `data-selected`, …) emits `.data-active\:bg-x:where([data-active]…)`. `:where()` contributes nothing, so the rule is **(0,1,0)** and `hover:` at (0,2,0) **always** wins — order is irrelevant.
+  - The fix is a compound `data-active:hover:bg-x`. Flag it; never auto-apply — and never delete one that is already there.
+
 - If the class list is built through `cn()` / `tailwind-merge`, last-in-string *does* win — because the merger drops the loser before it ever reaches CSS. So the correct answer depends on whether the string is merged at runtime. Check before touching it.
 
-**Token drift → semantic tokens**
-- `bg-white` / `bg-gray-50/100` → `bg-background` or `bg-card`
-- `text-gray-500/600` → `text-muted-foreground`; `text-gray-900` → `text-foreground`
-- `border-gray-*` → `border-border`; raw `ring-*` / `outline-*` → `ring-ring`
-- hand-rolled `bg-white dark:bg-gray-900` pairs → one token (`bg-background`)
+**Token drift → semantic tokens** (read the project's token names out of its CSS first; shadcn's are shown)
+- `bg-white` / `bg-gray-50/100` → the surface token (`bg-background` / `bg-card`)
+- `text-gray-500/600` → the muted-text token (`text-muted-foreground`); `text-gray-900` → `text-foreground`
+- `border-gray-*` → the border token (`border-border`); raw `ring-*` / `outline-*` → `ring-ring`
+- hand-rolled `bg-white dark:bg-gray-900` pairs → one token
+- a token edit that doesn't match the utilities on the target (`--sidebar-primary` changed, markup says `bg-sidebar-accent`) → flag it; never retarget a token by its name
 
 **Colour format**
 - hex / `rgb()` / `hsl()` in `:root`, `.dark`, or `@theme` → convert to `oklch()`. Convert **values only** — leave `currentColor`, CSS keywords, gradient interpolation, and third-party library configs alone. Use a converter; never compute the numbers by hand.
 - a token defined as **bare channels** (`--background: 0 0% 100%`) → v3-shaped and completely dead: `bg-background` emits `background-color: var(--background)` → `0 0% 100%` → invalid, dropped. Not just the `/opacity` forms — the token does nothing at all. Flag as a migration, not a one-line swap.
-- `hsl(var(--x))` on its own is **not** a defect — it is a complete colour, `/opacity` works against it, and it is shadcn's own prescribed v4 shape. Convert it to `oklch()` for house style, not because it is broken.
+- `hsl(var(--x))` on its own is **not** a defect — it is a complete colour and `/opacity` works against it. Convert it to `oklch()` for house style, not because it is broken; it is a leftover v3 / early-v4 channel pattern, not what shadcn ships today.
 - a `/ A` alpha baked into a `:root` / `.dark` token → usually should be opaque, with the fade applied at the utility (`bg-primary/30`). **Exception: leave shadcn's dark hairlines** (`--border: oklch(1 0 0 / 10%)`, `--input: … / 15%`) — those are shipped values where the alpha *is* the colour.
 
 **Raw / arbitrary colors & off-scale values** (often intentional — nudge only)
@@ -58,6 +65,7 @@ Read and follow this when the user asks to clean / audit / simplify Tailwind cla
 ## Never touch
 
 - Responsive (`sm: md: lg: xl: 2xl:`) and state (`hover: focus: active: group-* peer-*`) variants.
+- **`md:` ↔ `@md:` in either direction.** A viewport breakpoint and a container query are different queries against different boxes — swapping them is not a canonicalisation.
 - `dark:` in **vendored `components/ui/*`** — deliberate per-theme opacity (`bg-input/30` → `dark:/50`), leave it. In **app code**, a hand-rolled `dark:` color pair is instead a candidate → fold into a token (see token drift above).
 - Arbitrary values that are clearly intentional (including `-px` utilities).
 - **`[&:hover]:` — never "canonicalise" it to `hover:`.** The named variant also wraps `@media (hover: hover)`, so this changes the CSS.
