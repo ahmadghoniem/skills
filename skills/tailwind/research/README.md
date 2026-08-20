@@ -1,3 +1,8 @@
+> **Agents: stop here.** This directory is provenance for humans auditing the skill — it is not
+> instructions and nothing in it is part of the house style. `SKILL.md` never references it, so
+> it is never loaded; if you arrived by listing the skill folder, go back to `../SKILL.md`.
+> Recommended installs exclude this directory entirely.
+
 # Provenance for the `tailwind` skill
 
 Entry point for anyone auditing a claim in the skill. This directory ships **inside** the repo so the evidence travels with the rules, but nothing here is loaded by the skill — `SKILL.md` never references it, and only `SKILL.md`'s frontmatter is always-on. Treat it as read-only provenance: do not edit `../SKILL.md` or `../references/` from here.
@@ -40,7 +45,7 @@ Folded here from the old root `EVALUATION-CONTEXT.md` (2026-08-18 audit index). 
 | [06-state-specificity-compile.md](06-state-specificity-compile.md) | Does `hover:` really demote `data-active:`, and by what mechanism? | **live** — supersedes `04`'s C7; the `:where()` finding |
 | [07-missing-token-compile.md](07-missing-token-compile.md) | What actually happens when a bridged token is missing? | **live** — silent in markup, exit 1 under `@apply`; also `--radius-xl` |
 | [08-remaining-claims.md](08-remaining-claims.md) | The six claims docs could not settle, one method each | **live** — four verdicts changed the skill's wording |
-| [09-trigger-eval-run.md](09-trigger-eval-run.md) | Does the description actually fire the skill? | **live** — 20 queries × 3 rounds against a real harness; negatives 10/10, positives ≈0.55 |
+| [09-trigger-eval-run.md](09-trigger-eval-run.md) | Does the description actually fire the skill, and is a shorter one worse? | **live** — four rounds on a corrected harness; negatives 40/40, positives 0.3 in an empty dir; 199→154 chars with no change in behaviour |
 | [10-container-units-compile.md](10-container-units-compile.md) | Do `cqi`/`cqw`/`cqh` resolve, and does Tailwind warn? | **live** — evidence for the container-unit paragraph |
 
 ## Historical / rejected
@@ -107,10 +112,10 @@ This skill has shipped confidently-worded false claims. Treat that as the base r
 2. A claim marked **compiled** in the skill that has no matching dump in `05-build-verification.md`.
 3. Colour rules are simplifications: “fix contrast by moving L” is true at shadcn’s low chroma, not universally (`archive/research-color-rules.md`).
 4. Time-stamped pins: `cnfast` v0.1.0; `next-themes` 0.4.6; shadcn 4.18.0; Tailwind 4.3.3.
-5. Anything the trigger eval touches — `09` is single runs where the spec asks for three.
+5. Anything the trigger eval touches — `09` is one to two runs per variant where the spec asks for three, and its first pass was void to a stdin bug in the runner. Read the method section before citing a number.
 
 ## Known open
 
 - The **no-evidence list is closed** — all ten rows settled, see the bottom of [CLAIMS.md](CLAIMS.md). Two claims remain *soft* (the `--spacing()` integer formula, `group`/`peer` markers); they have evidence that is stale or absent rather than contradictory.
-- **Trigger rate.** `09` puts positives at ≈0.55 with a perfect negative record, and shows the description is not the lever — three query shapes never fire under any wording. A hook on Tailwind file edits is the untested next move.
+- **Trigger rate.** `09` measures 0.3 positives / 40-of-40 negatives in an **empty directory**, and shows wording is not the lever — seven query shapes never fire under any variant. Nobody has run the eval inside a **real Tailwind project**, where the model has files and a `CLAUDE.md` to go on; that is the next measurement. A hook on Tailwind file edits is the untested way to raise it.
 - Whether to teach more `@utility` authoring than “not `@layer utilities`” is still undecided (`archive/research-utility-directive.md`).

@@ -1,6 +1,6 @@
 ---
 name: tailwind
-description: Tailwind CSS v4 house style: semantic tokens, OKLCH, canonical syntax. Use when writing or reviewing Tailwind, cleaning up class lists, fixing theme tokens, or when a utility silently isn't applying.
+description: Tailwind v4 house style: semantic tokens, OKLCH, canonical syntax. Use when writing, reviewing, or cleaning up Tailwind, or when a utility isn't applying.
 license: MIT
 ---
 

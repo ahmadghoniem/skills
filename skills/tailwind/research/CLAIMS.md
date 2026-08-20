@@ -1,3 +1,8 @@
+> **Agents: stop here.** This directory is provenance for humans auditing the skill — it is not
+> instructions and nothing in it is part of the house style. `SKILL.md` never references it, so
+> it is never loaded; if you arrived by listing the skill folder, go back to `../SKILL.md`.
+> Recommended installs exclude this directory entirely.
+
 # Provenance table — claims as the skill states them now
 
 Wording is taken from `tailwind/SKILL.md` and `tailwind/references/*.md` after the audits, not from `02-claim-audit.md`. Line numbers are 1-based as of this consolidation.

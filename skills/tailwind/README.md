@@ -26,13 +26,33 @@ It also asks, rather than assumes, on the setup choices it can't infer: the them
 
 ## Install
 
-Drop the folder into your Claude Code skills directory:
+Markdown only — nothing to build, no dependencies, no npm install. Clone it into your Claude Code skills directory and drop the provenance tree, which is for auditing rather than for the agent:
 
 ```bash
 git clone https://github.com/ahmadghoniem/tailwind-skill.git ~/.claude/skills/tailwind
+rm -rf ~/.claude/skills/tailwind/research
 ```
 
-Claude Code auto-discovers it. The reference half loads whenever you work with Tailwind; the cleanup half triggers on request.
+PowerShell:
+
+```powershell
+git clone https://github.com/ahmadghoniem/tailwind-skill.git "$HOME/.claude/skills/tailwind"
+Remove-Item -Recurse -Force "$HOME/.claude/skills/tailwind/research"
+```
+
+Keep `research/` if you want to check a claim offline — it is inert either way (see below). Restart Claude Code, or run `/skills`; `tailwind` should be listed. Per-project instead of globally: clone to `.claude/skills/tailwind` inside the project.
+
+### What actually loads
+
+Only the `description` in `SKILL.md`'s frontmatter is always in context — currently **154 characters**. That is the whole always-on cost. When the model judges the skill relevant it invokes it, and *only then* does `SKILL.md`'s body load; the files in `references/` load individually, on demand, when the situation calls for one. `evals/` and `research/` are never referenced by `SKILL.md` and are never read.
+
+Measured, not assumed: a real invocation was captured with `claude -p --output-format stream-json` and the transcript contains `SKILL.md`'s body and nothing else — no `references/`, no `research/`, no directory listing.
+
+### Uninstall
+
+```bash
+rm -rf ~/.claude/skills/tailwind
+```
 
 ## Editor and linter setup (optional)
 
@@ -50,18 +70,18 @@ For enforcement, the skill recommends `eslint-plugin-better-tailwindcss`'s `enfo
 
 ```
 tailwind/
-├── SKILL.md              # always-on: house style, OKLCH rules, the ladders
+├── SKILL.md              # house style, OKLCH rules, the ladders (body loads on invoke)
 ├── references/
 │   ├── setup.md          # globals.css scaffold, build entry, next-themes, cn(), button cursor
 │   ├── gotchas.md        # v4 traps
 │   ├── editor.md         # IntelliSense + linter recommendations
 │   └── cleanup.md        # the cleanup pass
 ├── evals/                # trigger eval — does the description actually fire the skill?
-├── research/             # provenance: every load-bearing claim mapped to evidence
+├── research/             # provenance; not installed by default — see Install
 └── README.md
 ```
 
-SKILL.md stays small and always applies; the reference files load only when the situation calls for them. `evals/` and `research/` are never read by the skill — only `SKILL.md`'s frontmatter is always-on — so they cost nothing at runtime.
+SKILL.md stays small and carries everything that must always apply once the skill is active; the reference files load individually, only when the situation calls for one.
 
 ## Why you can trust it
 

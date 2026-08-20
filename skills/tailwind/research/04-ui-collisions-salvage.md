@@ -1,4 +1,6 @@
-> **Provenance:** **live** for KEEP/DROP of C1–C8. C7’s stock-specificity write-up is **superseded** by `tailwind/references/cleanup.md` (the `:where()` split), which has **no compile dump** in this tree — see [CLAIMS.md](CLAIMS.md).
+> **Provenance:** **live** for KEEP/DROP of C1–C8. C7’s specificity write-up is **WRONG and superseded** — [06-state-specificity-compile.md](06-state-specificity-compile.md) compiled it: stock ties at (0,2,0) and the active state wins on emission order (no bug); shadcn’s `:where()` wrapper is what demotes it. Do not cite C7 from here.
+>
+> The `ui-collisions` skill this file salvaged from was **deleted on 2026-08-20** as unverified; its log is archived outside this repo.
 
 # Task 4 — UI-collisions salvage
 

@@ -12,6 +12,12 @@ Pre-session notes and the three research briefs. Nothing here was deleted; relat
 | [briefs/BRIEF-2.md](briefs/BRIEF-2.md) | Round 2 instructions: compile the UNVERIFIED claims on 4.3.3 | Yes — method contract for `../05-build-verification.md` |
 | [briefs/BRIEF-3.md](briefs/BRIEF-3.md) | This consolidation | Yes — documents the provenance-job constraints |
 
+## Vendored source
+
+| File | What it is |
+| --- | --- |
+| [shadcn-4.18.0-tailwind.css](shadcn-4.18.0-tailwind.css) | `shadcn@4.18.0` `dist/tailwind.css` verbatim, extracted out of `../05-build-verification.md` so it is greppable as CSS. Evidence for the `@custom-variant` definitions and the `:where()` wrapping compiled in `../06`. Reproduce with `npm pack shadcn@4.18.0`. |
+
 ## Files
 
 | File | What it was | Still matters? |

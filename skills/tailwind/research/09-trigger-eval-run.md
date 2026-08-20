@@ -1,73 +1,79 @@
 # 09 — Trigger eval, actually run
 
-`tailwind/evals/trigger-eval.json` (20 queries: 10 `should_trigger`, 10 near-miss negatives), run
+`tailwind/evals/trigger-eval.json` (20 queries: 10 `should_trigger`, 10 near-miss negatives) run
 against a real Claude Code harness rather than reasoned about.
 
 ## Method
 
-The skill was installed to `~/.claude/skills/tailwind`, then each query run as:
+The skill is installed to `~/.claude/skills/tailwind`, the `description:` line is rewritten per
+variant, then each query runs as:
 
 ```bash
-claude -p "<query>" --output-format stream-json --verbose --max-turns 1 --model sonnet
+claude -p "<query>" --output-format stream-json --verbose --max-turns 1 --model sonnet < /dev/null
 ```
 
-A query counts as **fired** if the stream contains a `Skill` tool call with
-`{"skill":"tailwind"}`. One run per query per description, 20 queries in parallel per round.
+A query counts as **fired** if the stream contains a `Skill` tool call with `{"skill":"tailwind"}`.
+Working directory is an **empty temp dir** — no Tailwind project, no `CLAUDE.md`, nothing in the
+environment hinting at the topic. That is the hardest case for a skill and the only way to isolate
+the description as the variable.
 
-**This is below the spec's bar.** `trigger-eval.json` calls for 3 runs per query and a 60/40
-train/held-out split. These are single runs, so per-query results carry real noise — treat the
-aggregate and the *consistent* misses as the signal, not any individual row.
+### The harness bug that invalidated the first pass
+
+The first runner looped `while read q; do claude -p "$q" & done < queries.txt`. Backgrounded
+`claude` inherited the loop's stdin, read the *rest of the file*, and appended it to the prompt.
+Every run was answering all twenty queries at once — the tell was a model reply beginning *"This
+message contains ~20 distinct, unrelated requests."* Fixed with `< /dev/null`.
+
+**Any number from before that fix is void**, including an earlier reported 5–6/10. Everything below
+is from the corrected harness.
 
 ## Results
 
-| Description | Positives | Negatives |
-| --- | --- | --- |
-| **B** (shipped) run 1 | 6/10 | 10/10 |
-| **B** run 2 | 5/10 | 10/10 |
-| **D** (alternative, 217 chars) | 5/10 | 10/10 |
+| Variant | Chars | Positives | Negatives |
+| --- | --- | --- | --- |
+| **B** (previous) | 199 | 3/10 | 10/10 |
+| **E** (shipped) | 154 | 3/10 | 10/10 |
+| **E** rerun | 154 | 3/10 | 10/10 |
+| **F** | 113 | 2/10 | 10/10 |
 
-D: *"…Use when building or reviewing Tailwind/shadcn UI, cleaning up or simplifying class lists,
-converting theme colours, or when a utility misbehaves."*
+- **B** — *"Tailwind CSS v4 house style: semantic tokens, OKLCH, canonical syntax. Use when writing or reviewing Tailwind, cleaning up class lists, fixing theme tokens, or when a utility silently isn't applying."*
+- **E** — *"Tailwind v4 house style: semantic tokens, OKLCH, canonical syntax. Use when writing, reviewing, or cleaning up Tailwind, or when a utility isn't applying."*
+- **F** — *"Tailwind v4 house style: semantic tokens, OKLCH, canonical syntax. Use for any Tailwind class-list or theme work."*
 
-## What is stable
+Fires under B and E: **01** (clean up `Sidebar.tsx`), **02** (audit these classes), **08**
+(`bg-[--brand]` renders nothing). Identical hit/miss sets, reproduced across two E runs.
 
-**Negatives held 10/10 in all three rounds.** Not one false positive across 30 negative
-invocations — including the two that name Tailwind while wanting nothing from the skill ("what's
-new in tailwind v4? just give me a summary", "deploy my tailwind site to vercel"). The
-description is not over-firing, and there is headroom to make it broader.
+## Findings
 
-**Three positives never fired, under any description:**
+**1. B's extra 45 characters buy nothing.** E is 23% shorter and produced the *same seven misses*
+twice. "Cleaning up class lists" and "fixing theme tokens" are decoration — the queries they
+describe (01, 03, 07) either already fire on the topic word or do not fire at all.
 
-| # | Query | Missed |
-| --- | --- | --- |
-| 00 | "add a settings page to my next app — tailwind + shadcn, keep it consistent with the rest" | 3/3 |
-| 05 | "truncate isn't working on this text inside my flex row, what am I doing wrong" | 3/3 |
-| 09 | "simplify the class names on this pricing card without changing how it looks" | 3/3 |
+**2. One clause is load-bearing.** F differs from E only by dropping *"or when a utility isn't
+applying"*, and loses exactly query 08 — the one where a utility isn't applying. Naming a
+**symptom** earns a firing that naming a **task** does not.
 
-Three more flipped between rounds — 03 (washed-out dark mode), 06 (set up v4 in a fresh Vite
-project), 07 (convert hex colours in `:root`) — which is the noise floor at one run each.
+**3. Negatives are free.** 40/40 across all four rounds, including the two that name Tailwind while
+wanting nothing from the skill ("what's new in tailwind v4?", "deploy my tailwind site to vercel").
+There is no over-firing to trade against, so the description could be broadened without cost — it
+just does not help.
 
-## The finding
-
-**The description is not the bottleneck.** B and D are indistinguishable at this sample size, and
-query 09 failed under D *even though D contains the word "simplifying"*. If this were lexical
-matching, that row would have flipped.
-
-What the three permanent misses have in common is that each looks like something the model can
-just **do**: write a settings page, debug a `truncate`, shorten a class list. Skill invocation is
-a judgment about whether help is needed, not a keyword match — so a description that enumerates
-more verbs does not buy more firing.
-
-Levers that would plausibly move it, in order of expected effect:
-
-1. A hook or project instruction that loads the skill on Tailwind file edits, bypassing model
-   judgment entirely.
-2. Naming the *stakes* rather than the tasks — the description currently says what the skill
-   covers, not what goes wrong without it.
-3. More description verbs. Tested; no measurable effect.
+**4. Wording is not the ceiling.** Seven positives never fired under any variant. They share a
+shape: each looks like something the model can simply **do** — write a settings page, debug a
+`truncate`, shorten a class list, set up a fresh project. Skill invocation is a judgment about
+whether help is *needed*, and no phrasing changes that judgment.
 
 ## Verdict
 
-Aggregate positive rate ≈ **0.55**, over the spec's ≥0.5 threshold, with a perfect negative
-record. **B ships.** But the pass is narrow and the failure is systematic, not random — worth a
-proper 3-run pass before treating any future description change as an improvement.
+**E ships**, at 154 chars for 199. Same trigger rate, 23% less always-on context, one clause
+identified as doing the actual work.
+
+Positives sit at **0.3** in an empty directory, under the spec's ≥0.5 threshold. That threshold was
+written for three runs per query against a realistic workspace; a repo with Tailwind files, a
+`globals.css` and a `CLAUDE.md` gives the model far more to go on, and the earlier (void) numbers
+suggest it does fire more there. **This is an unmeasured claim** — nobody has run the eval inside a
+real Tailwind project yet, and that is the next thing worth doing.
+
+If the goal is to raise the rate rather than measure it, the lever is a hook on Tailwind file edits,
+which bypasses model judgment entirely. More description verbs have now been tested twice and do
+nothing.
