@@ -63,9 +63,9 @@ Folded here from the old root `EVALUATION-CONTEXT.md` (2026-08-18 audit index). 
 | [archive/oklch-research-fyi.md](archive/oklch-research-fyi.md) | OKLCH literacy from oklch.fyi / CSS Color 4 | **historical** background; colour *rules* live in `research-color-rules.md` |
 | [archive/oklch-research-skill.md](archive/oklch-research-skill.md) | What to borrow from jakubkrehel/oklch-skill | **historical** — rejected palette-ramp / P3-fallback / invert-for-dark |
 | [archive/findings-cursor-copy.md](archive/findings-cursor-copy.md) | Fact-check of the 12-rules candidate skill | **historical** — produced several KEEP rules and the “never `shadow-sm`→`shadow-xs`” guard |
-| [archive/candidate-12rules.md](archive/candidate-12rules.md) | The 12-rules candidate itself | **historical** — rejected; Rule 9 would corrupt v4 code |
+| [archive/candidate-12rules.md](archive/candidate-12rules.md) | The 12-rules candidate | **stub** — text removed; Rule 9 kept because it would corrupt v4 code. Verdicts in `findings-cursor-copy.md` |
 | [archive/findings-cursor-index.md](archive/findings-cursor-index.md) | Fact-check of the hairyf docs-index candidate | **historical** — salvage was `@custom-variant` vs `@variant` and `@md:` ≠ `md:` |
-| [archive/candidate-hairyf-index.md](archive/candidate-hairyf-index.md) | The hairyf index dump | **historical** — rejected (~3.8k always-on tokens pointing at a stale snapshot) |
+| [archive/candidate-hairyf-index.md](archive/candidate-hairyf-index.md) | The hairyf index candidate | **stub** — dump replaced by its URL; rejected (~3.8k always-on tokens pointing at a stale snapshot) |
 
 ---
 

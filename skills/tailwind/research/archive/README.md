@@ -32,9 +32,9 @@ Pre-session notes and the three research briefs. Nothing here was deleted; relat
 | [research-color-rules.md](research-color-rules.md) | Contrast-by-L, comma-`oklch()`, lower-C gamut | **Yes** — OKLCH house rules |
 | [oklch-research-fyi.md](oklch-research-fyi.md) | OKLCH literacy from oklch.fyi / CSS Color 4 | Background; rules live in `research-color-rules.md` |
 | [oklch-research-skill.md](oklch-research-skill.md) | Salvage of jakubkrehel/oklch-skill | Historical reject of ramps / P3 / invert-for-dark |
-| [candidate-12rules.md](candidate-12rules.md) | Third-party 12-rules skill (negative example: `shadow-sm`→`shadow-xs`) | Historical reject |
+| [candidate-12rules.md](candidate-12rules.md) | **Stub.** Third-party 12-rules skill; text removed, Rule 9 kept verbatim as the negative example (`shadow-sm`→`shadow-xs`) | Historical reject |
 | [findings-cursor-copy.md](findings-cursor-copy.md) | Fact-check of that 12-rules skill | Historical; several KEEP rules shipped |
-| [candidate-hairyf-index.md](candidate-hairyf-index.md) | hairyf docs-index dump | Historical reject (stale always-on catalogue) |
+| [candidate-hairyf-index.md](candidate-hairyf-index.md) | **Stub.** Points at <https://github.com/hairyf/skills>; dump removed | Historical reject (stale always-on catalogue) |
 | [findings-cursor-index.md](findings-cursor-index.md) | Fact-check of the hairyf index | Historical; salvage was `@custom-variant` vs `@variant` and `@md:` ≠ `md:` |
 
 OKLCH trio and the two candidate/evaluation pairs cover related ground but not the same artefact, so they were **not** concatenated. Each file has a pointer to its siblings.
