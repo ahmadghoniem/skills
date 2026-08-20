@@ -47,6 +47,7 @@ Folded here from the old root `EVALUATION-CONTEXT.md` (2026-08-18 audit index). 
 | [08-remaining-claims.md](08-remaining-claims.md) | The six claims docs could not settle, one method each | **live** — four verdicts changed the skill's wording |
 | [09-trigger-eval-run.md](09-trigger-eval-run.md) | Does the description actually fire the skill, and is a shorter one worse? | **live** — four rounds on a corrected harness; negatives 40/40, positives 0.3 in an empty dir; 199→154 chars with no change in behaviour |
 | [10-container-units-compile.md](10-container-units-compile.md) | Do `cqi`/`cqw`/`cqh` resolve, and does Tailwind warn? | **live** — evidence for the container-unit paragraph |
+| [11-crlf-frontmatter.md](11-crlf-frontmatter.md) | Why did the skill list its H1 instead of its description? | **live** — CRLF breaks frontmatter parsing; control clone + trigger test; fixed by `.gitattributes` |
 
 ## Historical / rejected
 
@@ -76,6 +77,7 @@ This skill has shipped confidently-worded false claims. Treat that as the base r
 | Claim that shipped | Reality | How it was caught |
 | --- | --- | --- |
 | "`@apply` loses variants in v4" | A **v1** limitation, fixed in v2 | User challenged it; release notes |
+| Skill shipped with no `.gitattributes` | Every Windows clone got CRLF, which drops the frontmatter description and costs firings | Noticed the listing showing the H1; control clone in `11` |
 | "`w-full w-32` → keep `w-32`" under auto-apply | `.w-32` emits before `.w-full`, so `w-full` wins | Compiled emission order (reconfirmed in `05`) |
 | "`hsl(var(--x))` means v3-shaped, every `/opacity` is dead" | Only **bare channels** are dead; wrapped HSL is a complete colour | Compiled both shapes |
 | "`padding: --spacing(6)`" as the zero-processing escape | Build-time function; hard-errors without a theme | CLI error in `05` |
