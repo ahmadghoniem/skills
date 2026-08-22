@@ -8,11 +8,11 @@ allowed-tools: Bash(node:*), AskUserQuestion
 
 ## Three entrypoints, one job registry
 
-`/cursor:delegate` starts a job; `/cursor:status [job-id]` and `/cursor:result [job-id]` inspect it afterwards. All three share the same file-backed job record (`~/.ccd/jobs/<repo-hash>/<id>.json`), keyed by the **Cursor job id** this command prints — not any wrapper id a background-execution mechanism might report. Copy that id verbatim for follow-up commands.
+`/cursor:delegate` starts a job; `/cursor:result [job-id]` inspects it afterwards. Both share the same file-backed job record (`~/.ccd/jobs/<repo-hash>/<id>.json`), keyed by the **Cursor job id** this command prints — not any wrapper id a background-execution mechanism might report. Copy that id verbatim for follow-up commands.
 
 Key flags, all forwarded through `$ARGUMENTS` verbatim:
 
-- **`--wait` / `--background`** — `--wait` (default) blocks until the run finishes and prints the full result inline. `--background` detaches immediately and prints the job id right away; poll it with `/cursor:status <id>` or fetch the final write-up with `/cursor:result <id>` once it's done. `--wait` always wins if both are passed.
+- **`--wait` / `--background`** — `--wait` (default) blocks until the run finishes and prints the full result inline. `--background` detaches immediately and prints the job id right away; fetch the final write-up with `/cursor:result <id>` once it's done. `--wait` always wins if both are passed.
 - **`--timeout <sec>`** — kills the run (SIGTERM, then SIGKILL after 5s) if it hasn't finished by then. Default 1800s (30 min). A killed run is still recorded as `failed` with a note — never silently dropped.
 - **`--no-git-check`** — the only supported spelling. By default `/cursor:delegate` refuses to run outside a git repository; pass this to override (e.g. scratch directories).
 - **`--prompt-file <path>`** (or `--prompt-file -` for stdin) — read the task from a file instead of the command line. Use it for long, multi-line, or quote-heavy specs that would be mangled as shell arguments; it is mutually exclusive with an inline task. For a spec already living in the repo, prefer an `@path` reference in the inline task instead — that lets cursor-agent open the file itself.
@@ -40,4 +40,4 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
 
    Never split the task across multiple arguments and never place a flag after it. Do not paraphrase or reconstruct the command's output.
 
-4. **Render the result verbatim.** If the job ran in the foreground, present the status, files touched, and summary sections as a compact Markdown block. If the job was started in the background, show the returned job id and the `/cursor:status` hint. Do not paraphrase Cursor's summary.
+4. **Render the result verbatim.** If the job ran in the foreground, present the status, files touched, and summary sections as a compact Markdown block. If the job was started in the background, show the returned job id and the `/cursor:result` hint. Do not paraphrase Cursor's summary.

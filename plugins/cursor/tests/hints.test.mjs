@@ -13,7 +13,7 @@ describe('jobNotFoundMessage', () => {
     expect(msg).toContain('Claude Code background notification');
     expect(msg).toContain("Claude Code's own ID");
     // Points the user at the recovery path.
-    expect(msg).toContain('`/cursor:status` with no arguments');
+    expect(msg).toContain('`/cursor:sessions`');
   });
 
   it('escapes the id verbatim into a code span', () => {

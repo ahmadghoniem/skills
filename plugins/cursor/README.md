@@ -115,17 +115,16 @@ Full walkthrough (typical flows, chunking guidance, the "how I actually use this
 
 ## What you get
 
-Seven slash commands under the `cursor:` namespace:
+Six slash commands under the `cursor:` namespace:
 
 - **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background. Task text can come inline, from a file (`--prompt-file <path>`), or from stdin (`--prompt-file -`).
-- **`/cursor:status`** — list recent jobs or inspect a specific one.
 - **`/cursor:result`** — print the final output of a finished job.
 - **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
 - **`/cursor:resume`** — continue the previous Cursor chat with a follow-up.
 - **`/cursor:sessions`** — list Cursor's own chat sessions for this repo.
 - **`/cursor:setup`** — health-check the CLI, list models + configured MCPs, or guide installation.
 
-Plus a `cursor-runner` subagent you can invoke from inside Claude to delegate well-scoped tasks automatically, and a `composer-prompting` skill it uses to shape well-specified tasks into tight Cursor prompts.
+Plus a `cursor-runner` subagent you can invoke from inside Claude to delegate well-scoped tasks automatically; it carries its own prompt-shaping guidance inline.
 
 ## Model selection
 
@@ -169,10 +168,6 @@ git show HEAD:spec.md | /cursor:delegate --prompt-file -      # or pipe one in v
 
 **Delegating a plan or spec file.** There's no separate command for this — a spec is just a task that lives in a file. If it's **inside the repo**, reference it inline (`/cursor:delegate "implement @tasks/spec.md, follow it exactly"`) and cursor-agent opens it itself. If it's **outside the repo** (a plan under `~/.claude/plans/`, a generated file, anything cursor-agent can't see), read it in with `--prompt-file`. For several independent specs, fan out one `--background` delegation per file.
 
-### `/cursor:status [job-id] [--all]`
-
-Without args, shows the last 10 jobs for this repository. With an id, shows the full job record including the Cursor `chat_id` (resume manually with `cursor-agent --resume=<id>`).
-
 ### `/cursor:result [job-id]`
 
 Prints the final summary of a finished job. Defaults to the most recent one for this repo.
@@ -204,7 +199,7 @@ See [`docs/reference.md`](docs/reference.md) for the two-phase loop philosophy, 
 | `CCD_HOME` | Override the jobs-registry root (default `~/.ccd`). |
 | `CCD_DEFAULT_MODEL` | Default `--model` when none is passed, bypassing task-aware selection. Accepts the same aliases as `--model`. |
 
-Every finished job stores the Cursor `chat_id` — read it from `/cursor:status <job-id>` or `/cursor:result`, then run `cursor-agent --resume=<chat_id>` in any terminal to keep going outside Claude Code.
+Every finished job stores the Cursor `chat_id` — read it from `/cursor:result`, then run `cursor-agent --resume=<chat_id>` in any terminal to keep going outside Claude Code.
 
 A repo-local `.ccd.json` is on the roadmap for overriding the default model per repo.
 

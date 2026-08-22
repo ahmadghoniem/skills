@@ -18,7 +18,7 @@ export function jobNotFoundMessage(id) {
     `No job \`${id}\` found for this repository.\n` +
     `Hint: if you copied this ID from a Claude Code background notification ` +
     `("Command running in background with ID: …"), that is Claude Code's own ID, ` +
-    `not the Cursor job ID. Run \`/cursor:status\` with no arguments to list ` +
+    `not the Cursor job ID. Run \`/cursor:sessions\` to list ` +
     `tracked jobs and copy the real ID.\n`
   );
 }

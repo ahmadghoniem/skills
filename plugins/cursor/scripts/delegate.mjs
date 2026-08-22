@@ -210,7 +210,7 @@ async function foreground(flags, prompt, jobId, root) {
       `\n**Cursor chat id:** \`${chatId}\` — resume with \`cursor-agent --resume=${chatId}\`.\n`,
     );
   }
-  process.stdout.write(`\nRun \`/cursor:status ${jobId}\` for the full record.\n`);
+  process.stdout.write(`\nRun \`/cursor:result ${jobId}\` for the full record.\n`);
   return result.exitCode;
 }
 
@@ -360,7 +360,7 @@ export async function main(rawArgv) {
     process.stdout.write(
       `Job \`${jobId}\` started in background (model \`${model}\`, pid ${pid}).\n`,
     );
-    process.stdout.write(`Check progress with \`/cursor:status ${jobId}\`.\n`);
+    process.stdout.write(`Fetch the write-up with \`/cursor:result ${jobId}\` once it finishes.\n`);
     return 0;
   }
 

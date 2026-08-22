@@ -102,7 +102,7 @@ Use the GitHub issue template. Include:
 
 - `node --version`, `cursor-agent --version`
 - Output of `/cursor:setup --doctor`
-- For `/cursor:delegate` failures: the job id from `/cursor:status` and the path of the raw log under `~/.ccd/jobs/<hash>/logs/<id>.ndjson`.
+- For `/cursor:delegate` failures: the job id from `/cursor:result` and the path of the raw log under `~/.ccd/jobs/<hash>/logs/<id>.ndjson`.
 
 ## Release flow
 

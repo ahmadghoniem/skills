@@ -252,7 +252,7 @@ describe('delegate foreground', () => {
 });
 
 // Issue A: the id `/cursor:delegate` prints to the caller must be the exact
-// id `/cursor:status` and `/cursor:result` accept, and a completed job with
+// id `/cursor:result` accepts, and a completed job with
 // that id must be reliably retrievable through both — not just the flow
 // under test above, but each real entrypoint script.
 describe('delegate → status/result id retrieval (issue A)', () => {

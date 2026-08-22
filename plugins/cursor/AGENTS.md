@@ -4,7 +4,7 @@ This file is the contract any agent (Claude Code, Cursor, Codex, …) must follo
 
 ## What this repo is
 
-A Claude Code plugin that delegates coding tasks from Claude to the Cursor CLI (`cursor-agent`). Eight slash commands under the `cursor:` namespace, a `cursor-runner` subagent, and a `composer-prompting` skill. Source of truth lives under `plugins/cursor/`. Internally the plugin's namespace is `ccd` (jobs dir, env vars, config file — see below).
+A Claude Code plugin that delegates coding tasks from Claude to the Cursor CLI (`cursor-agent`). Six slash commands under the `cursor:` namespace and a `cursor-runner` subagent. Source of truth lives under `plugins/cursor/`. Internally the plugin's namespace is `ccd` (jobs dir, env vars, config file — see below).
 
 ## Hard rules
 
@@ -50,7 +50,6 @@ Plus a **Constraints** block that forbids: touching files outside the list, rena
 - `plugins/cursor/scripts/lib/*.mjs` — shared helpers (run, id, args, paths, jobs, parse, cursor, git, invoked, plan, hints, md).
 - `plugins/cursor/commands/*.md` — slash command wrappers.
 - `plugins/cursor/agents/cursor-runner.md` — the handoff subagent prompt.
-- `plugins/cursor/skills/composer-prompting/SKILL.md` — Cursor prompt-shaping guidance the `cursor-runner` subagent references via its `skills:` frontmatter.
 - `plugins/cursor/tests/*.test.mjs` — vitest specs + fixtures.
 - `.claude-plugin/marketplace.json` — what Claude Code's `/plugin install` reads.
 

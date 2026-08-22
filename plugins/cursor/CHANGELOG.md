@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.8.0 — cut always-on context cost (breaking)
+
+Every skill, command, and agent this plugin ships pays a token cost in **every**
+Claude Code session, before anything is invoked — only `name` + `description`
+load at startup; bodies and `argument-hint` load on invocation and are free.
+Measured at 0.7.0 the plugin cost ~412 always-on tokens, the largest single
+contributor in a typical config. This release cuts that to ~270 (~35%) without
+losing a workflow.
+
+### Removed
+
+- **`/cursor:status`.** It carried `disable-model-invocation: true`, so Claude
+  could never call it — it existed purely to be typed by hand. In an
+  agent-driven workflow that is ~30 tokens per session for a command that never
+  fires. `scripts/status.mjs` is retained and still works when run directly;
+  `/cursor:result` covers finished jobs and `/cursor:sessions` lists tracked
+  ones. **If you poll `--background` jobs by hand, this is the one to notice** —
+  run the script by path instead.
+- **The `composer-prompting` skill**, folded back into `agents/cursor-runner.md`.
+  It was extracted in 0.4.0 (ported from `openai/codex-plugin-cc`, mirroring its
+  `gpt-5-4-prompting` skill) so the agent would not restate the mechanics inline.
+  That optimised the agent's *body* — which is on-invoke and already free — while
+  creating a second always-on entry costing ~60 tokens in every session, with
+  `user-invocable: false` and exactly one consumer. The guidance is unchanged;
+  it now lives inline under "1. Shape the prompt", so it is paid only when
+  `cursor-runner` actually runs.
+
+### Changed
+
+- **`cursor-runner`'s description trimmed 322 → 129 chars** (~130 → ~80 tokens).
+  A description exists to let Claude decide whether to route here, so the
+  negative guardrail ("not for code review, design decisions, or large
+  refactors") is kept verbatim — dropping that is what causes mis-routing. The
+  operational detail moved into the body, where it is free and available at the
+  moment it is needed.
+- **Dropped the stale `default model composer-2.5-fast` claim** from that
+  description. 0.5.0 replaced the static default with task-aware model
+  selection, but the description had continued to advertise it — a wrong fact
+  sitting in every session's context.
+
 ## 0.7.0 — fix silent flag loss; pool-aware model selection
 
 ### Fixed

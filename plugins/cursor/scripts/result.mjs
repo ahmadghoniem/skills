@@ -49,7 +49,7 @@ export async function main(rawArgv) {
   }
   if (job.status === 'running') {
     process.stdout.write(
-      `Job \`${job.id}\` is still running. Use \`/cursor:status ${job.id}\` to monitor it.\n`,
+      `Job \`${job.id}\` is still running. Re-run \`/cursor:result ${job.id}\` once it finishes.\n`,
     );
     return 0;
   }
