@@ -3,40 +3,7 @@ import { parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { listJobs, readJob } from './lib/jobs.mjs';
-import { mdCell } from './lib/md.mjs';
-
-function age(iso) {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return '?';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
-
-function truncate(s, n) {
-  const clean = mdCell(s);
-  return clean.length > n ? `${clean.slice(0, n - 1)}…` : clean;
-}
-
-function renderTable(rows) {
-  if (rows.length === 0) return 'No Cursor jobs tracked for this repository yet.\n';
-  const header = '| ID | Status | Model | Age | Prompt |';
-  const sep = '| --- | --- | --- | --- | --- |';
-  const body = rows
-    .map(
-      (r) =>
-        `| \`${r.id}\` | ${mdCell(r.status)} | ${mdCell(r.model)} | ${age(r.startedAt)} | ${truncate(
-          r.prompt,
-          60,
-        )} |`,
-    )
-    .join('\n');
-  return `${header}\n${sep}\n${body}\n`;
-}
+import { renderJobTable } from './lib/jobtable.mjs';
 
 function renderDetail(r) {
   const lines = [];
@@ -93,7 +60,7 @@ export async function main(rawArgv) {
   const listOpts = {};
   if (typeof limit === 'number') listOpts.limit = limit;
   const rows = listJobs(root, listOpts);
-  process.stdout.write(renderTable(rows));
+  process.stdout.write(renderJobTable(rows));
   return 0;
 }
 

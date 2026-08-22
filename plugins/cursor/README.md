@@ -118,7 +118,7 @@ Full walkthrough (typical flows, chunking guidance, the "how I actually use this
 Six slash commands under the `cursor:` namespace:
 
 - **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background. Task text can come inline, from a file (`--prompt-file <path>`), or from stdin (`--prompt-file -`).
-- **`/cursor:result`** — print the final output of a finished job.
+- **`/cursor:result`** — print the final output of a finished job, or `--list` the tracked ones.
 - **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
 - **`/cursor:resume`** — continue the previous Cursor chat with a follow-up.
 - **`/cursor:sessions`** — list Cursor's own chat sessions for this repo.
@@ -168,9 +168,11 @@ git show HEAD:spec.md | /cursor:delegate --prompt-file -      # or pipe one in v
 
 **Delegating a plan or spec file.** There's no separate command for this — a spec is just a task that lives in a file. If it's **inside the repo**, reference it inline (`/cursor:delegate "implement @tasks/spec.md, follow it exactly"`) and cursor-agent opens it itself. If it's **outside the repo** (a plan under `~/.claude/plans/`, a generated file, anything cursor-agent can't see), read it in with `--prompt-file`. For several independent specs, fan out one `--background` delegation per file.
 
-### `/cursor:result [job-id]`
+### `/cursor:result [job-id] [--list] [--all]`
 
 Prints the final summary of a finished job. Defaults to the most recent one for this repo.
+
+With `--list`, prints a table of tracked jobs instead — the last 10, or every one with `--all`. Running jobs are included, so this is also how you find the id of a job started with `--background`.
 
 ### `/cursor:cancel [job-id]`
 

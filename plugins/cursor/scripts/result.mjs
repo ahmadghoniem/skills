@@ -2,7 +2,8 @@
 import { parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
-import { mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
+import { listJobs, mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
+import { renderJobTable } from './lib/jobtable.mjs';
 
 function render(job) {
   const summary = typeof job.summary === 'string' ? job.summary : '';
@@ -37,8 +38,15 @@ function render(job) {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { positional } = parseCommandArgv(rawArgv);
+  const { positional, flags } = parseCommandArgv(rawArgv, ['list', 'all']);
   const root = await repoRoot(process.cwd());
+  if (flags['list']) {
+    // Listing every tracked job, running ones included — this is the recovery
+    // path for "which job was that?", so a running job must still show up.
+    const listOpts = flags['all'] ? {} : { limit: 10 };
+    process.stdout.write(renderJobTable(listJobs(root, listOpts)));
+    return 0;
+  }
   const id = positional[0];
   const job = id ? readJob(root, id) : mostRecentFinishedJob(root);
   if (!job) {

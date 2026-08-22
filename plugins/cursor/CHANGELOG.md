@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.0 — `/cursor:result --list`, and a lighter cursor-runner
+
+### Added
+
+- **`/cursor:result --list`** — the job listing 0.8.0 removed with `/cursor:status`, restored
+  without a new always-on entry. Prints the last 10 tracked jobs (`--all` for every one) as a
+  Markdown table, running ones included, so it doubles as the way to recover the id of a
+  `--background` job. The renderer moved to `scripts/lib/jobtable.mjs` and is shared with
+  `status.mjs`, so the two listings cannot drift apart. `jobNotFoundMessage` now points here
+  rather than at `/cursor:sessions`, which lists Cursor's *chat* sessions and never was the
+  right recovery path for a *job* id.
+
+### Changed
+
+- **Chunking is a judgment call, not a refusal.** `cursor-runner` previously had to "refuse to
+  delegate a single monolithic blob" whenever a task passed ~5 steps / ~10 files / 2 layers.
+  Those thresholds are useful signals but poor rules — a coherent change can trip one and still
+  be right to send whole, and an agent that hard-refuses just makes the caller fight it. They are
+  now stated as signals to weigh, with splitting preferred when several hold at once or the steps
+  are only loosely related, and a matching guardrail: don't unilaterally decide a task is too big
+  — raise the concern and send it.
+- **Dropped the target-repo language rule** ("if the repo's comments are Czech, Composer must
+  match"). "Match the existing style of surrounding files" already covers it without the
+  language-specific framing.
+- **`cursor-runner`'s description trimmed again**, to just what it does. The routing guardrail
+  ("not for code review, design decisions, or large refactors") is gone at the maintainer's
+  request; routing is decided by the caller rather than defended in always-on text.
+
 ## 0.8.0 — cut always-on context cost (breaking)
 
 Every skill, command, and agent this plugin ships pays a token cost in **every**
