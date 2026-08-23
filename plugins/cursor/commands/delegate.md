@@ -16,6 +16,7 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
 - **`--timeout <sec>`** — kills the run (SIGTERM, then SIGKILL after 5s) if it hasn't finished by then. Default 1800s (30 min). A killed run is still recorded as `failed` with a note — never silently dropped.
 - **`--no-git-check`** — the only supported spelling. By default `/cursor:delegate` refuses to run outside a git repository; pass this to override (e.g. scratch directories).
 - **`--prompt-file <path>`** (or `--prompt-file -` for stdin) — read the task from a file instead of the command line. Use it for long, multi-line, or quote-heavy specs that would be mangled as shell arguments; it is mutually exclusive with an inline task. For a spec already living in the repo, prefer an `@path` reference in the inline task instead — that lets cursor-agent open the file itself.
+- **`--arg-string <blob>`** — pass one unsplit argument blob (the raw `$ARGUMENTS` string that has never been through a shell). The plugin splits it with quote handling. Use this when the whole invocation is a single string; do **not** join already-split argv back into a string.
 
 ## What you must do
 
@@ -38,6 +39,12 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
    node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --model <resolved-id> "<task>"
    ```
 
-   Never split the task across multiple arguments and never place a flag after it. Do not paraphrase or reconstruct the command's output.
+   Never split the task across multiple arguments and never place a flag after it. When you must forward the raw `$ARGUMENTS` blob unchanged (one unsplit string, quotes still in it), pass it as `--arg-string`:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --arg-string "$ARGUMENTS"
+   ```
+
+   Do not paraphrase or reconstruct the command's output.
 
 4. **Render the result verbatim.** If the job ran in the foreground, present the status, files touched, and summary sections as a compact Markdown block. If the job was started in the background, show the returned job id and the `/cursor:result` hint. Do not paraphrase Cursor's summary.

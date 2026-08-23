@@ -190,10 +190,35 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 }
 
 /**
+ * Expand a `--arg-string <blob>` marker: `<blob>` is a single unsplit string
+ * that never passed through a shell, so it still needs `splitArgString`.
+ * Tokens before the flag, the split blob, and tokens after its value stay in
+ * that order. Absent the flag, `tokens` is returned untouched.
+ *
+ * @param {string[]} tokens
+ * @returns {string[]}
+ */
+function expandArgString(tokens) {
+  const idx = tokens.indexOf('--arg-string');
+  if (idx === -1) return tokens;
+  const blob = tokens[idx + 1] ?? '';
+  return [...tokens.slice(0, idx), ...splitArgString(blob), ...tokens.slice(idx + 2)];
+}
+
+/**
  * Apply the shared slash-command argv prologue: everything before a `--`
- * delimiter is taken verbatim, everything after it is re-split with quote
- * handling (Claude Code passes the user's text as one `"$ARGUMENTS"` string).
- * Returns the combined token array ready for `parseArgv`.
+ * delimiter is taken verbatim. After it, `--arg-string <blob>` is the only
+ * thing that still needs splitting — Claude Code hands `"$ARGUMENTS"` as one
+ * string that has never been through a shell.
+ *
+ * A real shell has already split and unquoted argv, so joining then
+ * re-splitting is lossy: `--prompt-file "/c/Users/Ahmed Ibrahim/x.md"`
+ * arrives as one path token, the join makes its spaces indistinguishable
+ * from separators, and the re-split tears it into `/c/Users/Ahmed` +
+ * `Ibrahim/x.md`. The fragment lands in `positional` and dispatch dies on
+ * the misleading "pass the task either on the command line or via
+ * --prompt-file, not both". When `--arg-string` is absent, argv is returned
+ * untouched (newlines included).
  *
  * @param {string[]} rawArgv
  * @returns {string[]}
@@ -201,9 +226,8 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 export function collapseCommandArgv(rawArgv) {
   const delimiterIdx = rawArgv.indexOf('--');
   const firstHalf = delimiterIdx === -1 ? [] : rawArgv.slice(0, delimiterIdx);
-  const userRaw =
-    delimiterIdx === -1 ? rawArgv.join(' ') : rawArgv.slice(delimiterIdx + 1).join(' ');
-  return [...firstHalf, ...collapseArguments(userRaw)];
+  const rest = delimiterIdx === -1 ? rawArgv : rawArgv.slice(delimiterIdx + 1);
+  return [...firstHalf, ...expandArgString(rest)];
 }
 
 /**

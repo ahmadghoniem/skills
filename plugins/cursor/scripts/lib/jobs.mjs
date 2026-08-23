@@ -29,6 +29,7 @@ import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
  * @property {string} rawLogPath
  * @property {string=} summary
  * @property {string[]=} filesTouched
+ * @property {Array<{command: string, exitCode: number|null, output: string, timedOut: boolean}>=} failedCommands
  * @property {boolean=} background
  * @property {boolean=} cloud
  */

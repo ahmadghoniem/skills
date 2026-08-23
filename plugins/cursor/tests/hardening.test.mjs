@@ -56,13 +56,32 @@ describe('args hardening', () => {
     expect(parseTimeout('x', 5)).toBe(5);
   });
 
-  it('collapseCommandArgv splits the post -- string with quote handling', () => {
+  it('collapseCommandArgv leaves already-split argv untouched', () => {
     expect(collapseCommandArgv(['--model', 'gpt', '--', 'do "a thing"'])).toEqual([
+      '--model',
+      'gpt',
+      'do "a thing"',
+    ]);
+  });
+
+  it('collapseCommandArgv splits only an explicit --arg-string blob', () => {
+    expect(collapseCommandArgv(['--model', 'gpt', '--', '--arg-string', 'do "a thing"'])).toEqual([
       '--model',
       'gpt',
       'do',
       'a thing',
     ]);
+  });
+
+  it('collapseCommandArgv preserves spaces in a real-shell --prompt-file path', () => {
+    expect(collapseCommandArgv(['--', '--prompt-file', '/c/Users/Ahmed Ibrahim/x.md'])).toEqual([
+      '--prompt-file',
+      '/c/Users/Ahmed Ibrahim/x.md',
+    ]);
+  });
+
+  it('collapseCommandArgv preserves newlines when --arg-string is absent', () => {
+    expect(collapseCommandArgv(['--', 'line one\nline two'])).toEqual(['line one\nline two']);
   });
 });
 

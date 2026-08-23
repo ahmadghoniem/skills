@@ -119,6 +119,11 @@ Six slash commands under the `cursor:` namespace:
 
 - **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background. Task text can come inline, from a file (`--prompt-file <path>`), or from stdin (`--prompt-file -`).
 - **`/cursor:result`** — print the final output of a finished job, or `--list` the tracked ones.
+
+Both the foreground write-up and `/cursor:result` flag any shell command Cursor ran that exited
+non-zero, under **⚠ Commands that exited non-zero**. It is reported, not judged — a `grep` that
+matches nothing or a deliberately red test exits non-zero on purpose — but it catches the case
+where a run reads as a success in prose while commands quietly failed underneath it.
 - **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
 - **`/cursor:resume`** — continue the previous Cursor chat with a follow-up.
 - **`/cursor:sessions`** — list Cursor's own chat sessions for this repo.

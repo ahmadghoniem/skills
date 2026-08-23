@@ -96,4 +96,91 @@ describe('parse', () => {
   it('extractResolvedModel returns undefined when no model field is present', () => {
     expect(extractResolvedModel(loadFixture(HAPPY_FIXTURE))).toBeUndefined();
   });
+
+  it('records non-zero shellToolCall exit codes as failedCommands', () => {
+    const events = [
+      { type: 'system', subtype: 'init', session_id: 's1' },
+      {
+        type: 'tool_call',
+        subtype: 'completed',
+        call_id: 't1',
+        tool_call: {
+          shellToolCall: {
+            args: { command: 'grep nope' },
+            result: {
+              failure: {
+                command: 'grep nope',
+                exitCode: 1,
+                stdout: '',
+                stderr: 'no matches',
+                interleavedOutput: 'no matches',
+                aborted: false,
+              },
+            },
+          },
+        },
+      },
+      {
+        type: 'tool_call',
+        subtype: 'completed',
+        call_id: 't2',
+        tool_call: {
+          shellToolCall: {
+            args: { command: 'echo ok' },
+            result: {
+              success: {
+                command: 'echo ok',
+                exitCode: 0,
+                stdout: 'ok\n',
+                stderr: '',
+                interleavedOutput: 'ok\n',
+              },
+            },
+          },
+        },
+      },
+      { type: 'result', subtype: 'success', result: 'done' },
+    ];
+    const s = summariseEvents(events);
+    expect(s.success).toBe(true);
+    expect(s.failedCommands).toEqual([
+      { command: 'grep nope', exitCode: 1, output: 'no matches', timedOut: false },
+    ]);
+  });
+
+  it('marks aborted shellToolCall failures as timedOut', () => {
+    const events = [
+      {
+        type: 'tool_call',
+        subtype: 'completed',
+        call_id: 't-abort',
+        tool_call: {
+          shellToolCall: {
+            args: { command: 'sleep 999' },
+            result: {
+              failure: {
+                command: 'sleep 999',
+                exitCode: 1,
+                stdout: '',
+                stderr: '',
+                interleavedOutput: '',
+                aborted: true,
+              },
+            },
+          },
+        },
+      },
+      { type: 'result', subtype: 'success', result: 'ok' },
+    ];
+    expect(summariseEvents(events).failedCommands[0].timedOut).toBe(true);
+  });
+
+  it('dedupes absolute and relative spellings of the same file under root', () => {
+    const events = [
+      { type: 'tool_use', name: 'write', input: { path: 'src/foo.ts' } },
+      { type: 'tool_use', name: 'write', input: { path: '/tmp/repo/src/foo.ts' } },
+      { type: 'result', subtype: 'success', result: 'ok' },
+    ];
+    expect(summariseEvents(events, '/tmp/repo').filesTouched).toEqual(['src/foo.ts']);
+  });
 });

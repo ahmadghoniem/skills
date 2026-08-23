@@ -211,28 +211,156 @@ export function* walkToolUses(node) {
 }
 
 /**
+ * Collapse the two spellings of the same file into one.
+ *
+ * A single edit surfaces twice: the path the model asked for is usually
+ * repo-relative, and a later event gives an absolute one. Listing both makes a
+ * one-file change look like a two-file change. An absolute path is dropped
+ * when some relative path in the set is a path-segment suffix of it; the
+ * relative form is what a reader wants.
+ *
+ * @param {string[]} paths
+ * @returns {string[]}
+ */
+export function dedupePaths(paths) {
+  const unique = [...new Set(paths)];
+  const norm = (p) => p.replace(/\\/g, '/');
+  const isAbsolute = (p) => /^([a-zA-Z]:\/|\/)/.test(norm(p));
+  const relatives = unique.filter((p) => !isAbsolute(p)).map(norm);
+  return unique.filter((p) => {
+    if (!isAbsolute(p)) return true;
+    const n = norm(p);
+    return !relatives.some((r) => n === r || n.endsWith(`/${r}`));
+  });
+}
+
+/**
+ * Rewrite paths under `root` as repo-relative, and drop the duplicates that
+ * creates. cursor-agent is inconsistent about which form it reports — the same
+ * edit can arrive as `greet.js` from one event and an absolute path from
+ * another, and some runs only ever produce the absolute one — so normalising
+ * against a known root is what makes a file list read like a diff rather than
+ * like a log.
+ *
+ * Paths outside `root` are left absolute: they are genuinely elsewhere, and
+ * that is exactly what a reviewer needs to notice.
+ *
+ * @param {string[]} paths
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function normalisePaths(paths, root) {
+  if (!root) return dedupePaths(paths);
+  const normRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  const prefix = `${normRoot}/`;
+  const rebased = paths.map((p) => {
+    const n = p.replace(/\\/g, '/');
+    if (n.toLowerCase().startsWith(prefix.toLowerCase())) return n.slice(prefix.length);
+    return p;
+  });
+  return dedupePaths(rebased);
+}
+
+/**
+ * @typedef {Object} CommandRun
+ * @property {string} command
+ * @property {number|null} exitCode
+ * @property {string} output
+ * @property {boolean} timedOut
+ */
+
+/**
+ * Pull a completed `shellToolCall` result off a cursor-agent event.
+ *
+ * Real `--output-format stream-json` runs nest the payload at
+ * `tool_call.shellToolCall.result.{success|failure}`. Both arms carry
+ * `exitCode` (number), `command`, stdout/stderr/`interleavedOutput`, and
+ * failure also carries `aborted`. Zero exits live under `success`; non-zero
+ * under `failure` — never invent a field the stream did not send.
+ *
+ * @param {CursorEvent} ev
+ * @returns {CommandRun|null}
+ */
+export function shellCommandResult(ev) {
+  if (ev?.type !== 'tool_call') return null;
+  const tc = ev.tool_call;
+  if (tc == null || typeof tc !== 'object' || Array.isArray(tc)) return null;
+  const shell = tc.shellToolCall;
+  if (shell == null || typeof shell !== 'object' || Array.isArray(shell)) return null;
+  const result = shell.result;
+  if (result == null || typeof result !== 'object' || Array.isArray(result)) return null;
+  const payload =
+    result.success != null && typeof result.success === 'object' && !Array.isArray(result.success)
+      ? result.success
+      : result.failure != null &&
+          typeof result.failure === 'object' &&
+          !Array.isArray(result.failure)
+        ? result.failure
+        : null;
+  if (!payload) return null;
+  const args = shell.args;
+  const command =
+    typeof payload.command === 'string'
+      ? payload.command
+      : args != null && typeof args === 'object' && typeof args.command === 'string'
+        ? args.command
+        : '(unknown)';
+  const exitCode = typeof payload.exitCode === 'number' ? payload.exitCode : null;
+  const interleaved =
+    typeof payload.interleavedOutput === 'string' ? payload.interleavedOutput : '';
+  const stdout = typeof payload.stdout === 'string' ? payload.stdout : '';
+  const stderr = typeof payload.stderr === 'string' ? payload.stderr : '';
+  const output = interleaved.length > 0 ? interleaved : [stdout, stderr].filter(Boolean).join('\n');
+  // `aborted` is the field captured logs actually send on `failure`. The
+  // timedOut/timed_out spellings are accepted if a later cursor-agent build
+  // grows them; they have not been observed yet.
+  const timedOut =
+    payload.aborted === true || payload.timedOut === true || payload.timed_out === true;
+  return { command, exitCode, output, timedOut };
+}
+
+/**
  * @typedef {Object} Summary
  * @property {string} summary
  * @property {string[]} filesTouched
+ * @property {CommandRun[]} failedCommands
  * @property {string} exitReason
  * @property {boolean} success
  */
 
 /**
+ * Fold a whole run's event stream into the record a job needs.
+ *
+ * `success` tracks cursor-agent's own `result` event only. A command exiting
+ * non-zero is reported in `failedCommands` but deliberately does NOT flip
+ * `success`: a non-zero exit is routinely intentional (`grep` finds nothing, a
+ * red test in a TDD cycle, a `command -v` probe), so failing the job on it
+ * would cry wolf often enough to be ignored. Surfacing it and letting a human
+ * judge is the whole point.
+ *
  * @param {CursorEvent[]} events
+ * @param {string} [root]   Repo root; absolute paths under it are made relative.
  * @returns {Summary}
  */
-export function summariseEvents(events) {
+export function summariseEvents(events, root) {
   const files = new Set();
+  /** @type {Map<string, CommandRun>} */
+  const commandsById = new Map();
   let finalText;
   let success = true;
   let exitReason = 'completed';
+  let anon = 0;
 
   for (const ev of events) {
     for (const tu of walkToolUses(ev)) {
       if (!looksLikeFileWrite(tu.name)) continue;
       const path = pickToolPath(tu.input);
       if (path) files.add(path);
+    }
+    const cmd = shellCommandResult(ev);
+    if (cmd) {
+      const id = typeof ev.call_id === 'string' ? ev.call_id : `anon-${anon++}`;
+      commandsById.set(id, cmd);
     }
     const type = ev.type;
     if (type === 'result') {
@@ -267,9 +395,11 @@ export function summariseEvents(events) {
   }
 
   const summary = finalText ?? '(no final message captured)';
+  const commands = [...commandsById.values()];
   return {
     summary: summary.slice(0, 4000),
-    filesTouched: [...files],
+    filesTouched: normalisePaths([...files], root),
+    failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     exitReason,
     success,
   };

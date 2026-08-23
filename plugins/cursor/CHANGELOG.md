@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.0 — argv stops mangling paths, and failed commands get reported
+
+Four fixes backported from the sibling `claude-grok-delegate` plugin, which was forked from this
+codebase and hit them in real use.
+
+### Fixed
+
+- **`collapseCommandArgv` tore apart any argument containing a space.** It joined argv with spaces
+  and re-split on whitespace — lossy, because a real shell has already performed quote removal by
+  then. `--prompt-file "/c/Users/Ada Lovelace/spec.md"` arrives as one correct argv element; the
+  join made its internal spaces indistinguishable from separators, and the re-split produced
+  `/c/Users/Ada` + `Lovelace/spec.md`. The fragment landed in `positional`, so dispatch died on
+  "pass the task either on the command line or via --prompt-file, not both" — a message describing
+  something that never happened. Every home-directory path with a space in it hit this, and
+  `cursor-runner` is explicitly instructed to pass plans from `~/.claude/plans/` this way.
+
+  The same join also flattened multi-line briefs: newlines and runs of whitespace collapsed to
+  single spaces, and embedded quotes were stripped, so a structured prompt reached cursor-agent as
+  one long line.
+
+  Argv is now returned untouched unless the new `--arg-string <blob>` marker is present, which is
+  the only case that genuinely has never been through a shell (Claude Code hands `"$ARGUMENTS"`
+  over as a single string). No inference from token count — the caller says which it is.
+
+  Worth noting this shipped past a 108-test suite: the existing coverage only ever fed
+  `collapseCommandArgv` single-string input, the one shape where the old code was correct.
+
+- **`/cursor:result --all` printed a single job.** `--all` is a modifier on `--list` that drops the
+  10-job cap, but it was only read inside the `--list` branch. Used alone it fell through to
+  "print the most recent job", which renders similarly enough to go unnoticed — no error, just the
+  wrong output. `--all` now implies `--list`.
+
+- **The same file could appear twice in "Files touched"**, once repo-relative and once absolute,
+  making a one-file change look like two. Paths under the repo root are now rebased to relative and
+  deduplicated; paths genuinely outside the repo stay absolute, which is what a reviewer needs to
+  notice.
+
+### Added
+
+- **Non-zero command exits are now reported.** cursor-agent's stream carries an exit code for every
+  shell command it runs, at `tool_call.shellToolCall.result.{success|failure}.exitCode`. A new
+  **⚠ Commands that exited non-zero** section lists them with their output, in both the foreground
+  write-up and `/cursor:result`.
+
+  It is reported, never fatal. A non-zero exit is routinely intentional — a `grep` that matches
+  nothing, a deliberately red test in a TDD cycle, a `command -v` probe — so job status still comes
+  from cursor-agent's own result event alone. The point is that a run can read as a success in
+  prose while several commands quietly failed underneath it.
+
+  Rendering moved to `scripts/lib/render.mjs` and is shared by `delegate.mjs` and `result.mjs`, so
+  the write-up you see when a job finishes and the one you fetch later cannot drift.
+
+- **`--arg-string <blob>`** — pass one unsplit argument string for the plugin to split. Documented
+  in `/cursor:delegate`.
+
 ## 0.9.0 — `/cursor:result --list`, and a lighter cursor-runner
 
 ### Added

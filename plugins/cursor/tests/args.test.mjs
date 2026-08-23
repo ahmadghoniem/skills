@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   collapseArguments,
+  collapseCommandArgv,
   parseArgv,
   parseCommandArgv,
   splitArgString,
@@ -39,9 +40,10 @@ describe('a `--` inside the task text does not swallow flags', () => {
     expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
   });
 
-  it('keeps flags when the whole invocation arrives as one string', () => {
+  it('keeps flags when the whole invocation arrives as --arg-string', () => {
     const r = parseCommandArgv([
       '--',
+      '--arg-string',
       'fix the bug -- see notes --model composer-2.5 --timeout 60',
     ]);
     expect(r.flags['model']).toBe('composer-2.5');
@@ -106,6 +108,28 @@ describe('parseArgv', () => {
     const r = parseArgv(['--resume=chat_abc', 'follow', 'up'], ['resume']);
     expect(r.flags['resume']).toBe('chat_abc');
     expect(r.positional).toEqual(['follow', 'up']);
+  });
+});
+
+describe('collapseCommandArgv', () => {
+  it('passes through a real-shell path that contains spaces', () => {
+    expect(collapseCommandArgv(['--', '--prompt-file', '/c/Users/Ahmed Ibrahim/x.md'])).toEqual([
+      '--prompt-file',
+      '/c/Users/Ahmed Ibrahim/x.md',
+    ]);
+  });
+
+  it('splits an --arg-string blob and merges it in order', () => {
+    expect(collapseCommandArgv(['--', '--arg-string', '--background fix the parser'])).toEqual([
+      '--background',
+      'fix',
+      'the',
+      'parser',
+    ]);
+  });
+
+  it('preserves newlines when --arg-string is absent', () => {
+    expect(collapseCommandArgv(['--', 'line one\nline two'])).toEqual(['line one\nline two']);
   });
 });
 

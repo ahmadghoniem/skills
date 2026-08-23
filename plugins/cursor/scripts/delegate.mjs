@@ -21,6 +21,7 @@ import {
   summariseEvents,
   walkToolUses,
 } from './lib/parse.mjs';
+import { renderRunDetail } from './lib/render.mjs';
 
 const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'force', 'cloud', 'help', 'resume'];
 
@@ -168,7 +169,7 @@ async function foreground(flags, prompt, jobId, root) {
     );
   }
 
-  const summary = summariseEvents(result.events);
+  const summary = summariseEvents(result.events, root);
   const chatId = extractChatId(result.events);
   // If the caller asked for `auto`, prefer whatever concrete model id the
   // stream reveals Cursor actually picked — the job record should say what
@@ -185,6 +186,7 @@ async function foreground(flags, prompt, jobId, root) {
     finishedAt: new Date().toISOString(),
     summary: summary.summary + killedNote,
     filesTouched: summary.filesTouched,
+    failedCommands: summary.failedCommands,
     model: resolvedModel,
     ...(chatId ? { cursorChatId: chatId } : {}),
   });
@@ -197,12 +199,10 @@ async function foreground(flags, prompt, jobId, root) {
   process.stdout.write(`**Model:** ${resolvedModel}\n`);
   if (result.killed)
     process.stdout.write('**⚠ Run was killed before finishing** (timeout/watchdog).\n');
-  if (summary.filesTouched.length > 0) {
-    process.stdout.write('**Files touched:**\n');
-    for (const f of summary.filesTouched) process.stdout.write(`- ${f}\n`);
-  }
+  process.stdout.write('\n');
+  process.stdout.write(renderRunDetail(summary));
   if (summary.summary) {
-    process.stdout.write('\n**Summary:**\n\n');
+    process.stdout.write('**Summary:**\n\n');
     process.stdout.write(summary.summary.trim() + '\n');
   }
   if (chatId) {
@@ -262,7 +262,7 @@ async function runWorker(jobId, flags, prompt, root) {
       }
     },
   });
-  const summary = summariseEvents(result.events);
+  const summary = summariseEvents(result.events, root);
   const chatId = extractChatId(result.events);
   const resolvedModel = model === 'auto' ? (extractResolvedModel(result.events) ?? model) : model;
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
@@ -275,6 +275,7 @@ async function runWorker(jobId, flags, prompt, root) {
     finishedAt: new Date().toISOString(),
     summary: summary.summary + killedNote,
     filesTouched: summary.filesTouched,
+    failedCommands: summary.failedCommands,
     model: resolvedModel,
     ...(chatId ? { cursorChatId: chatId } : {}),
   });

@@ -4,6 +4,7 @@ import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { listJobs, mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
 import { renderJobTable } from './lib/jobtable.mjs';
+import { renderRunDetail } from './lib/render.mjs';
 
 function render(job) {
   const summary = typeof job.summary === 'string' ? job.summary : '';
@@ -15,12 +16,13 @@ function render(job) {
   if (typeof job.exitCode === 'number') lines.push(`**Exit code:** ${job.exitCode}`);
   lines.push('');
   lines.push(`**Prompt:** ${String(job.prompt ?? '')}`);
-  if (job.filesTouched && job.filesTouched.length > 0) {
-    lines.push('');
-    lines.push('**Files touched:**');
-    for (const f of job.filesTouched) lines.push(`- ${f}`);
-  }
   lines.push('');
+  // `renderRunDetail` ends with its own trailing blank line so a caller writing
+  // straight to stdout gets correct spacing. Here the result is being joined
+  // into a line array, so that trailing newline would double up — trim it and
+  // let the array's own separator do the work.
+  const detail = renderRunDetail(job);
+  if (detail) lines.push(detail.trimEnd(), '');
   lines.push('**Summary:**');
   lines.push('');
   lines.push((summary || '(no summary captured)').trim());
@@ -40,7 +42,11 @@ function render(job) {
 export async function main(rawArgv) {
   const { positional, flags } = parseCommandArgv(rawArgv, ['list', 'all']);
   const root = await repoRoot(process.cwd());
-  if (flags['list']) {
+  // `--all` implies `--list`. It has no other meaning, and without this a bare
+  // `--all` silently fell through to "print the most recent job" — the same
+  // shape of output, different content, with nothing to signal the flag was
+  // ignored. Worse than an error.
+  if (flags['list'] || flags['all']) {
     // Listing every tracked job, running ones included — this is the recovery
     // path for "which job was that?", so a running job must still show up.
     const listOpts = flags['all'] ? {} : { limit: 10 };
