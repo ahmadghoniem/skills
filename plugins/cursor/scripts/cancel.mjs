@@ -2,7 +2,17 @@
 import { parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
-import { cancelJob, findRunningJobs, readJob } from './lib/jobs.mjs';
+import { cancelJob, findRunningJobs, isPidGone, readJob } from './lib/jobs.mjs';
+
+/**
+ * @param {{ pid?: number, cliPid?: number }} job
+ * @returns {boolean}
+ */
+function pidsAlreadyGone(job) {
+  const wrapGone = typeof job.pid !== 'number' || isPidGone(job.pid);
+  const cliGone = typeof job.cliPid !== 'number' || isPidGone(job.cliPid);
+  return wrapGone && cliGone;
+}
 
 /**
  * @param {string[]} rawArgv
@@ -42,7 +52,29 @@ export async function main(rawArgv) {
     );
     return 0;
   }
-  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}.\n`);
+  const allGone =
+    (updated.cliKill === undefined && updated.wrapKill === undefined) ||
+    [updated.cliKill, updated.wrapKill].every((o) => o === undefined || o === 'already-gone');
+  const goneBefore = Boolean(before && before.status === 'running' && pidsAlreadyGone(before));
+  if (goneBefore || allGone) {
+    const bits = [];
+    if (typeof before?.cliPid === 'number') bits.push(`cli pid ${before.cliPid}`);
+    if (typeof before?.pid === 'number') bits.push(`pid ${before.pid}`);
+    const pidBit = bits.length > 0 ? ` (${bits.join(', ')})` : '';
+    process.stdout.write(
+      `Job \`${updated.id}\` process was already gone${pidBit}; record marked as cancelled.\n`,
+    );
+    return 0;
+  }
+  const goneNotes = [];
+  if (updated.cliKill === 'already-gone' && typeof before?.cliPid === 'number') {
+    goneNotes.push(`cli pid ${before.cliPid} was already gone`);
+  }
+  if (updated.wrapKill === 'already-gone' && typeof before?.pid === 'number') {
+    goneNotes.push(`pid ${before.pid} was already gone`);
+  }
+  const extra = goneNotes.length > 0 ? ` (${goneNotes.join('; ')})` : '';
+  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}.${extra}\n`);
   return 0;
 }
 

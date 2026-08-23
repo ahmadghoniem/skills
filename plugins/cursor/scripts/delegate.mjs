@@ -151,6 +151,13 @@ async function foreground(flags, prompt, jobId, root) {
     force: flags.force,
     timeoutSec: flags.timeout,
     logPath,
+    onSpawn: (cliPid) => {
+      try {
+        updateJob(root, jobId, { cliPid });
+      } catch {
+        // noop
+      }
+    },
     onEvent: (ev) => {
       for (const tu of walkToolUses(ev)) {
         toolCalls += 1;
@@ -251,6 +258,13 @@ async function runWorker(jobId, flags, prompt, root) {
     force: flags.force,
     timeoutSec: flags.timeout,
     logPath,
+    onSpawn: (cliPid) => {
+      try {
+        updateJob(root, jobId, { cliPid });
+      } catch {
+        // noop
+      }
+    },
     onEvent: (ev) => {
       const chatId = ev.chat_id ?? ev.chatId ?? ev.session_id ?? ev.sessionId;
       if (typeof chatId === 'string' && chatId.length > 0) {

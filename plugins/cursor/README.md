@@ -124,7 +124,7 @@ Both the foreground write-up and `/cursor:result` flag any shell command Cursor 
 non-zero, under **⚠ Commands that exited non-zero**. It is reported, not judged — a `grep` that
 matches nothing or a deliberately red test exits non-zero on purpose — but it catches the case
 where a run reads as a success in prose while commands quietly failed underneath it.
-- **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
+- **`/cursor:cancel`** — terminate a running job and everything it spawned (SIGTERM, then SIGKILL after 5 s; `taskkill /T /F` on Windows). Also reaps a record left stuck at `running` because its parent process died.
 - **`/cursor:resume`** — continue the previous Cursor chat with a follow-up.
 - **`/cursor:sessions`** — list Cursor's own chat sessions for this repo.
 - **`/cursor:setup`** — health-check the CLI, list models + configured MCPs, or guide installation.
@@ -160,6 +160,8 @@ Hand a coding task to `cursor-agent -p …`.
 | `--cloud` | off | Pass `-c` to cursor-agent. |
 | `--prompt-file <path\|->` | off | Read the task from a file, or from stdin with `-`. Mutually exclusive with an inline task. For long, multi-line, or quote-heavy specs. |
 
+Prompts over 4 KiB, or containing flag-like tokens (`-X`, `-ldflags`), are handed to `cursor-agent` through a sidecar file rather than on its command line — argv has a hard length limit, and a flag-like token can be re-split by the receiving parser into a different prompt. This is automatic; shorter briefs stay inline.
+
 Full flag reference (`--fresh`, `--resume`, `--no-force`) and more examples: [`docs/reference.md`](docs/reference.md#delegate-flags).
 
 ```
@@ -182,6 +184,8 @@ With `--list`, prints a table of tracked jobs instead — the last 10, or every 
 ### `/cursor:cancel [job-id]`
 
 Cancels a running job. With no id, cancels the single running job (errors if there are several).
+
+The kill walks the process tree, not just the wrapper: the job record stores the `cursor-agent` pid alongside the wrapper's, and the agent is killed first — on Windows, once the root is gone its descendants can no longer be enumerated. If a pid is already gone, `cancel` says so rather than reporting a kill that did not happen.
 
 ### `/cursor:resume [task...]`
 

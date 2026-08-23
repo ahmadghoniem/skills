@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
 import { run } from './run.mjs';
 import { adaptWindowsBin, defaultWindowsBin } from './winbin.mjs';
@@ -84,6 +85,51 @@ export async function resolveBin() {
 }
 
 /**
+ * Ordinary slash-command briefs stay on argv: the sidecar costs a cursor-agent
+ * Read tool call and can dilute the instruction. 4 KiB sits well under both
+ * the 8,191 cmd.exe and 32,767 CreateProcess ceilings after flags and the
+ * binary path. Flag-like tokens (`-X`, `-ldflags`) always sidecar — PowerShell
+ * `$args` re-splits those into a *wrong prompt* rather than an error.
+ */
+export const PROMPT_INLINE_MAX = 4096;
+
+const PROMPT_FLAG_TOKEN = /(?:^|[\s"'`])-{1,2}[A-Za-z]/;
+
+/**
+ * @param {string} prompt
+ * @returns {boolean}
+ */
+export function shouldSidecarPrompt(prompt) {
+  return prompt.length > PROMPT_INLINE_MAX || PROMPT_FLAG_TOKEN.test(prompt);
+}
+
+/**
+ * Node sets `subprocess.killed` when the signal is *sent*, not when the
+ * process exits. Gating SIGKILL on `child.killed` skips the escalation
+ * entirely. Use this instead (paperclip#8598).
+ *
+ * @param {{ exitCode: number|null, signalCode: string|null }} child
+ * @returns {boolean}
+ */
+export function childStillRunning(child) {
+  return child.exitCode === null && child.signalCode === null;
+}
+
+/**
+ * Tree-kill a spawned CLI child if it has not actually exited.
+ * `child.killed` is ignored — see `childStillRunning`.
+ *
+ * @param {{ pid?: number, exitCode: number|null, signalCode: string|null }} child
+ * @param {{ graceMs?: number }} [opts]
+ * @returns {Promise<'killed'|'already-gone'|'failed'>}
+ */
+export function reapChild(child, opts) {
+  if (!childStillRunning(child)) return Promise.resolve('already-gone');
+  if (typeof child.pid !== 'number' || child.pid <= 0) return Promise.resolve('failed');
+  return killTree(child.pid, opts);
+}
+
+/**
  * @typedef {Object} BuildArgsInput
  * @property {string} prompt
  * @property {string} model
@@ -92,7 +138,32 @@ export async function resolveBin() {
  * @property {boolean=} cloud
  * @property {boolean=} force              Default: true.
  * @property {boolean=} approveMcps
+ * @property {string=} logPath             NDJSON log path; sidecar is `${logPath}.prompt.txt`.
+ * @property {string=} promptFile          Explicit sidecar path (overrides logPath).
  */
+
+/**
+ * @param {string} path
+ * @returns {string}
+ */
+function sidecarPointer(path) {
+  return `Read the file at ${path} in full and carry out that task.`;
+}
+
+/**
+ * @param {import('node:readline').Interface} rl
+ * @returns {Promise<void>}
+ */
+function drainReadline(rl) {
+  return new Promise((resolve) => {
+    const finish = () => resolve();
+    rl.once('close', finish);
+    if (rl.closed) {
+      rl.off('close', finish);
+      resolve();
+    }
+  });
+}
 
 /**
  * @param {BuildArgsInput} opts
@@ -105,7 +176,18 @@ export function buildArgs(opts) {
   if (opts.cloud) args.push('--cloud');
   if (opts.resumeChatId) args.push(`--resume=${opts.resumeChatId}`);
   else if (opts.resumeLatest) args.push('--resume');
-  args.push(opts.prompt);
+  if (shouldSidecarPrompt(opts.prompt)) {
+    const promptFile = opts.promptFile ?? (opts.logPath ? `${opts.logPath}.prompt.txt` : undefined);
+    if (!promptFile) {
+      throw new Error(
+        'buildArgs: long or flag-like prompt needs logPath (or promptFile) for the sidecar',
+      );
+    }
+    writeFileSync(promptFile, opts.prompt, 'utf8');
+    args.push(sidecarPointer(promptFile));
+  } else {
+    args.push(opts.prompt);
+  }
   return args;
 }
 
@@ -123,6 +205,7 @@ export function buildArgs(opts) {
  * @property {string} logPath
  * @property {(ev: Record<string, unknown>) => void=} onEvent
  * @property {(line: string) => void=} onRaw
+ * @property {(pid: number) => void=} onSpawn
  */
 
 /**
@@ -140,11 +223,20 @@ export async function runHeadless(opts) {
   const bin = await resolveBin();
   const args = buildArgs(opts);
   const [spawnCmd, spawnArgs] = adaptWindowsBin(bin, args);
+  // POSIX: detached without unref() so cursor-agent is a process-group
+  // leader and `killTree` can signal `-pid`. Do not detach on Windows —
+  // libuv already assigns non-detached children to the process-wide job.
+  // Do not unref: that is reserved for the background *worker*, which must
+  // outlive the Claude session.
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
+    ...(process.platform === 'win32' ? {} : { detached: true }),
   });
+  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
+    opts.onSpawn(child.pid);
+  }
   if (!child.stdout || !child.stderr) {
     throw new Error('cursor-agent spawn failed: stdout/stderr not attached');
   }
@@ -183,22 +275,9 @@ export async function runHeadless(opts) {
     if (ev.type === 'result' && !sawResult) {
       sawResult = true;
       setTimeout(() => {
-        if (!child.killed && child.exitCode === null) {
+        if (childStillRunning(child)) {
           killed = true;
-          try {
-            child.kill('SIGTERM');
-          } catch {
-            // noop
-          }
-          setTimeout(() => {
-            if (!child.killed && child.exitCode === null) {
-              try {
-                child.kill('SIGKILL');
-              } catch {
-                // noop
-              }
-            }
-          }, 5_000);
+          reapChild(child, { graceMs: 5_000 }).catch(() => {});
         }
       }, 5_000);
     }
@@ -213,20 +292,7 @@ export async function runHeadless(opts) {
   if (typeof opts.timeoutSec === 'number' && opts.timeoutSec > 0) {
     timeoutHandle = setTimeout(() => {
       killed = true;
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // noop
-      }
-      setTimeout(() => {
-        if (!child.killed && child.exitCode === null) {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            // noop
-          }
-        }
-      }, 5_000);
+      reapChild(child, { graceMs: 5_000 }).catch(() => {});
     }, opts.timeoutSec * 1_000);
   }
 
@@ -247,6 +313,10 @@ export async function runHeadless(opts) {
       done(typeof code === 'number' ? code : sawResult ? 0 : 1);
     });
   });
+  // Cheap insurance: child `'close'` already waits for stdio to shut, but
+  // await the readline interfaces too so the last NDJSON line cannot still
+  // be in flight when we summarise.
+  await Promise.all([drainReadline(stdoutLines), drainReadline(stderrLines)]);
   if (timeoutHandle) clearTimeout(timeoutHandle);
   await new Promise((resolve) => {
     try {

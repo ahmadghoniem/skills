@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PROMPT_INLINE_MAX,
   buildArgs,
+  childStillRunning,
   fastVariant,
   isCursorModel,
   parseModelList,
+  reapChild,
   resolveModel,
   runHeadless,
 } from '../scripts/lib/cursor.mjs';
@@ -103,6 +106,71 @@ describe('buildArgs', () => {
   it('omits --approve-mcps by default', () => {
     const args = buildArgs({ prompt: 'hi', model: 'auto' });
     expect(args).not.toContain('--approve-mcps');
+  });
+
+  it('keeps a short ordinary prompt inline', () => {
+    const args = buildArgs({ prompt: 'fix the flaky test', model: 'auto' });
+    expect(args.at(-1)).toBe('fix the flaky test');
+  });
+
+  it('routes a long prompt through the sidecar file', () => {
+    const tmp = makeTempHome();
+    try {
+      const logPath = `${tmp.dir}/run.ndjson`;
+      const prompt = 'x'.repeat(PROMPT_INLINE_MAX + 1);
+      const args = buildArgs({ prompt, model: 'auto', logPath });
+      const pointer = args.at(-1);
+      expect(pointer).toMatch(/^Read the file at .+ in full and carry out that task\.$/);
+      expect(pointer).toContain(`${logPath}.prompt.txt`);
+      expect(readFileSync(`${logPath}.prompt.txt`, 'utf8')).toBe(prompt);
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('routes a short prompt with CLI-looking tokens through the sidecar', () => {
+    const tmp = makeTempHome();
+    try {
+      const logPath = `${tmp.dir}/run.ndjson`;
+      const prompt = 'compile with -X -ldflags "-s"';
+      const args = buildArgs({ prompt, model: 'auto', logPath });
+      expect(args.at(-1)).not.toBe(prompt);
+      expect(args.at(-1)).toMatch(/^Read the file at /);
+      expect(readFileSync(`${logPath}.prompt.txt`, 'utf8')).toBe(prompt);
+    } finally {
+      tmp.cleanup();
+    }
+  });
+});
+
+describe('childStillRunning / reapChild', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('treats killed=true as still running until exitCode or signalCode is set', () => {
+    expect(childStillRunning({ killed: true, exitCode: null, signalCode: null })).toBe(true);
+    expect(childStillRunning({ killed: false, exitCode: 0, signalCode: null })).toBe(false);
+    expect(childStillRunning({ killed: true, exitCode: null, signalCode: 'SIGTERM' })).toBe(false);
+  });
+
+  it('escalates SIGKILL against a stub child whose killed is true but which has not exited', async () => {
+    const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
+      if (signal === 0) return true;
+      return true;
+    });
+    try {
+      const child = { pid: 4242, killed: true, exitCode: null, signalCode: null };
+      const outcome = await reapChild(child, { graceMs: 1 });
+      const signals = killSpy.mock.calls.map((c) => c[1]);
+      expect(signals).toContain('SIGKILL');
+      expect(outcome === 'killed' || outcome === 'failed').toBe(true);
+    } finally {
+      killSpy.mockRestore();
+      if (desc) Object.defineProperty(process, 'platform', desc);
+    }
   });
 });
 

@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.0 — cancel actually kills cursor-agent, and long prompts leave argv
+
+A research pass (grok-4.6 with Exa, sourced against libuv, Node, and the CLI wrappers' own issue
+trackers) turned up four defects in how this plugin starts and stops the `cursor-agent` child, plus
+one in how the prompt reaches it. The kill helper is `scripts/lib/killtree.mjs`, byte-identical to
+the one in the sibling `claude-grok-delegate` plugin so the two forks cannot drift.
+
+### Fixed
+
+- **`/cursor:cancel` killed the wrapper and left `cursor-agent` running.** The job record stored
+  only the node wrapper's pid. Signalling it on Windows leaves the actual agent, and everything it
+  spawned, orphaned: libuv's process-wide Job Object carries
+  `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`, so grandchildren are deliberately excluded from it. The
+  record flipped to `cancelled` while the run kept going. Jobs now record `cliPid` alongside `pid`,
+  and cancel tree-kills the CLI child first, then the wrapper — in that order, because once the
+  root is gone Windows can no longer enumerate its descendants.
+
+- **The SIGKILL escalation could never fire.** Both kill paths in `runHeadless`, and the one in
+  `run.mjs`, gated escalation on `!child.killed`. Node sets `child.killed` when the signal is
+  *sent*, not when the process exits, so after `child.kill('SIGTERM')` the flag is already `true`
+  and the SIGKILL was dead code. An agent that ignores SIGTERM was never escalated. The predicate is
+  now `child.exitCode === null && child.signalCode === null`, in `childStillRunning`.
+
+- **A pid that could not be signalled was read as "already dead".** The old `isProcessAlive`
+  treated any throw from `process.kill(pid, 0)` as "gone". Only `ESRCH` means gone; `EPERM` means
+  the pid names a live process this account cannot signal, which is common on Windows. Reading that
+  as dead marks a live job cancelled without killing anything. `isPidGone` now checks for `ESRCH`
+  specifically.
+
+- **The whole prompt went onto `cursor-agent`'s argv.** Long briefs risk `spawn ENAMETOOLONG`
+  against the 32,767-character `CreateProcess` limit, and — more insidiously — a brief containing
+  flag-like tokens (`-X`, `-ldflags`) can be re-split by the receiving argument parser into a
+  *different prompt* rather than an error. Prompts over 4 KiB, or containing a flag-like token, are
+  now written to a `${logPath}.prompt.txt` sidecar and replaced on argv by a pointer telling the
+  agent to read that file. Shorter briefs stay inline: the sidecar costs the agent a Read call and
+  can dilute the instruction, so it is not worth paying on every run.
+
+### Changed
+
+- On POSIX the `cursor-agent` child is spawned `detached: true` (without `unref()`, since we still
+  wait on `'close'`) so it leads its own process group and the tree kill can signal `-pid`. On
+  Windows it stays inside libuv's job and `taskkill /T /F` walks the tree instead.
+- `taskkill` is invoked by absolute path with `shell: false`. This is mandatory, not stylistic:
+  under Git Bash, MSYS rewrites `/PID` into `C:/Program Files/Git/PID` and the kill silently does
+  nothing. Exit code 128 is read as "process not found" rather than matching on stderr, which is
+  localised.
+- Both readline interfaces are drained before the run is summarised.
+- `/cursor:cancel` now reports which of the CLI and wrapper pids were already gone, instead of
+  claiming a kill that did not happen.
+
+### Tests
+
+125 passing, up from 108.
+
 ## 0.10.0 — argv stops mangling paths, and failed commands get reported
 
 Four fixes backported from the sibling `claude-grok-delegate` plugin, which was forked from this

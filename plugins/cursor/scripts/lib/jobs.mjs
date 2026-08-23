@@ -8,7 +8,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
+
+export { isPidGone } from './killtree.mjs';
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
@@ -22,6 +25,7 @@ import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
  * @property {string} model
  * @property {string=} cursorChatId
  * @property {number=} pid
+ * @property {number=} cliPid
  * @property {JobStatus} status
  * @property {number=} exitCode
  * @property {string} startedAt
@@ -274,20 +278,15 @@ export function pruneOlderThanDays(repoPath, days = 30) {
   return removed;
 }
 
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/**
+ * @typedef {'killed'|'already-gone'|'failed'} KillOutcome
+ */
 
 /**
  * @param {string} repoPath
  * @param {string} id
  * @param {number} [graceMs]
- * @returns {Promise<JobRecord|null>}
+ * @returns {Promise<(JobRecord & { cliKill?: KillOutcome, wrapKill?: KillOutcome })|null>}
  */
 export async function cancelJob(repoPath, id, graceMs = 5_000) {
   const job = readJob(repoPath, id);
@@ -297,28 +296,31 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
   // and its PID was reused, the signals below could hit an unrelated process.
   // The job dir is short-lived and pruned after 30 days, so we accept this
   // rather than track a process-group / start-time identity cross-platform.
-  if (typeof job.pid === 'number' && isProcessAlive(job.pid)) {
-    try {
-      process.kill(job.pid, 'SIGTERM');
-    } catch {
-      // ignore — may have exited
-    }
-    const deadline = Date.now() + graceMs;
-    while (Date.now() < deadline && isProcessAlive(job.pid)) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    if (isProcessAlive(job.pid)) {
-      try {
-        process.kill(job.pid, 'SIGKILL');
-      } catch {
-        // ignore
-      }
-    }
+  // Tree-kill the billed CLI child first, then the wrapper: if the wrapper
+  // dies first, Windows can no longer enumerate descendants.
+  /** @type {Set<number>} */
+  const seen = new Set();
+  /**
+   * @param {number|undefined} pid
+   * @returns {Promise<KillOutcome|undefined>}
+   */
+  async function reapPid(pid) {
+    if (typeof pid !== 'number' || seen.has(pid)) return undefined;
+    seen.add(pid);
+    return killTree(pid, { graceMs });
   }
-  return updateJob(repoPath, id, {
+  const cliKill = await reapPid(job.cliPid);
+  const wrapKill = await reapPid(job.pid);
+  const updated = updateJob(repoPath, id, {
     status: 'cancelled',
     finishedAt: new Date().toISOString(),
   });
+  if (!updated) return null;
+  return {
+    ...updated,
+    ...(cliKill ? { cliKill } : {}),
+    ...(wrapKill ? { wrapKill } : {}),
+  };
 }
 
 /**

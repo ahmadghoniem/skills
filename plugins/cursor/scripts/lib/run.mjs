@@ -1,11 +1,12 @@
 // Thin Promise wrapper around child_process.spawn with:
 //   - no throw on non-zero exit (resolve with exitCode)
-//   - optional timeout (SIGTERM, then SIGKILL after 5 s grace)
+//   - optional timeout (tree-kill: SIGTERM then SIGKILL after 5 s grace)
 //   - stdout/stderr captured as strings
 //
 // Replaces the subset of `execa` that this plugin actually uses.
 
 import { spawn } from 'node:child_process';
+import { killTree } from './killtree.mjs';
 import { adaptWindowsBin } from './winbin.mjs';
 
 /**
@@ -53,27 +54,22 @@ export function run(cmd, args, opts = {}) {
       });
     }
     let timeout;
-    let killTimeout;
     if (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) {
       timeout = setTimeout(() => {
         timedOut = true;
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // noop
-        }
-        killTimeout = setTimeout(() => {
+        if (typeof child.pid === 'number' && child.pid > 0) {
+          killTree(child.pid).catch(() => {});
+        } else {
           try {
-            child.kill('SIGKILL');
+            child.kill('SIGTERM');
           } catch {
             // noop
           }
-        }, 5_000);
+        }
       }, opts.timeoutMs);
     }
     child.on('error', (err) => {
       if (timeout) clearTimeout(timeout);
-      if (killTimeout) clearTimeout(killTimeout);
       resolve({
         stdout,
         stderr: stderr || String(err?.message ?? err ?? 'spawn error'),
@@ -83,7 +79,6 @@ export function run(cmd, args, opts = {}) {
     });
     child.on('close', (code) => {
       if (timeout) clearTimeout(timeout);
-      if (killTimeout) clearTimeout(killTimeout);
       resolve({
         stdout,
         stderr,

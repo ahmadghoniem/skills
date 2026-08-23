@@ -55,6 +55,8 @@ describe('delegate foreground', () => {
     expect(job.model).toBe('composer-2.5-fast');
     expect(job.cursorChatId).toBe('chat_abc123');
     expect(job.filesTouched?.length ?? 0).toBeGreaterThan(0);
+    expect(typeof job.cliPid).toBe('number');
+    expect(job.cliPid).toBeGreaterThan(0);
   });
 
   // Issue C: a foreground run must also drop the completion sentinel — not
