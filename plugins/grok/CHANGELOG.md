@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1 — fixes from the full end-to-end pass
+
+Running every command and flag against real dispatches turned up three defects the first cut's narrower testing missed.
+
+- **`--prompt-file` with a space in the path now works.** `collapseCommandArgv` re-joined and re-split argv the shell had already split, tearing `C:/Users/Ahmed Ibrahim/brief.md` into two tokens; the stray fragment landed in `positional` and the run died on the misleading "pass the task either on the command line or via `--prompt-file`, not both". It affected every path containing a space, which on Windows is most of them. Argv is now passed through untouched when the shell has already split it; a single `"$ARGUMENTS"` string still collapses, which is the one case that needs it. Found by the `grok-runner` agent hitting the error during its own test dispatch and diagnosing it rather than working around it.
+- **`/grok:result --all` on its own lists jobs.** It previously only took effect inside the `--list` branch, so a bare `--all` silently printed a single job's record instead — same output shape, different content, nothing to signal the flag was ignored. `--all` now implies `--list`.
+- **`/grok:result` no longer double-spaces** before the summary heading.
+
+Note: `claude-cursor-delegate` carries the same `collapseCommandArgv` and therefore the same argv bug.
+
 ## 0.1.0 — first cut
 
 Forked from [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) 0.9.0. The job registry, argument parser, background worker, and job-table renderer are backend-agnostic and carried over unchanged; everything that touches the CLI is new.
