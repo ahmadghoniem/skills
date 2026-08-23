@@ -201,9 +201,20 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 export function collapseCommandArgv(rawArgv) {
   const delimiterIdx = rawArgv.indexOf('--');
   const firstHalf = delimiterIdx === -1 ? [] : rawArgv.slice(0, delimiterIdx);
-  const userRaw =
-    delimiterIdx === -1 ? rawArgv.join(' ') : rawArgv.slice(delimiterIdx + 1).join(' ');
-  return [...firstHalf, ...collapseArguments(userRaw)];
+  const rest = delimiterIdx === -1 ? rawArgv : rawArgv.slice(delimiterIdx + 1);
+  // More than one token means a real shell already split and unquoted these,
+  // and re-joining then re-splitting would undo that work. It tore
+  // `--prompt-file "C:/Users/Ahmed Ibrahim/brief.md"` into three tokens, so the
+  // path fragment landed in `positional` and the dispatch died on the
+  // thoroughly misleading "pass the task either on the command line or via
+  // --prompt-file, not both" — for every path with a space in it, which on
+  // Windows is most of them.
+  //
+  // Exactly one token is the case this collapse exists for: Claude Code hands a
+  // slash command's arguments over as a single `"$ARGUMENTS"` string that has
+  // never been through a shell, so it still needs splitting here.
+  if (rest.length > 1) return [...firstHalf, ...rest];
+  return [...firstHalf, ...collapseArguments(rest.join(' '))];
 }
 
 /**
