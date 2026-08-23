@@ -1,0 +1,12 @@
+{
+  "name": "grok",
+  "version": "0.1.0",
+  "description": "Hand off tasks from Claude Code to the Grok Build CLI (grok).",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/claude-grok-delegate",
+  "repository": "https://github.com/ahmadghoniem/claude-grok-delegate",
+  "license": "MIT"
+}
