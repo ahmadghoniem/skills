@@ -138,6 +138,32 @@ describe('resolveModel', () => {
   });
 });
 
+describe('escalateSigkill', () => {
+  it('fires SIGKILL against a stub child whose killed is true but which has not exited', async () => {
+    const { escalateSigkill } = await import('../scripts/lib/grok.mjs');
+    const child = {
+      killed: true,
+      exitCode: null,
+      signalCode: null,
+      kill: vi.fn(),
+    };
+    escalateSigkill(child);
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('does not SIGKILL a child that has already exited', async () => {
+    const { escalateSigkill } = await import('../scripts/lib/grok.mjs');
+    const child = {
+      killed: true,
+      exitCode: 1,
+      signalCode: null,
+      kill: vi.fn(),
+    };
+    escalateSigkill(child);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+});
+
 describe('runHeadless against stub binary', () => {
   let tmp;
   const prevHome = process.env.CGD_HOME;
@@ -179,5 +205,21 @@ describe('runHeadless against stub binary', () => {
     const summary = summariseEvents(result.events);
     expect(summary.success).toBe(true);
     expect(summary.sessionId).toBe('01a02e4d-8d55-73f2-a26b-046282b9097d');
+  });
+
+  it('reports the grok child pid via onSpawn as soon as it spawns', async () => {
+    const { runHeadless } = await import('../scripts/lib/grok.mjs');
+    const onSpawn = vi.fn();
+    const result = await runHeadless({
+      prompt: 'hi',
+      model: 'grok-4.6',
+      logPath: `${tmp.dir}/spawn.ndjson`,
+      timeoutSec: 10,
+      onSpawn,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(onSpawn).toHaveBeenCalledTimes(1);
+    expect(onSpawn.mock.calls[0][0]).toEqual(expect.any(Number));
+    expect(onSpawn.mock.calls[0][0]).toBeGreaterThan(0);
   });
 });

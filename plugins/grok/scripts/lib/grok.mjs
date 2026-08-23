@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createWriteStream, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
 import { ensureDir, pluginHome } from './paths.mjs';
 import { run } from './run.mjs';
@@ -216,6 +218,7 @@ export function buildArgs(opts) {
  * @property {number=} timeoutSec
  * @property {string} logPath
  * @property {(ev: Record<string, unknown>) => void=} onEvent
+ * @property {(pid: number) => void=} onSpawn  Grok child's pid, as soon as it exists.
  */
 
 /**
@@ -224,6 +227,25 @@ export function buildArgs(opts) {
  * @property {Record<string, unknown>[]} events
  * @property {boolean} killed
  */
+
+/**
+ * Escalate to SIGKILL when the child has not actually exited.
+ *
+ * Node sets `child.killed` when a signal is *sent*, not when the process
+ * exits, so gating on `!child.killed` after `child.kill('SIGTERM')` makes
+ * the escalation dead. The production predicate is exit/signal codes.
+ *
+ * @param {import('node:child_process').ChildProcess} child
+ */
+export function escalateSigkill(child) {
+  if (child.exitCode === null && child.signalCode === null) {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // noop
+    }
+  }
+}
 
 /**
  * @param {DelegateOpts} opts
@@ -248,9 +270,17 @@ export async function runHeadless(opts) {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
+    // POSIX: own process group so killTree can signal `-pid`. Do not unref —
+    // we still wait on 'close'. Windows: stay in libuv's job; taskkill /T
+    // walks the tree instead. The background worker's detached+unref is a
+    // separate spawn and must stay as it is.
+    ...(process.platform === 'win32' ? {} : { detached: true }),
   });
   if (!child.stdout || !child.stderr) {
     throw new Error('grok spawn failed: stdout/stderr not attached');
+  }
+  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
+    opts.onSpawn(child.pid);
   }
 
   const logStream = createWriteStream(opts.logPath, { flags: 'a' });
@@ -274,6 +304,12 @@ export async function runHeadless(opts) {
   let killed = false;
 
   const stdoutLines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  const stderrLines = createInterface({ input: child.stderr, crlfDelay: Infinity });
+  // Attach before waiting on the child so a close that races with our
+  // await still resolves. Cheap insurance on top of child `'close'`
+  // (which already fires after stdio ends).
+  const stdoutDrained = once(stdoutLines, 'close');
+  const stderrDrained = once(stderrLines, 'close');
   stdoutLines.on('line', (line) => {
     logSafe(line + '\n');
     const ev = parseLine(line);
@@ -282,31 +318,20 @@ export async function runHeadless(opts) {
     if (opts.onEvent) opts.onEvent(ev);
   });
 
-  const stderrLines = createInterface({ input: child.stderr, crlfDelay: Infinity });
   stderrLines.on('line', (line) => {
     logSafe(`# stderr: ${line}\n`);
   });
 
   let timeoutHandle;
-  const killTree = () => {
+  const onTimeout = () => {
     killed = true;
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // noop
+    if (typeof child.pid === 'number') {
+      void killTree(child.pid, { graceMs: 5_000 });
     }
-    setTimeout(() => {
-      if (!child.killed && child.exitCode === null) {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          // noop
-        }
-      }
-    }, 5_000);
+    setTimeout(() => escalateSigkill(child), 5_000);
   };
   if (typeof opts.timeoutSec === 'number' && opts.timeoutSec > 0) {
-    timeoutHandle = setTimeout(killTree, opts.timeoutSec * 1_000);
+    timeoutHandle = setTimeout(onTimeout, opts.timeoutSec * 1_000);
   }
 
   const exitCode = await new Promise((resolve) => {
@@ -328,6 +353,7 @@ export async function runHeadless(opts) {
   });
 
   if (timeoutHandle) clearTimeout(timeoutHandle);
+  await Promise.all([stdoutDrained, stderrDrained]);
   await new Promise((resolve) => {
     try {
       logStream.end(() => resolve());

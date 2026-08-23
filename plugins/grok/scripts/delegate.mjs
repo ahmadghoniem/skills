@@ -10,6 +10,7 @@ import {
   createJob,
   pruneOlderThanDays,
   rawLogPath as rawLogPathFor,
+  readJob,
   updateJob,
 } from './lib/jobs.mjs';
 import { describeToolCall, summariseEvents } from './lib/parse.mjs';
@@ -110,6 +111,13 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
     resumeLatest: resume && !sessionId,
     timeoutSec: flags.timeout,
     logPath,
+    onSpawn: (cliPid) => {
+      try {
+        updateJob(root, jobId, { cliPid });
+      } catch {
+        // A failed pid write must not tear down a running grok.
+      }
+    },
     onEvent: (ev) => {
       if (!live) {
         // The background worker records the session id as soon as it appears,
@@ -201,7 +209,7 @@ async function foreground(flags, prompt, jobId, root) {
   return result.exitCode;
 }
 
-function spawnBackground(jobId, argv, root, extraEnv = {}) {
+function spawnBackground(jobId, argv, root) {
   const selfPath = fileURLToPath(import.meta.url);
   const logPath = rawLogPathFor(root, jobId);
   ensureDir(logsDir(root));
@@ -210,7 +218,7 @@ function spawnBackground(jobId, argv, root, extraEnv = {}) {
   const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
     detached: true,
     stdio: ['ignore', out, err],
-    env: { ...process.env, CGD_WORKER: '1', CGD_REPO_ROOT: root, ...extraEnv },
+    env: { ...process.env, CGD_WORKER: '1', CGD_REPO_ROOT: root },
   });
   child.unref();
   return child.pid ?? -1;
@@ -224,10 +232,14 @@ export async function main(rawArgv) {
   const flags = parseFlags(collapseCommandArgv(rawArgv));
 
   if (flags.worker) {
-    // The prompt is handed over verbatim via env to avoid a second collapse
-    // pass mangling quotes/backslashes; fall back to positional for safety.
-    const prompt = process.env.CGD_PROMPT ?? flags.positional.join(' ').trim();
     const root = process.env.CGD_REPO_ROOT ?? (await repoRoot(process.cwd()));
+    // Prompt lives on the job JSON (written at createJob). CGD_PROMPT is a
+    // one-release fallback so a worker already spawned by a previous plugin
+    // version is not broken; scheduled for removal.
+    const prompt =
+      process.env.CGD_PROMPT ??
+      readJob(root, flags.worker)?.prompt ??
+      flags.positional.join(' ').trim();
     await runAndRecord(flags, prompt, flags.worker, root, { live: false });
     return 0;
   }
@@ -285,7 +297,7 @@ export async function main(rawArgv) {
       }
     }
     forwarded.push('--timeout', String(flags.timeout));
-    const pid = spawnBackground(jobId, forwarded, root, prompt ? { CGD_PROMPT: prompt } : {});
+    const pid = spawnBackground(jobId, forwarded, root);
     updateJob(root, jobId, { pid });
     process.stdout.write(
       `Job \`${jobId}\` started in background (model \`${model}\`, pid ${pid}).\n`,

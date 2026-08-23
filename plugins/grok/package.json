@@ -1,6 +1,6 @@
 {
   "name": "claude-grok-delegate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Use the Grok Build CLI from Claude Code to delegate coding tasks.",
   "type": "module",
   "license": "MIT",

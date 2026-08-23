@@ -24,8 +24,8 @@ function truncate(s, n) {
 }
 
 /**
- * Render tracked jobs as a compact Markdown table. Shared by `status.mjs` (run
- * directly) and `/cursor:result --list`, so both listings stay identical.
+ * Render tracked jobs as a compact Markdown table. Shared by `/grok:result
+ * --list` and `--all`, so both listings stay identical.
  *
  * @param {Array<Record<string, any>>} rows
  * @returns {string}

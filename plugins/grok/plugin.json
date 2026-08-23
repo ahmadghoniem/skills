@@ -1,6 +1,6 @@
 {
   "name": "grok",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Hand off tasks from Claude Code to the Grok Build CLI (grok).",
   "author": {
     "name": "Ahmed Ghoniem",

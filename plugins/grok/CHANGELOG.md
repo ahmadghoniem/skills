@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.3.0 — cancel actually kills the CLI, and the prompt leaves the environment
+
+A research pass (grok-4.6 with Exa, sourced against libuv, Node, and the CLI wrappers' own issue
+trackers) turned up four defects in how this plugin starts and stops the grok child. All four are
+fixed here, in a `killtree.mjs` that is byte-identical to the one in the sibling
+`claude-cursor-delegate` plugin so the two forks cannot drift.
+
+### Fixed
+
+- **`/grok:cancel` killed the wrapper and left grok running — and billing.** The job record stored
+  only the node wrapper's pid. Signalling it on Windows leaves the actual `grok` process, and
+  everything it spawned, orphaned: libuv's process-wide Job Object carries
+  `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`, so grandchildren are deliberately excluded from it. The
+  record flipped to `cancelled` while the billed run kept going. Jobs now record `cliPid` alongside
+  `pid`, and cancel tree-kills the CLI child first, then the wrapper — in that order, because once
+  the root is gone Windows can no longer enumerate its descendants.
+
+- **The SIGKILL escalation could never fire.** Every kill path gated the escalation on
+  `!child.killed`. Node sets `child.killed` when the signal is *sent*, not when the process exits,
+  so after `child.kill('SIGTERM')` the flag is already `true` and the SIGKILL was dead code. A grok
+  run that ignores SIGTERM was never escalated. The predicate is now
+  `child.exitCode === null && child.signalCode === null`.
+
+- **A pid that could not be signalled was read as "already dead".** The old `isProcessAlive`
+  treated any throw from `process.kill(pid, 0)` as "gone". Only `ESRCH` means gone; `EPERM` means
+  the pid names a live process this account cannot signal, which is common on Windows. Reading that
+  as dead marks a live billed job cancelled without killing anything. `isPidGone` now checks for
+  `ESRCH` specifically.
+
+- **The prompt travelled to the background worker through the environment.** `CGD_PROMPT` carried
+  the whole brief in the child's environment block. The prompt now lives on the job JSON, written
+  at `createJob` and read back by the worker — the worker's argv is ids and flags only. `CGD_PROMPT`
+  is still read as a fallback for one release so a worker spawned by 0.2.0 is not broken.
+
+### Changed
+
+- On POSIX the grok child is spawned `detached: true` (without `unref()`, since we still wait on
+  `'close'`) so it leads its own process group and the tree kill can signal `-pid`. On Windows it
+  stays inside libuv's job and `taskkill /T /F` walks the tree instead.
+- `taskkill` is invoked by absolute path with `shell: false`. This is mandatory, not stylistic:
+  under Git Bash, MSYS rewrites `/PID` into `C:/Program Files/Git/PID` and the kill silently does
+  nothing. Exit code 128 is read as "process not found" rather than matching on stderr, which is
+  localised.
+- Both readline interfaces are drained before the run is summarised.
+- `/grok:cancel` now reports which of the CLI and wrapper pids were already gone, instead of
+  claiming a kill that did not happen.
+
+### Tests
+
+114 passing, up from 104.
+
 ## 0.2.0 — cancel, resume, setup, and a test suite
 
 ### Added

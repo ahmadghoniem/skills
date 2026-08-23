@@ -8,7 +8,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isPidGone, killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
+
+export { isPidGone };
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
@@ -22,6 +25,7 @@ import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
  * @property {string} model
  * @property {string=} grokSessionId
  * @property {number=} pid
+ * @property {number=} cliPid
  * @property {JobStatus} status
  * @property {number=} exitCode
  * @property {string} startedAt
@@ -274,22 +278,6 @@ export function pruneOlderThanDays(repoPath, days = 30) {
 }
 
 /**
- * True when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
- * Other errors (EPERM) mean the pid still names a process we cannot signal.
- *
- * @param {number} pid
- * @returns {boolean}
- */
-export function isPidGone(pid) {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (err) {
-    return Boolean(err && typeof err === 'object' && err.code === 'ESRCH');
-  }
-}
-
-/**
  * @param {string} repoPath
  * @param {string} id
  * @param {number} [graceMs]
@@ -303,23 +291,14 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
   // and its PID was reused, the signals below could hit an unrelated process.
   // The job dir is short-lived and pruned after 30 days, so we accept this
   // rather than track a process-group / start-time identity cross-platform.
-  if (typeof job.pid === 'number' && !isPidGone(job.pid)) {
-    try {
-      process.kill(job.pid, 'SIGTERM');
-    } catch {
-      // ignore — may have exited
-    }
-    const deadline = Date.now() + graceMs;
-    while (Date.now() < deadline && !isPidGone(job.pid)) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    if (!isPidGone(job.pid)) {
-      try {
-        process.kill(job.pid, 'SIGKILL');
-      } catch {
-        // ignore
-      }
-    }
+  //
+  // Kill the grok CLI tree first. If the wrapper exits before the CLI tree
+  // is walked (Windows `taskkill /T`), descendants can leak.
+  if (typeof job.cliPid === 'number') {
+    await killTree(job.cliPid, { graceMs });
+  }
+  if (typeof job.pid === 'number') {
+    await killTree(job.pid, { graceMs });
   }
   return updateJob(repoPath, id, {
     status: 'cancelled',

@@ -4,9 +4,39 @@ import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { cancelJob, findRunningJobs, isPidGone, readJob } from './lib/jobs.mjs';
 
-function pidAlreadyGone(job) {
-  if (typeof job.pid !== 'number') return true;
-  return isPidGone(job.pid);
+/**
+ * Snapshot liveness of the grok CLI pid and the wrapper pid *before* we
+ * tree-kill, so the user-facing line can say which ones were already gone.
+ *
+ * @param {import('./lib/jobs.mjs').JobRecord} job
+ * @returns {string[]}
+ */
+function pidLivenessBits(job) {
+  /** @type {string[]} */
+  const bits = [];
+  if (typeof job.cliPid === 'number') {
+    bits.push(
+      isPidGone(job.cliPid)
+        ? `cli pid ${job.cliPid} already gone`
+        : `cli pid ${job.cliPid} still live`,
+    );
+  }
+  if (typeof job.pid === 'number') {
+    bits.push(
+      isPidGone(job.pid)
+        ? `wrapper pid ${job.pid} already gone`
+        : `wrapper pid ${job.pid} still live`,
+    );
+  }
+  return bits;
+}
+
+function allPidsAlreadyGone(bits) {
+  return bits.length === 0 || bits.every((b) => b.endsWith('already gone'));
+}
+
+function reportBitsAfterCancel(bits) {
+  return bits.map((b) => b.replace('still live', 'killed')).join(', ');
 }
 
 /**
@@ -36,7 +66,9 @@ export async function main(rawArgv) {
     return 2;
   }
   const before = readJob(root, id);
-  const goneBefore = Boolean(before && before.status === 'running' && pidAlreadyGone(before));
+  const liveness =
+    before && before.status === 'running' ? pidLivenessBits(before) : [];
+  const goneBefore = Boolean(before && before.status === 'running' && allPidsAlreadyGone(liveness));
   const updated = await cancelJob(root, id);
   if (!updated) {
     process.stderr.write(jobNotFoundMessage(id));
@@ -48,14 +80,14 @@ export async function main(rawArgv) {
     );
     return 0;
   }
+  const pidBit = liveness.length ? ` (${reportBitsAfterCancel(liveness)})` : '';
   if (goneBefore) {
-    const pidBit = typeof before?.pid === 'number' ? ` (pid ${before.pid})` : '';
     process.stdout.write(
       `Job \`${updated.id}\` process was already gone${pidBit}; record marked as cancelled.\n`,
     );
     return 0;
   }
-  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}.\n`);
+  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}${pidBit}.\n`);
   return 0;
 }
 

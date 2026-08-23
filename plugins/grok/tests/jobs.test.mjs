@@ -47,6 +47,14 @@ describe('jobs registry', () => {
     expect(readJob(repo, 'job1')?.exitCode).toBe(0);
   });
 
+  it('round-trips cliPid on the job record', () => {
+    createJob({ id: 'clipid1', repoPath: repo, prompt: 'p', model: 'm' });
+    updateJob(repo, 'clipid1', { cliPid: 4242, pid: 111 });
+    const read = readJob(repo, 'clipid1');
+    expect(read?.cliPid).toBe(4242);
+    expect(read?.pid).toBe(111);
+  });
+
   it('lists jobs newest first, honours limit, and filters by status', () => {
     createJob({ id: 'a', repoPath: repo, prompt: 'a', model: 'x' });
     createJob({ id: 'b', repoPath: repo, prompt: 'b', model: 'x' });

@@ -41,7 +41,7 @@ describe('/grok:cancel', () => {
     await new Promise((resolve) => child.on('close', resolve));
 
     createJob({ id: 'deadpid1', repoPath: tmp.dir, prompt: 'p', model: 'grok-4.6' });
-    updateJob(tmp.dir, 'deadpid1', { pid });
+    updateJob(tmp.dir, 'deadpid1', { pid, cliPid: pid });
 
     const code = await cancelMain(['deadpid1']);
     expect(code).toBe(0);

@@ -21,7 +21,7 @@ If a Claude Code session was already open when you installed grok, its `PATH` wi
 
 - **`/grok:delegate <task>`** — hand a task to grok. Blocks and prints the result inline by default; `--background` returns immediately.
 - **`/grok:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/grok:cancel [job-id]`** — terminate a running job (SIGTERM, then SIGKILL after 5s). Also reaps a record left stuck at `running` because its parent process died.
+- **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (SIGTERM, then SIGKILL after 5s; `taskkill /T /F` on Windows), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
 - **`/grok:resume [--resume=<id>] [follow-up]`** — continue the latest grok session for this repo, or a named one.
 - **`/grok:setup`** — health-check the CLI: resolved binary, version, login state, available models.
 
