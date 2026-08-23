@@ -12,14 +12,17 @@ allowed-tools: Bash(node:*), AskUserQuestion
 
 ## Run it
 
+When `$ARGUMENTS` is still one unsplit string (the slash-command case), pass it with `--arg-string` so the plugin splits it and newlines are not flattened:
+
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- [flags] "<task>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --arg-string "$ARGUMENTS"
 ```
 
-Flags go **before** the task, and the task is a single quoted argument. Never place a flag after the task text and never split the task across arguments.
+When the shell has already split the command line, omit `--arg-string` — argv is used as-is after a leading `--`. Flags go **before** the task, and the task is a single quoted argument.
 
 | Flag | Effect |
 | --- | --- |
+| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit it when argv is already tokenised. |
 | `--model <id>` | Pin a model. Omit it and the plugin uses the newest model `grok models` reports. |
 | `--effort <level>` | Grok's `--reasoning-effort`. Pick per task: low for mechanical work, higher when the task needs thinking. |
 | `--background` | Return immediately; fetch the write-up later with `/grok:result <id>`. Default is to block and print the result inline. |

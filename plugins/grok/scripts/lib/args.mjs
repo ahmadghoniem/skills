@@ -190,10 +190,14 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 }
 
 /**
- * Apply the shared slash-command argv prologue: everything before a `--`
- * delimiter is taken verbatim, everything after it is re-split with quote
- * handling (Claude Code passes the user's text as one `"$ARGUMENTS"` string).
- * Returns the combined token array ready for `parseArgv`.
+ * Apply the shared slash-command argv prologue.
+ *
+ * A leading `--` delimiter is stripped (tokens before it are kept verbatim).
+ * `--arg-string <blob>` marks `<blob>` as one unsplit string that never passed
+ * through a shell — Claude Code's `"$ARGUMENTS"` arrives this way — and is
+ * replaced in place by `splitArgString(blob)`. With the marker absent, argv
+ * is returned untouched: inferring "needs a split" from token count flattened
+ * newlines and collapsed whitespace on a bare one-token prompt.
  *
  * @param {string[]} rawArgv
  * @returns {string[]}
@@ -202,19 +206,13 @@ export function collapseCommandArgv(rawArgv) {
   const delimiterIdx = rawArgv.indexOf('--');
   const firstHalf = delimiterIdx === -1 ? [] : rawArgv.slice(0, delimiterIdx);
   const rest = delimiterIdx === -1 ? rawArgv : rawArgv.slice(delimiterIdx + 1);
-  // More than one token means a real shell already split and unquoted these,
-  // and re-joining then re-splitting would undo that work. It tore
-  // `--prompt-file "C:/Users/Ahmed Ibrahim/brief.md"` into three tokens, so the
-  // path fragment landed in `positional` and the dispatch died on the
-  // thoroughly misleading "pass the task either on the command line or via
-  // --prompt-file, not both" — for every path with a space in it, which on
-  // Windows is most of them.
-  //
-  // Exactly one token is the case this collapse exists for: Claude Code hands a
-  // slash command's arguments over as a single `"$ARGUMENTS"` string that has
-  // never been through a shell, so it still needs splitting here.
-  if (rest.length > 1) return [...firstHalf, ...rest];
-  return [...firstHalf, ...collapseArguments(rest.join(' '))];
+  const tokens = [...firstHalf, ...rest];
+  const markerIdx = tokens.indexOf('--arg-string');
+  if (markerIdx === -1) return tokens;
+  const blob = tokens[markerIdx + 1];
+  const split = blob === undefined ? [] : splitArgString(blob);
+  const afterStart = blob === undefined ? markerIdx + 1 : markerIdx + 2;
+  return [...tokens.slice(0, markerIdx), ...split, ...tokens.slice(afterStart)];
 }
 
 /**

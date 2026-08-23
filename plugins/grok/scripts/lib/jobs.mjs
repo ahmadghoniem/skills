@@ -273,12 +273,19 @@ export function pruneOlderThanDays(repoPath, days = 30) {
   return removed;
 }
 
-function isProcessAlive(pid) {
+/**
+ * True when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
+ * Other errors (EPERM) mean the pid still names a process we cannot signal.
+ *
+ * @param {number} pid
+ * @returns {boolean}
+ */
+export function isPidGone(pid) {
   try {
     process.kill(pid, 0);
-    return true;
-  } catch {
     return false;
+  } catch (err) {
+    return Boolean(err && typeof err === 'object' && err.code === 'ESRCH');
   }
 }
 
@@ -296,17 +303,17 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
   // and its PID was reused, the signals below could hit an unrelated process.
   // The job dir is short-lived and pruned after 30 days, so we accept this
   // rather than track a process-group / start-time identity cross-platform.
-  if (typeof job.pid === 'number' && isProcessAlive(job.pid)) {
+  if (typeof job.pid === 'number' && !isPidGone(job.pid)) {
     try {
       process.kill(job.pid, 'SIGTERM');
     } catch {
       // ignore — may have exited
     }
     const deadline = Date.now() + graceMs;
-    while (Date.now() < deadline && isProcessAlive(job.pid)) {
+    while (Date.now() < deadline && !isPidGone(job.pid)) {
       await new Promise((r) => setTimeout(r, 200));
     }
-    if (isProcessAlive(job.pid)) {
+    if (!isPidGone(job.pid)) {
       try {
         process.kill(job.pid, 'SIGKILL');
       } catch {

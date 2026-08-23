@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.2.0 — cancel, resume, setup, and a test suite
+
+### Added
+
+- **`/grok:cancel [job-id]`** — SIGTERM, then SIGKILL after 5s. With no id it resolves the single
+  running job, refuses when several are running, and says so plainly when there are none.
+
+  It also handles the case the cursor original does not: a record whose recorded `pid` names no
+  live process. The watchdog lives inside the parent node process, so killing that parent strands
+  the record at `running` forever with nothing to signal it — 0.1.1 left two such records behind
+  during its own testing, and there was no way to clear them. `cancel` now detects the dead pid
+  (`ESRCH`) and reaps the record, reporting that the process was already gone rather than
+  pretending a kill happened.
+
+- **`/grok:resume [--resume=<id>] [follow-up]`** — continue the latest grok session for this
+  repository, or a named one. A nine-line wrapper that injects `--resume` and hands off to
+  `delegate.mjs`, so there is exactly one run path and one job-recording path.
+
+- **`/grok:setup`** — resolved binary, version, login state, available models. `--print-models`
+  prints just the ids for programmatic use.
+
+  This is built on `grok models`, which exits 0 and reports both auth state and the model list.
+  (`grok doctor` is unrelated — terminal, clipboard and microphone diagnostics, nothing about
+  authentication.)
+
+- **A vitest suite: 104 tests across 10 files**, weighted toward argv and flag parsing, which is
+  where every defect found in this plugin so far has lived. `parse.mjs` fixtures are trimmed from
+  real captured NDJSON runs rather than invented, so they cannot drift from what grok actually
+  emits.
+
+### Fixed
+
+- **Argv handling no longer guesses which caller it has.** 0.1.1 inferred it from token count —
+  more than one token after `--` meant a shell had already split it. That left a hole: a Bash call
+  with exactly one token (a bare prompt, no flags) still got split and re-joined, flattening
+  newlines and collapsing runs of whitespace, so a structured multi-line brief arrived as one line.
+
+  Argv is now returned untouched unless the new `--arg-string <blob>` marker is present. That
+  marker is the only input that genuinely has never been through a shell — Claude Code hands
+  `"$ARGUMENTS"` over as a single string. The caller declares which it is; nothing is inferred.
+
+- **A killed run no longer offers a session it cannot resume.** `end` is the only streaming event
+  carrying `sessionId`, and a watchdog kill never receives it — verified against a real killed
+  run's raw log. The foreground write-up used to print a `--resume=…` line pointing at nothing;
+  it now says the session was lost.
+
+### Changed
+
+- `isProcessAlive` and `isPidGone` were exact inverses of each other. Collapsed into one.
+
+### Upstream
+
+- All four of 0.1.1's fixes, plus this release's argv marker, were backported to
+  [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) 0.10.0, which
+  had inherited the same defects. The argv bug had shipped past that repo's 108-test suite,
+  because its coverage only ever fed `collapseCommandArgv` single-string input — the one shape
+  where the old code was correct.
+
 ## 0.1.1 — fixes from the full end-to-end pass
 
 Running every command and flag against real dispatches turned up three defects the first cut's narrower testing missed.

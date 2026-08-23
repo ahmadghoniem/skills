@@ -4,7 +4,7 @@ argument-hint: '[job-id] [--list] [--all]'
 allowed-tools: Bash(node:*)
 ---
 
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/result.mjs" -- "$ARGUMENTS"`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/result.mjs" -- --arg-string "$ARGUMENTS"`
 
 Show the result block to the user as-is. Do not truncate or summarise — the user invoked this command specifically to see the full record. If a `⚠ Commands that exited non-zero` section is present, keep it: it is the part most likely to contradict grok's own summary. End by noting the `--resume=…` line if present.
 

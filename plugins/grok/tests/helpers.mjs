@@ -8,15 +8,14 @@ import { fileURLToPath } from 'node:url';
 const fixture = (rel) => fileURLToPath(new URL(rel, import.meta.url));
 
 export function makeTempHome() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccd-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'cgd-test-'));
   return {
     dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
 
-export const STUB_BIN = fixture('./fixtures/cursor-agent-stub.mjs');
-export const HAPPY_FIXTURE = fixture('./fixtures/cursor-events/happy-path.ndjson');
-export const FAILURE_FIXTURE = fixture('./fixtures/cursor-events/failure.ndjson');
-export const NESTED_TOOL_USE_FIXTURE = fixture('./fixtures/cursor-events/nested-tool-use.ndjson');
-export const NATIVE_TOOL_CALL_FIXTURE = fixture('./fixtures/cursor-events/native-tool-call.ndjson');
+export const STUB_BIN = fixture('./fixtures/grok-stub.mjs');
+export const HAPPY_FIXTURE = fixture('./fixtures/grok-events/happy-path.ndjson');
+export const FAILED_COMMAND_FIXTURE = fixture('./fixtures/grok-events/failed-command.ndjson');
+export const RELATIVE_ABSOLUTE_FIXTURE = fixture('./fixtures/grok-events/relative-and-absolute.ndjson');

@@ -189,6 +189,13 @@ async function foreground(flags, prompt, jobId, root) {
     process.stdout.write(
       `\n**Grok session:** \`${summary.sessionId}\` — continue with \`/grok:delegate --resume=${summary.sessionId} <follow-up>\`.\n`,
     );
+  } else if (result.killed) {
+    // `end` is the only streaming event that carries `sessionId`. A watchdog
+    // kill never delivers it, so printing a --resume line would point at
+    // nothing. Say so rather than implying the session is continuable.
+    process.stdout.write(
+      '\n**Grok session:** lost — the run was killed before grok reported a session id, so this job cannot be resumed.\n',
+    );
   }
   process.stdout.write(`\nRun \`/grok:result ${jobId}\` for the full record.\n`);
   return result.exitCode;
