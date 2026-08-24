@@ -1,7 +1,7 @@
 ---
 description: Delegate a coding task to the Grok Build CLI.
 argument-hint: '[--fresh] [--resume[=session-id]] [--model <id>] [--effort <level>] [--timeout <sec>] [--no-git-check] [--prompt-file <path|->] <task...>'
-allowed-tools: Bash(node:*), AskUserQuestion
+allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/grok:delegate`.
@@ -48,14 +48,7 @@ without a status table, a file list, or timings of your own — you have `git
 status` and `git diff` if you want to know what changed, and running them is
 cheaper than making the user read a summary of them.
 
-Lines starting `⚠` are the exceptions the plugin does surface. Never drop one, and
-never fold two into one verdict:
-
-- `⚠ stop reason: …` is grok's own verdict; `⚠ exit N` is the process exit code.
-  They are independent and disagree in both directions.
-- `⚠ N commands exited non-zero` lists terminal commands that failed. It does
-  **not** mean the job failed — a `grep` that matches nothing, or a deliberately
-  red test, exits non-zero on purpose. Surface it and let the user judge.
+!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 
 After a job that changed code, review the diff yourself before telling the user it
 is done.

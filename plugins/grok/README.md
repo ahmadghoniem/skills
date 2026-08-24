@@ -67,6 +67,8 @@ is its own `⚠` line, and any can fire alone:
 | `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. |
 | `⚠ no session id was captured` | A killed run never reached the `end` event, so this job cannot be resumed. |
 
+The same table, in the form the orchestrator actually reads, is `plugins/grok/skills/output-contract/contract.md` — preloaded into `grok-runner` and pulled into `/grok:delegate` and `/grok:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
+
 The failed-command list is reported, never fatal. A non-zero exit is routinely intentional — `grep`
 finding nothing, a deliberately red test in a TDD cycle, a `command -v` probe — so failing the job
 on it would cry wolf often enough to be ignored. Job status comes from grok's own stop reason; the
