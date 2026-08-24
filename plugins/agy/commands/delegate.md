@@ -1,7 +1,7 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
 argument-hint: '[--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>'
-allowed-tools: Bash(node:*), AskUserQuestion
+allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/agy:delegate`.
@@ -100,15 +100,7 @@ without a status table, a file list, or a duration of your own — you have `git
 status` and `git diff` if you want the ground truth, and running them is cheaper
 than making the user read a summary of them.
 
-Lines starting `⚠` are the exceptions the plugin does surface. Never drop one, and
-never fold two into one verdict — agy's `status`, the process exit code, and the
-git working tree disagree in both directions:
-
-- `⚠ agy status: ERROR` on a run whose files landed correctly is common.
-- `⚠ exit 0` alongside a real failure happens too.
-- `⚠ agy reported file changes but the working tree is unchanged` means the writes
-  went to `~/.gemini/antigravity-cli/scratch`. The work is not in the repo. Re-run
-  it; do not report success.
+!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 
 After a job that changed code, review the diff yourself before telling the user it
 is done.

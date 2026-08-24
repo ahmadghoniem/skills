@@ -66,9 +66,13 @@ What does get surfaced is the set of ways a run can be wrong while agy still cal
 | --- | --- |
 | `⚠ agy status: ERROR` | agy's own verdict. Fires routinely on runs whose files landed correctly. |
 | `⚠ exit 1` | The process exit code. Independent of the above — they disagree in both directions. |
-| `⚠ <error text>` | The error agy reported, verbatim and unwrapped. |
+| `⚠ agy produced no result. Its stderr:` | agy never got started — not authenticated, unknown `--model`, rejected flag, spawn failure. Only fires when there is no write-up *and* no status, because stderr is then the only explanation there is. The tail tells you which fix applies. |
+| `⚠ N tool calls failed during the run` | Tools that failed while the run continued. Reported, never judged — the case that matters is a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
+| `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
 | `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
+
+The same table, in the form the orchestrator actually reads, is `plugins/agy/skills/output-contract/contract.md` — preloaded into `agy-runner` and pulled into `/agy:delegate` and `/agy:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
 
 ## Design notes
 
