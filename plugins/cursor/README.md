@@ -191,6 +191,8 @@ What does get surfaced is the set of ways a run can be wrong while cursor-agent 
 | `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. Reported, never judged — a `grep` miss or a red TDD test exits non-zero on purpose. |
 | `⚠ no cursor chat id was captured` | A killed run never reported one, so this job cannot be resumed. |
 
+The same table, in the form the orchestrator actually reads, is `plugins/cursor/skills/output-contract/contract.md` — preloaded into `cursor-runner` and pulled into `/cursor:delegate` and `/cursor:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
+
 With `--list`, prints a table of tracked jobs instead — the last 10, or every one with `--all`. Running jobs are included, so this is also how you find a job id.
 
 ### `/cursor:cancel [job-id]`

@@ -33,6 +33,26 @@
  */
 
 /**
+ * Every warning kind this module can emit, in the order they are printed.
+ *
+ * This is the machine-readable half of `skills/output-contract/contract.md`; that
+ * file explains each id in prose. `tests/contract.test.mjs` asserts the two
+ * agree in both directions and that neither has grown an entry the other lacks,
+ * so a new warning cannot ship undocumented — which is exactly how the contract
+ * drifted before this registry existed.
+ *
+ * @type {readonly string[]}
+ */
+export const WARNING_IDS = Object.freeze([
+  "ran-as",
+  "no-success",
+  "exit",
+  "killed",
+  "failed-commands",
+  "chat-lost",
+]);
+
+/**
  * The warning lines for a finished run, in print order. Exported so a test can
  * assert directly that a clean run produces none of them.
  *

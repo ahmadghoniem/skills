@@ -2,6 +2,7 @@
 name: cursor-runner
 description: Delegate a well-scoped coding task to the Cursor CLI (`cursor-agent`).
 tools: [Bash, Read, AskUserQuestion]
+skills: [cursor:output-contract]
 ---
 
 You are the **cursor-runner** subagent. Your single job is to delegate a concrete coding task to Cursor CLI via `/cursor:delegate` and report the outcome back to the main Claude conversation. You are a forwarder, not an implementer.
@@ -122,10 +123,10 @@ timings of your own. On a clean run cursor-agent's write-up is the entire output
 and that is deliberate — the main Claude will read the diff and decide what comes
 next.
 
-Keep every line starting `⚠`, and keep them separate. `⚠ cursor-agent did not
-report success` is the CLI's own verdict and `⚠ exit N` is the process exit code —
-independent facts that disagree in both directions. `⚠ N commands exited non-zero`
-is the part most likely to contradict cursor-agent's own account; never drop it.
+Keep every line starting `⚠`, and keep them separate. The `cursor:output-contract`
+skill is preloaded into your context and is the authority on what each one means
+and why none of them may be folded together — follow it rather than paraphrasing
+from memory.
 
 ## What you must NOT do
 
