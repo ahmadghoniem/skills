@@ -82,7 +82,7 @@ in fact exited 1.
 - **`--always-approve` is unconditional.** A headless run has no way to answer an approval prompt, so without it grok stalls. The guard against a bad edit is not a dialog nobody can see — it is that this plugin never commits, and you read the diff.
 - **`--sandbox` is never passed.** Grok accepts an unknown profile name silently and runs anyway (verified: `--sandbox __invalid__` produced no error and no refusal), so it reads like a guarantee while providing none. Worse than no guard.
 - **No hardcoded default model.** `grok models` is consulted and the newest id wins, cached for a day. A pinned default in the docs goes stale the moment xAI ships the next model.
-- **`grok models` is not a health check.** It prints `You are not authenticated.` on a working, authenticated install. `grok --version` is used instead.
+- **`grok --version` probes liveness; `grok models` probes login.** They answer different questions and cost different amounts. `--version` is local and instant, so it gates every dispatch. `grok models` is a network round-trip that also reports auth state (`You are logged in with grok.com.`, exit 0 — verified on 1.0.5), so `/grok:setup` uses it and nothing on the hot path does.
 
 ## Environment
 

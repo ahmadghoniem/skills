@@ -114,11 +114,20 @@ describe('summariseEvents', () => {
     expect(s.success).toBe(true);
     expect(s.stopReason).toBe('end_turn');
     expect(s.sessionId).toBe('01a02e4d-8d55-73f2-a26b-046282b9097d');
-    expect(s.resolvedModel).toBe('grok-4.5-build');
-    expect(s.costUsd).toBe(0.019203744);
-    expect(s.numTurns).toBe(4);
-    expect(s.filesTouched).toEqual(['calc.js']);
     expect(s.summary).toContain('Added `divide(a, b)` to `calc.js`');
+  });
+
+  it('harvests nothing from end beyond sessionId and stopReason', () => {
+    const s = summariseEvents(loadFixture(HAPPY_FIXTURE), GDEMO2_ROOT);
+    // The fixture's `end` carries total_cost_usd, num_turns, usage, and a
+    // modelUsage map keyed `grok-4.5-build`. None may reach the summary: the
+    // first two are out of scope, and `grok-4.5-build` is an internal id that
+    // `--model` rejects, so persisting it would put an unusable value in the
+    // job table.
+    expect(s.costUsd).toBeUndefined();
+    expect(s.numTurns).toBeUndefined();
+    expect(s.resolvedModel).toBeUndefined();
+    expect(s.filesTouched).toBeUndefined();
   });
 
   it('inserts a blank line between text runs that a tool call separates', () => {
@@ -143,8 +152,10 @@ describe('summariseEvents', () => {
   });
 
   it('collapses relative and absolute spellings of the same file into one', () => {
-    const s = summariseEvents(loadFixture(RELATIVE_ABSOLUTE_FIXTURE));
-    expect(s.filesTouched).toEqual(['math.js']);
+    // summariseEvents no longer builds a file list, but the helpers still back
+    // the live progress line, so the collapse behaviour is still asserted here.
+    const paths = loadFixture(RELATIVE_ABSOLUTE_FIXTURE).flatMap((ev) => toolPaths(ev));
+    expect(dedupePaths(paths)).toEqual(['math.js']);
   });
 
   it('is not success when the stream has no end event', () => {

@@ -33,8 +33,11 @@ export function modelRank(id) {
 /**
  * Parse `grok models` output into a list of model ids.
  *
- * The command prints a short preamble (including, unhelpfully, "You are not
- * authenticated." even on a working install) followed by a bulleted list:
+ * The command prints an auth line and the account default, then a bulleted list:
+ *
+ *   You are logged in with grok.com.
+ *
+ *   Default model: grok-4.6
  *
  *   Available models:
  *     * grok-4.6 (default)
@@ -372,9 +375,12 @@ export async function runHeadless(opts) {
 }
 
 /**
- * Cheap health probe. `grok models` is NOT usable for this — it prints
- * "You are not authenticated." on a perfectly working authenticated install —
- * so this only reports whether the binary is present and answers `--version`.
+ * Cheap health probe: is the binary present and does it answer `--version`?
+ *
+ * Deliberately not an auth check. `grok models` does report auth state (it
+ * prints "You are logged in with grok.com." — verified on 1.0.5, exit 0) and
+ * `/grok:setup` uses it for exactly that, but it is a network round-trip.
+ * Liveness and login are separate questions and this probe answers the cheap one.
  *
  * @returns {Promise<{ok: boolean, detail: string}>}
  */

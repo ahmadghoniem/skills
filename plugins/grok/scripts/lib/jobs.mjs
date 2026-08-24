@@ -32,7 +32,6 @@ export { isPidGone };
  * @property {string=} finishedAt
  * @property {string} rawLogPath
  * @property {string=} summary
- * @property {string[]=} filesTouched
  * @property {boolean=} background
  * @property {boolean=} cloud
  */

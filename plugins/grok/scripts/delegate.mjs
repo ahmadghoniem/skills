@@ -131,7 +131,7 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
         }
         return;
       }
-      const label = describeToolCall(ev);
+      const label = describeToolCall(ev, root);
       if (!label) return;
       toolCalls += 1;
       if (toolCalls > 20) {
@@ -156,12 +156,9 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
     exitCode: result.exitCode,
     finishedAt: new Date().toISOString(),
     summary: summary.summary + killedNote,
-    filesTouched: summary.filesTouched,
     failedCommands: summary.failedCommands,
-    costUsd: summary.costUsd,
-    numTurns: summary.numTurns,
     stopReason: summary.stopReason,
-    model: summary.resolvedModel ?? model,
+    model,
     ...(summary.sessionId ? { grokSessionId: summary.sessionId } : {}),
   });
 

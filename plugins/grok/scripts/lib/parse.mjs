@@ -46,16 +46,21 @@ export function parseLine(line) {
  * Short human label for a tool_call event, for live progress output.
  * Returns null for events that are not tool calls.
  *
+ * `root` rebases the path to repo-relative. grok reports absolute paths, so
+ * without it every progress line carries the full Windows path and the useful
+ * part — which file — is pushed off the right edge of the terminal.
+ *
  * @param {GrokEvent} ev
+ * @param {string} [root]
  * @returns {string|null}
  */
-export function describeToolCall(ev) {
+export function describeToolCall(ev, root) {
   if (ev?.type !== 'tool_call') return null;
   const name = typeof ev.toolName === 'string' ? ev.toolName : 'tool';
   const input = ev.rawInput;
   if (input != null && typeof input === 'object') {
     const path = typeof input.file_path === 'string' ? input.file_path : undefined;
-    if (path) return `${name} → ${path}`;
+    if (path) return `${name} → ${normalisePaths([path], root)[0] ?? path}`;
     const command = typeof input.command === 'string' ? input.command : undefined;
     if (command) return `${name}: ${command}`;
   }
@@ -161,13 +166,9 @@ export function normalisePaths(paths, root) {
 /**
  * @typedef {Object} Summary
  * @property {string} summary
- * @property {string[]} filesTouched
  * @property {CommandRun[]} commands
  * @property {CommandRun[]} failedCommands
  * @property {string|undefined} sessionId
- * @property {string|undefined} resolvedModel
- * @property {number|undefined} costUsd
- * @property {number|undefined} numTurns
  * @property {string} stopReason
  * @property {boolean} success
  */
@@ -187,15 +188,10 @@ export function normalisePaths(paths, root) {
  * @returns {Summary}
  */
 export function summariseEvents(events, root) {
-  /** @type {Set<string>} */
-  const files = new Set();
   /** @type {Map<string, CommandRun>} */
   const commandsById = new Map();
   const textParts = [];
   let sessionId;
-  let resolvedModel;
-  let costUsd;
-  let numTurns;
   let stopReason = 'incomplete';
   let sawEnd = false;
   let toolCallSinceText = false;
@@ -214,10 +210,6 @@ export function summariseEvents(events, root) {
       continue;
     }
     if (type === 'tool_call') toolCallSinceText = true;
-
-    if (type === 'tool_call' || type === 'tool_call_update') {
-      for (const p of toolPaths(ev)) files.add(p);
-    }
 
     if (type === 'tool_call') {
       const input = ev.rawInput;
@@ -257,17 +249,15 @@ export function summariseEvents(events, root) {
       continue;
     }
 
+    // `end` also carries `total_cost_usd`, `num_turns`, `usage`, and a
+    // `modelUsage` map. None of them are read. The first two are deliberately
+    // out of scope; `modelUsage`'s keys are internal ids (`grok-4.6-build`) that
+    // `--model` does not accept, so persisting one would put an unusable id in
+    // the job table. The requested model is the one that round-trips.
     if (type === 'end') {
       sawEnd = true;
       if (typeof ev.sessionId === 'string') sessionId = ev.sessionId;
       if (typeof ev.stopReason === 'string') stopReason = ev.stopReason;
-      if (typeof ev.total_cost_usd === 'number') costUsd = ev.total_cost_usd;
-      if (typeof ev.num_turns === 'number') numTurns = ev.num_turns;
-      const usage = ev.modelUsage;
-      if (usage != null && typeof usage === 'object') {
-        const names = Object.keys(usage);
-        if (names.length > 0) resolvedModel = names[0];
-      }
     }
   }
 
@@ -276,13 +266,9 @@ export function summariseEvents(events, root) {
 
   return {
     summary: (summary || '(no final message captured)').slice(0, 8000),
-    filesTouched: normalisePaths([...files], root),
     commands,
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     sessionId,
-    resolvedModel,
-    costUsd,
-    numTurns,
     stopReason,
     // No `end` event means the stream was truncated — a killed run, a crash, a
     // broken pipe. That is not a success even if everything before it looked fine.
