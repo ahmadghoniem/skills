@@ -152,3 +152,21 @@ describe('summariseEvents — captured runs', () => {
     expect(s).not.toHaveProperty('failedCommands');
   });
 });
+
+describe('tool errors from step_update', () => {
+  it('harvests state:ERROR + tool_info.error from the permission-denied run', () => {
+    // This fixture was already committed and already asserted — but only by
+    // reaching into the raw events array. The summariser ignored it entirely,
+    // so the test proved the data existed and simultaneously proved it was
+    // being dropped. Now it goes through summariseEvents.
+    const s = summariseEvents(load(PERMISSION_DENIED));
+    expect(s.toolErrors).toHaveLength(1);
+    expect(s.toolErrors[0].tool).toBe('run_command');
+    expect(s.toolErrors[0].message).toMatch(/permission check failed for command "echo SHELLOK"/);
+  });
+
+  it('is empty for runs where every tool succeeded', () => {
+    expect(summariseEvents(load(READ_AND_COMMAND)).toolErrors).toEqual([]);
+    expect(summariseEvents(load(ADD_DIR_WORKS)).toolErrors).toEqual([]);
+  });
+});

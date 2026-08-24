@@ -138,7 +138,14 @@ async function runAndRecord(flags, prompt, jobId, root) {
     gitRepo = false;
   }
 
-  const pluginStatus = result.killed ? 'failed' : 'done';
+  // `done` used to mean "not killed", so a spawn failure that produced no
+  // result at all was still recorded as done and listed that way by
+  // `/agy:result --list`. A non-zero exit alone is not enough to call it failed
+  // — agy's status and exit code are documented to disagree in both directions,
+  // and a good report with a stray non-zero exit is still a good report. But a
+  // non-zero exit with no `result` event at all means agy never got started.
+  const neverStarted = summary.status == null && result.exitCode !== 0;
+  const pluginStatus = result.killed || neverStarted ? 'failed' : 'done';
   updateJob(root, jobId, {
     status: pluginStatus,
     exitCode: result.exitCode,
@@ -153,6 +160,10 @@ async function runAndRecord(flags, prompt, jobId, root) {
     gitFiles: snapshotFiles(gitFiles),
     claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
+    // Persisted so `/agy:result <id>` renders exactly what the foreground run
+    // did. Both stay undefined when empty, keeping a clean job record clean.
+    stderrTail: result.stderr?.length ? result.stderr : undefined,
+    toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
   });
 
   return { result, summary, gitFiles, gitRepo };

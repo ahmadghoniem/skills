@@ -127,3 +127,150 @@ describe('anomalies', () => {
     expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0, gitRepo: false })).toEqual([]);
   });
 });
+
+describe('tool failures during a run', () => {
+  const base = {
+    id: 'x-1111',
+    agyStatus: 'SUCCESS',
+    exitCode: 0,
+    gitRepo: true,
+    gitFiles: [{ status: 'M', path: 'src/a.ts' }],
+    summary: 'Fixed the failing test.\n',
+  };
+
+  it('surfaces a failed tool even when agy reported SUCCESS', () => {
+    // The case the whole feature exists for: the verification step failed and
+    // agy narrated success anyway. Without this line the caller has no basis to
+    // decide whether the write-up can be trusted without redoing the work.
+    const out = renderResult({
+      ...base,
+      toolErrors: [{ tool: 'run_command', message: 'npm test exited 1' }],
+    });
+    expect(out).toContain('Fixed the failing test.');
+    expect(out).toContain('⚠ 1 tool call failed');
+    expect(out).toContain('run_command: npm test exited 1');
+  });
+
+  it('never flips the verdict — it reports, it does not judge', () => {
+    const out = renderResult({
+      ...base,
+      toolErrors: [{ tool: 'run_command', message: 'grep found nothing' }],
+    });
+    // A non-zero tool is routinely intentional. The status line must stay absent
+    // on a SUCCESS run; only the factual failure line is added.
+    expect(out).not.toMatch(/agy status/);
+    expect(out).not.toContain('exit ');
+  });
+
+  it('dedupes a retried tool and caps the list', () => {
+    const repeated = Array.from({ length: 4 }, () => ({
+      tool: 'run_command',
+      message: 'flaky',
+    }));
+    expect(renderResult({ ...base, toolErrors: repeated })).toContain('1 tool call failed');
+
+    const many = Array.from({ length: 6 }, (_, i) => ({ tool: `t${i}`, message: `m${i}` }));
+    const out = renderResult({ ...base, toolErrors: many });
+    expect(out).toContain('6 tool calls failed');
+    expect(out).toContain('… and 3 more');
+    expect(out).not.toContain('t5: m5');
+  });
+
+  it('keeps only the first line of a multi-line tool error', () => {
+    const out = renderResult({
+      ...base,
+      toolErrors: [{ tool: 'run_command', message: 'permission check failed\necho SHELLOK' }],
+    });
+    expect(out).toContain('run_command: permission check failed');
+    expect(out).not.toContain('echo SHELLOK');
+  });
+
+  it('adds nothing when no tool failed', () => {
+    expect(anomalies({ ...base, toolErrors: [] })).toEqual([]);
+    expect(anomalies(base)).toEqual([]);
+  });
+});
+
+describe('stderr when agy produced no result', () => {
+  it('prints the stderr tail when there is no write-up and no status', () => {
+    // Unauthenticated / unknown --model / rejected flag all land here: agy exits
+    // non-zero with no `result` event, so the only explanation is on stderr.
+    const out = renderResult({
+      id: 'x-2222',
+      exitCode: 1,
+      summary: '',
+      agyStatus: null,
+      stderrTail: ['authentication required', 'run `agy login`'],
+    });
+    expect(out).toContain('⚠ exit 1');
+    expect(out).toContain('agy produced no result. Its stderr:');
+    expect(out).toContain('  authentication required');
+    expect(out).toContain('  run `agy login`');
+  });
+
+  it('stays silent when agy DID produce a write-up', () => {
+    // A working run that happened to write to stderr must not gain a line —
+    // that noise is exactly what the quiet-by-default contract suppresses.
+    const out = renderResult({
+      id: 'x-3333',
+      agyStatus: 'SUCCESS',
+      exitCode: 0,
+      summary: 'Done.\n',
+      stderrTail: ['warning: something chatty'],
+    });
+    expect(out).toBe('Done.\n');
+  });
+
+  it('stays silent when agy reported a status, even a failing one', () => {
+    // A real ERROR result already explains itself through `error`; the stderr
+    // dump is reserved for the case where nothing else can speak.
+    const out = renderResult({
+      id: 'x-4444',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'the actual reason',
+      stderrTail: ['some unrelated chatter'],
+    });
+    expect(out).not.toContain('produced no result');
+    expect(out).toContain('the actual reason');
+  });
+
+  it('names the spawn failure instead of a bare exit 127', () => {
+    const out = renderResult({
+      id: 'x-5555',
+      exitCode: 127,
+      summary: '',
+      agyStatus: null,
+      stderrTail: ['spawn failed: ENOENT'],
+    });
+    expect(out).toContain('spawn failed: ENOENT');
+  });
+});
+
+describe('long agy errors', () => {
+  it('truncates the tail and says how much was dropped', () => {
+    // An unknown --model appends the whole model catalogue: sixteen lines of
+    // menu behind one line of fact. The fact is the first line.
+    const error = ['model nope is not recognized', 'Available models:']
+      .concat(Array.from({ length: 14 }, (_, i) => `  Model ${i}`))
+      .join('\n');
+    const out = renderResult({ id: 'x-6666', agyStatus: 'ERROR', exitCode: 1, summary: '', error });
+    expect(out).toContain('⚠ model nope is not recognized');
+    expect(out).toContain('  Available models:');
+    expect(out).toMatch(/… \d+ more lines \(full text in the job log\)/);
+    expect(out).not.toContain('Model 13');
+  });
+
+  it('leaves a short error intact', () => {
+    const out = renderResult({
+      id: 'x-7777',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'one line only',
+    });
+    // status, exit code and error stay three separate facts — never collapsed.
+    expect(out).toBe('⚠ agy status: ERROR\n⚠ exit 1\n⚠ one line only\n');
+  });
+});

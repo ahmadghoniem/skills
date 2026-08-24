@@ -37,6 +37,8 @@ export { isPidGone };
  * @property {string} agyLogPath
  * @property {string} promptPath
  * @property {string=} summary
+ * @property {string[]=} stderrTail
+ * @property {{tool: string, message: string}[]=} toolErrors
  * @property {string|null=} error
  * @property {number=} durationSeconds
  * @property {boolean=} gitRepo

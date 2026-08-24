@@ -122,6 +122,7 @@ export function toolParamPaths(params) {
  * @property {string|null} error
  * @property {number|undefined} durationSeconds
  * @property {unknown} usage
+ * @property {{tool: string, message: string}[]} toolErrors
  * @property {string[]} scratchPaths
  * @property {string[]} writeTargets
  * @property {boolean} claimedFileChanges
@@ -151,6 +152,8 @@ export function summariseEvents(events) {
   let durationSeconds;
   /** @type {unknown} */
   let usage;
+  /** @type {{tool: string, message: string}[]} */
+  const toolErrors = [];
   /** @type {string[]} */
   const scratchPaths = [];
   /** @type {string[]} */
@@ -189,6 +192,26 @@ export function summariseEvents(events) {
         if (su.tool_name === 'write_to_file' && typeof params?.TargetFile === 'string') {
           writeTargets.push(params.TargetFile);
         }
+
+        // A tool that failed mid-run. agy recovers from most of these and still
+        // reports SUCCESS, which is usually right — but it is also how a failed
+        // verification step disappears: you asked for the tests to pass, the
+        // test command exited non-zero, agy wrote "fixed it", status SUCCESS.
+        // Recording them is what lets the caller decide whether the write-up can
+        // be trusted without re-doing the work, which is the entire reason to
+        // delegate. Note `state: "ERROR"` is not in the documented enum
+        // (`ACTIVE | DONE`); the binary emits it, so the binary wins.
+        const err = info != null && typeof info === 'object' ? info.error : undefined;
+        if (su.state === 'ERROR' || (err != null && typeof err === 'object')) {
+          const message =
+            err != null && typeof err === 'object' && typeof err.message === 'string'
+              ? err.message
+              : 'failed with no message';
+          toolErrors.push({
+            tool: typeof su.tool_name === 'string' ? su.tool_name : 'tool',
+            message,
+          });
+        }
       }
       continue;
     }
@@ -215,6 +238,7 @@ export function summariseEvents(events) {
     error,
     durationSeconds,
     usage,
+    toolErrors,
     scratchPaths,
     writeTargets,
     claimedFileChanges: claimsFileChanges(response),

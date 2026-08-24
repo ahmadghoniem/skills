@@ -349,7 +349,14 @@ export function resolveDefaultModel() {
  * @property {number} exitCode
  * @property {Record<string, unknown>[]} events
  * @property {boolean} killed
+ * @property {string[]} stderr   Last STDERR_TAIL_LINES lines agy wrote to stderr.
  */
+
+/**
+ * How much stderr to keep. Enough for a stack-free error and its context; not so
+ * much that a chatty run can push a job record to an unreasonable size.
+ */
+export const STDERR_TAIL_LINES = 20;
 
 /**
  * Escalate to SIGKILL when the child has not actually exited.
@@ -409,6 +416,14 @@ export async function runHeadless(opts) {
 
   /** @type {Record<string, unknown>[]} */
   const events = [];
+  /**
+   * Rolling tail of agy's stderr. This is where the whole "agy never got
+   * started" class lives — not authenticated, unknown `--model`, bad flag — and
+   * every one of those produces no `result` event, so without keeping the text
+   * the caller has nothing but a bare exit code to explain itself with.
+   * @type {string[]}
+   */
+  const stderr = [];
   let killed = false;
 
   const stdoutLines = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -424,6 +439,9 @@ export async function runHeadless(opts) {
   });
   stderrLines.on('line', (line) => {
     logSafe(`# stderr: ${line}\n`);
+    if (line.trim().length === 0) return;
+    stderr.push(line);
+    if (stderr.length > STDERR_TAIL_LINES) stderr.shift();
   });
 
   let timeoutHandle;
@@ -446,7 +464,13 @@ export async function runHeadless(opts) {
       resolve(code);
     };
     child.on('error', (err) => {
-      logSafe(`# spawn error: ${err instanceof Error ? err.message : String(err)}\n`);
+      const message = err instanceof Error ? err.message : String(err);
+      logSafe(`# spawn error: ${message}\n`);
+      // Spawn failed, so agy never ran and never wrote to stderr. Put the reason
+      // where the caller looks for it, or the run reports a bare exit code that
+      // names nothing: 127 is not one of agy's own codes (0/1/2), so it cannot
+      // be looked up anywhere.
+      stderr.push(`spawn failed: ${message}`);
       done(127);
     });
     child.on('close', (code) => {
@@ -463,7 +487,7 @@ export async function runHeadless(opts) {
       resolve();
     }
   });
-  return { exitCode, events, killed };
+  return { exitCode, events, killed, stderr };
 }
 
 /**
