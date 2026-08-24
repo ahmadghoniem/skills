@@ -1,0 +1,256 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  buildArgs,
+  formatPrintTimeout,
+  listModels,
+  modelEncodesEffort,
+  parseModelList,
+  pickDefaultModel,
+  resetBinCache,
+  runHeadless,
+  sidecarPrint,
+} from '../scripts/lib/agy.mjs';
+import { STUB_BIN, ADD_DIR_WORKS } from './helpers.mjs';
+
+const PROMPT = 'C:\\Users\\Ahmed Ibrahim\\.cad\\jobs\\deadbeef\\add-retry-to-fetchuser-a7f3.prompt.md';
+const ADD_DIR = 'C:\\Users\\Ahmed Ibrahim\\Desktop\\app';
+const LOG = 'C:\\Users\\Ahmed Ibrahim\\.cad\\jobs\\deadbeef\\add-retry-to-fetchuser-a7f3.agy.log';
+
+describe('modelEncodesEffort', () => {
+  it('is true when the slug ends in -low/-medium/-high', () => {
+    expect(modelEncodesEffort('gemini-3.7-flash-low')).toBe(true);
+    expect(modelEncodesEffort('gemini-3.1-pro-high')).toBe(true);
+    expect(modelEncodesEffort('gpt-oss-120b-medium')).toBe(true);
+  });
+
+  it('is false when effort is not in the slug', () => {
+    expect(modelEncodesEffort('claude-sonnet-4-6')).toBe(false);
+    expect(modelEncodesEffort('claude-opus-4-6-thinking')).toBe(false);
+    expect(modelEncodesEffort(undefined)).toBe(false);
+  });
+});
+
+describe('formatPrintTimeout', () => {
+  it('emits Go durations', () => {
+    expect(formatPrintTimeout(900)).toBe('15m');
+    expect(formatPrintTimeout(120)).toBe('2m');
+    expect(formatPrintTimeout(90)).toBe('1m30s');
+    expect(formatPrintTimeout(45)).toBe('45s');
+  });
+});
+
+describe('buildArgs', () => {
+  const fresh = {
+    addDir: ADD_DIR,
+    promptPath: PROMPT,
+    printTimeoutSec: 900,
+    logFile: LOG,
+  };
+
+  it('fresh dispatch: --add-dir, skip-permissions, --print last', () => {
+    const args = buildArgs({ ...fresh, model: 'gemini-3.7-flash-low' });
+    expect(args[0]).toBe('--output-format');
+    expect(args[1]).toBe('stream-json');
+    expect(args).toContain('--add-dir');
+    expect(args[args.indexOf('--add-dir') + 1]).toBe(ADD_DIR);
+    expect(args).toContain('--dangerously-skip-permissions');
+    expect(args).toContain('--print-timeout');
+    expect(args[args.indexOf('--print-timeout') + 1]).toBe('15m');
+    expect(args[args.length - 1]).toBe(`--print=${sidecarPrint(PROMPT)}`);
+    expect(args.some((a) => a === '--effort' || a.startsWith('--effort='))).toBe(false);
+  });
+
+  it('never sends --effort when the model id encodes it (F4)', () => {
+    const args = buildArgs({
+      ...fresh,
+      model: 'gemini-3.7-flash-low',
+      effort: 'high',
+    });
+    expect(args).not.toContain('--effort');
+    expect(args).not.toContain('high');
+  });
+
+  it('sends --effort when the model id does not encode it', () => {
+    const args = buildArgs({
+      ...fresh,
+      model: 'claude-sonnet-4-6',
+      effort: 'high',
+    });
+    expect(args).toContain('--effort');
+    expect(args[args.indexOf('--effort') + 1]).toBe('high');
+  });
+
+  it('never emits --new-project: --add-dir alone binds the cwd', () => {
+    const args = buildArgs({ ...fresh, model: 'gemini-3.7-flash-high' });
+    expect(args).not.toContain('--new-project');
+    expect(args).toContain('--add-dir');
+  });
+
+  it('always bypasses permissions — there is no --safe and no --mode plan', () => {
+    const args = buildArgs({ ...fresh, safe: true, plan: true });
+    expect(args).toContain('--dangerously-skip-permissions');
+    expect(args).not.toContain('--mode');
+    expect(args).not.toContain('plan');
+  });
+
+  it('passes --sandbox when asked', () => {
+    const args = buildArgs({ ...fresh, sandbox: true });
+    expect(args).toContain('--sandbox');
+  });
+
+  it('resume omits --add-dir, adds --conversation', () => {
+    const args = buildArgs({
+      promptPath: PROMPT,
+      printTimeoutSec: 900,
+      logFile: LOG,
+      conversationId: 'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
+    });
+    expect(args).not.toContain('--add-dir');
+    expect(args).toContain('--conversation');
+    expect(args[args.indexOf('--conversation') + 1]).toBe(
+      'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
+    );
+    expect(args[args.length - 1].startsWith('--print=')).toBe(true);
+  });
+
+  it('resume with continueLatest uses --continue, not a conversation id', () => {
+    const args = buildArgs({
+      promptPath: PROMPT,
+      continueLatest: true,
+    });
+    expect(args).toContain('--continue');
+    expect(args).not.toContain('--conversation');
+    expect(args).not.toContain('--add-dir');
+  });
+
+  it('throws when a fresh dispatch is missing --add-dir', () => {
+    expect(() => buildArgs({ promptPath: PROMPT })).toThrow(/--add-dir/);
+  });
+
+  it('only emits flags from the 1.1.19 surface', () => {
+    const args = buildArgs({
+      ...fresh,
+      model: 'claude-sonnet-4-6',
+      effort: 'medium',
+      sandbox: true,
+    });
+    const allowed = new Set([
+      '--output-format',
+      '--add-dir',
+      '--print-timeout',
+      '--log-file',
+      '--model',
+      '--effort',
+      '--dangerously-skip-permissions',
+      '--sandbox',
+      '--print',
+      '--conversation',
+      '--continue',
+    ]);
+    for (const tok of args) {
+      if (!tok.startsWith('--')) continue;
+      const flag = tok.split('=')[0];
+      expect(allowed.has(flag)).toBe(true);
+    }
+  });
+});
+
+describe('parseModelList', () => {
+  it('parses TSV of id then label', () => {
+    const list = parseModelList(
+      'gemini-3.7-flash-high\tGemini 3.7 Flash (High)\nclaude-sonnet-4-6\tClaude Sonnet 4.6\n',
+    );
+    expect(list).toEqual([
+      { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    ]);
+  });
+});
+
+describe('pickDefaultModel', () => {
+  const list = [
+    { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+    { id: 'gemini-3.1-flash-high', label: 'Gemini 3.1 Flash (High)' },
+    { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
+    { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
+    { id: 'gemini-3.7-pro-high', label: 'Gemini 3.7 Pro (High)' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  ];
+
+  it('picks the newest, highest-effort flash', () => {
+    expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-high');
+  });
+
+  it('prefers a newer flash over an older one even at higher effort', () => {
+    const older = [
+      { id: 'gemini-3.1-flash-high', label: 'a' },
+      { id: 'gemini-3.7-flash-low', label: 'b' },
+    ];
+    expect(pickDefaultModel(older)).toBe('gemini-3.7-flash-low');
+  });
+
+  it('falls back to the account default when nothing is flash', () => {
+    const noFlash = [
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+      { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+    ];
+    expect(pickDefaultModel(noFlash, 'Claude Opus 4.6 (Thinking)')).toBe(
+      'claude-opus-4-6-thinking',
+    );
+  });
+
+  it('falls back to the first model when there is no flash and no default', () => {
+    expect(pickDefaultModel([{ id: 'claude-sonnet-4-6', label: 'x' }])).toBe('claude-sonnet-4-6');
+  });
+
+  it('returns null for an empty list rather than inventing an id', () => {
+    expect(pickDefaultModel([])).toBe(null);
+    expect(pickDefaultModel(undefined)).toBe(null);
+  });
+});
+
+describe('stubbed spawn (never the real binary)', () => {
+  const prevBin = process.env.AGY_BIN;
+  const prevFixture = process.env.AGY_STUB_FIXTURE;
+  const dirs = [];
+
+  afterEach(() => {
+    if (prevBin === undefined) delete process.env.AGY_BIN;
+    else process.env.AGY_BIN = prevBin;
+    if (prevFixture === undefined) delete process.env.AGY_STUB_FIXTURE;
+    else process.env.AGY_STUB_FIXTURE = prevFixture;
+    resetBinCache();
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('listModels reads TSV from the stub', async () => {
+    process.env.AGY_BIN = STUB_BIN;
+    resetBinCache();
+    const models = await listModels();
+    expect(models.map((m) => m.id)).toContain('gemini-3.7-flash-high');
+    expect(models.map((m) => m.id)).toContain('claude-sonnet-4-6');
+  });
+
+  it('runHeadless replays a fixture and captures NDJSON', async () => {
+    process.env.AGY_BIN = STUB_BIN;
+    process.env.AGY_STUB_FIXTURE = ADD_DIR_WORKS;
+    resetBinCache();
+    const dir = mkdtempSync(join(tmpdir(), 'cad-spawn-'));
+    dirs.push(dir);
+    const logPath = join(dir, 'run.ndjson');
+    const result = await runHeadless({
+      args: ['--output-format', 'stream-json'],
+      logPath,
+      timeoutSec: 10,
+    });
+    expect(result.killed).toBe(false);
+    expect(result.exitCode).toBe(0);
+    expect(result.events.some((e) => e.event === 'result')).toBe(true);
+    const logged = readFileSync(logPath, 'utf8');
+    expect(logged).toContain('"event":"init"');
+    expect(logged).toContain('"event":"result"');
+  });
+});
