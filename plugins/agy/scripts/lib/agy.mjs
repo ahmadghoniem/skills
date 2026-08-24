@@ -1,10 +1,11 @@
 import { once } from 'node:events';
-import { createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
+import { modelCachePath } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 
 export const DEFAULT_PRINT_TIMEOUT_SEC = 900;
@@ -257,6 +258,10 @@ export async function resolveBin() {
 /**
  * Live model list from `agy models`. Never hardcoded.
  *
+ * This is a network round-trip — `agy models` prints "Fetching available
+ * models…" and takes ~2s. Nothing on the dispatch path may call it; use
+ * `cachedModels()` there instead.
+ *
  * @returns {Promise<ModelInfo[]>}
  */
 export async function listModels() {
@@ -266,15 +271,64 @@ export async function listModels() {
 }
 
 /**
- * Resolve the model for a dispatch that did not pin one. Never throws — a model
- * list that cannot be read is not a reason to refuse the job; agy then falls
- * back to the account default on its own.
+ * Read the cached model list. Returns null when there is no cache yet.
  *
- * @returns {Promise<string|null>}
+ * The cache never expires on its own, deliberately. A time-based refresh means
+ * some unlucky dispatch pays the ~2s fetch, and which one is unpredictable —
+ * exactly the friction this plugin exists to avoid. The list only changes when
+ * Google ships a model, which is an event you know about, so refreshing is an
+ * explicit act: `/agy:setup` rewrites this file.
+ *
+ * @returns {ModelInfo[]|null}
  */
-export async function resolveDefaultModel() {
+export function cachedModels() {
   try {
-    return pickDefaultModel(await listModels(), readAccountDefaultLabel());
+    const raw = readFileSync(modelCachePath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.models)) return null;
+    return parsed.models;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Overwrite the model cache. Only `/agy:setup` calls this.
+ *
+ * @param {ModelInfo[]} models
+ * @param {string|null} [accountDefaultLabel]
+ * @returns {void}
+ */
+export function writeModelCache(models, accountDefaultLabel) {
+  try {
+    const path = modelCachePath();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ fetchedAt: new Date().toISOString(), accountDefaultLabel: accountDefaultLabel ?? null, models }, null, 2)}\n`,
+      'utf8',
+    );
+  } catch {
+    // A cache that cannot be written is not a reason to fail the command that
+    // was actually asked for. The next dispatch just falls back to agy's own
+    // default, which is the same behaviour as before any cache existed.
+  }
+}
+
+/**
+ * Resolve the model for a dispatch that did not pin one, from cache only.
+ *
+ * Never throws and never touches the network — a model list that cannot be read
+ * is not a reason to refuse the job. Returning null means "pass no `--model`",
+ * and agy then picks the account default on its own.
+ *
+ * @returns {string|null}
+ */
+export function resolveDefaultModel() {
+  try {
+    const models = cachedModels();
+    if (models == null) return null;
+    return pickDefaultModel(models, readAccountDefaultLabel());
   } catch {
     return null;
   }

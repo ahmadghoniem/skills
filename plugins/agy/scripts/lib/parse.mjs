@@ -121,7 +121,6 @@ export function toolParamPaths(params) {
  * @property {string} response
  * @property {string|null} error
  * @property {number|undefined} durationSeconds
- * @property {number|undefined} numTurns
  * @property {unknown} usage
  * @property {string[]} scratchPaths
  * @property {string[]} writeTargets
@@ -150,8 +149,6 @@ export function summariseEvents(events) {
   let error = null;
   /** @type {number|undefined} */
   let durationSeconds;
-  /** @type {number|undefined} */
-  let numTurns;
   /** @type {unknown} */
   let usage;
   /** @type {string[]} */
@@ -204,7 +201,6 @@ export function summariseEvents(events) {
       if (typeof r.error === 'string') error = r.error;
       else if (r.error != null) error = String(r.error);
       if (typeof r.duration_seconds === 'number') durationSeconds = r.duration_seconds;
-      if (typeof r.num_turns === 'number') numTurns = r.num_turns;
       if (r.usage != null) usage = r.usage;
     }
   }
@@ -218,7 +214,6 @@ export function summariseEvents(events) {
     response,
     error,
     durationSeconds,
-    numTurns,
     usage,
     scratchPaths,
     writeTargets,

@@ -1,17 +1,20 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildArgs,
+  cachedModels,
   formatPrintTimeout,
   listModels,
   modelEncodesEffort,
   parseModelList,
   pickDefaultModel,
   resetBinCache,
+  resolveDefaultModel,
   runHeadless,
   sidecarPrint,
+  writeModelCache,
 } from '../scripts/lib/agy.mjs';
 import { STUB_BIN, ADD_DIR_WORKS } from './helpers.mjs';
 
@@ -252,5 +255,69 @@ describe('stubbed spawn (never the real binary)', () => {
     const logged = readFileSync(logPath, 'utf8');
     expect(logged).toContain('"event":"init"');
     expect(logged).toContain('"event":"result"');
+  });
+});
+
+describe('model cache', () => {
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  function freshHome() {
+    const dir = mkdtempSync(join(tmpdir(), 'cad-models-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    return dir;
+  }
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('returns null on a cold cache instead of fetching', () => {
+    freshHome();
+    expect(cachedModels()).toBeNull();
+    // The whole point: a cold cache costs nothing and yields no --model, which
+    // lets agy fall back to the account default on its own.
+    expect(resolveDefaultModel()).toBeNull();
+  });
+
+  it('round-trips a written list and auto-picks the newest flash from it', () => {
+    freshHome();
+    writeModelCache(
+      [
+        { id: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro' },
+        { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash' },
+        { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash Low' },
+      ],
+      'Gemini 3.1 Pro',
+    );
+    expect(cachedModels()).toHaveLength(3);
+    expect(resolveDefaultModel()).toBe('gemini-3.7-flash-high');
+  });
+
+  it('survives a corrupt cache file without throwing', () => {
+    const dir = freshHome();
+    writeFileSync(join(dir, 'models.json'), '{ not json', 'utf8');
+    expect(cachedModels()).toBeNull();
+    expect(resolveDefaultModel()).toBeNull();
+  });
+
+  it('never expires on its own — a stale timestamp is still served', () => {
+    const dir = freshHome();
+    // Time-based invalidation would make some unpredictable dispatch pay the
+    // ~2s fetch. Refreshing is an explicit act (`/agy:setup`), so an old
+    // fetchedAt must change nothing.
+    writeFileSync(
+      join(dir, 'models.json'),
+      JSON.stringify({
+        fetchedAt: '2019-01-01T00:00:00.000Z',
+        models: [{ id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash' }],
+      }),
+      'utf8',
+    );
+    expect(resolveDefaultModel()).toBe('gemini-3.7-flash-high');
   });
 });

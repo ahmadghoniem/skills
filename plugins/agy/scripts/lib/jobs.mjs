@@ -45,8 +45,6 @@ export { isPidGone };
  * @property {boolean=} claimedFileChanges
  * @property {boolean=} background
  * @property {boolean=} killed
- * @property {boolean=} plan
- * @property {boolean=} safe
  * @property {boolean=} sandbox
  */
 

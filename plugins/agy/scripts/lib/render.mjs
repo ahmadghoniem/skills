@@ -38,6 +38,32 @@ const WANDER_WARNING =
  */
 
 /**
+ * Project a job record onto the view `renderResult` reads.
+ *
+ * The single mapping. Both callers — the foreground dispatch and `/agy:result`
+ * — go through this, because two hand-written copies of the same field list is
+ * exactly the drift this module exists to prevent.
+ *
+ * @param {Record<string, unknown>} job
+ * @returns {ResultView}
+ */
+export function viewFromJob(job) {
+  return {
+    id: job.id,
+    agyStatus: job.agyStatus,
+    exitCode: job.exitCode,
+    gitRepo: job.gitRepo,
+    gitFiles: job.gitFiles,
+    error: job.error,
+    durationSeconds: job.durationSeconds,
+    conversationId: job.conversationId,
+    summary: job.summary,
+    claimedFileChanges: job.claimedFileChanges,
+    killed: job.killed,
+  };
+}
+
+/**
  * The anomaly lines for a finished job, in the order they are printed. Exported
  * so a test can assert "a clean run produces none of these" directly.
  *

@@ -2,22 +2,10 @@
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
-import { renderResult } from './lib/render.mjs';
+import { renderResult, viewFromJob } from './lib/render.mjs';
 
 function render(job) {
-  return renderResult({
-    id: job.id,
-    agyStatus: job.agyStatus,
-    exitCode: job.exitCode,
-    gitRepo: job.gitRepo,
-    gitFiles: job.gitFiles,
-    error: job.error,
-    durationSeconds: job.durationSeconds,
-    conversationId: job.conversationId,
-    summary: job.summary,
-    claimedFileChanges: job.claimedFileChanges,
-    killed: job.killed,
-  });
+  return renderResult(viewFromJob(job));
 }
 
 function renderList(jobs) {

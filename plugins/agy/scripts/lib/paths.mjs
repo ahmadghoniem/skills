@@ -32,8 +32,14 @@ export function jobsDir(repoRoot) {
   return join(pluginHome(), 'jobs', repoHash(repoRoot));
 }
 
-export function logsDir(repoRoot) {
-  return join(jobsDir(repoRoot), 'logs');
+/**
+ * Where the model list is cached. Machine-wide, not per-repo — the answer does
+ * not depend on which repo you are dispatching from.
+ *
+ * @returns {string}
+ */
+export function modelCachePath() {
+  return join(pluginHome(), 'models.json');
 }
 
 export function ensureDir(dir) {

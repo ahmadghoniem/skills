@@ -25,7 +25,7 @@ import {
 } from './lib/jobs.mjs';
 import { summariseEvents } from './lib/parse.mjs';
 import { ensureDir, jobsDir } from './lib/paths.mjs';
-import { renderResult } from './lib/render.mjs';
+import { renderResult, viewFromJob } from './lib/render.mjs';
 
 // `--wait` is accepted and ignored. Foreground is the default now: the
 // orchestrator runs this under a backgrounded Bash call, which keeps the user's
@@ -80,7 +80,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
     before = (await porcelain(root)) ?? [];
   }
 
-  const model = flags.model ?? '';
   const effort =
     flags.effort && !modelEncodesEffort(flags.model) ? flags.effort : undefined;
 
@@ -187,20 +186,35 @@ function forwardFlags(flags) {
   return forwarded;
 }
 
-function viewFromJob(job) {
-  return {
-    id: job.id,
-    agyStatus: job.agyStatus,
-    exitCode: job.exitCode,
-    gitRepo: job.gitRepo,
-    gitFiles: job.gitFiles,
-    error: job.error,
-    durationSeconds: job.durationSeconds,
-    conversationId: job.conversationId,
-    summary: job.summary,
-    claimedFileChanges: job.claimedFileChanges,
-    killed: job.killed,
-  };
+/**
+ * `runAndRecord`, but a throw still moves the record off `running`.
+ *
+ * `createJob` writes `status: 'running'` and the only thing that writes a
+ * terminal status is `runAndRecord`'s own final `updateJob`. Anything that
+ * throws before that — `resolveBin()` when agy is not installed is the likely
+ * one, and it is not pre-empted by model resolution, which swallows errors —
+ * used to strand the record at `running` forever. `/agy:result` then answers
+ * "still running, re-run once it finishes" for a run that never started.
+ *
+ * The error is rethrown: the caller still fails, it just fails legibly.
+ *
+ * @param {ReturnType<typeof parseFlags>} flags
+ * @param {string} prompt
+ * @param {string} jobId
+ * @param {string} root
+ */
+async function runOrMarkFailed(flags, prompt, jobId, root) {
+  try {
+    return await runAndRecord(flags, prompt, jobId, root);
+  } catch (err) {
+    updateJob(root, jobId, {
+      status: 'failed',
+      exitCode: 1,
+      finishedAt: new Date().toISOString(),
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 /**
@@ -218,7 +232,7 @@ export async function main(rawArgv) {
   if (flags.worker) {
     const root = process.env.CAD_REPO_ROOT ?? (await repoRoot(process.cwd()));
     const prompt = readJob(root, flags.worker)?.prompt ?? flags.positional.join(' ').trim();
-    await runAndRecord(flags, prompt, flags.worker, root);
+    await runOrMarkFailed(flags, prompt, flags.worker, root);
     return 0;
   }
 
@@ -246,10 +260,17 @@ export async function main(rawArgv) {
     }
   }
 
-  // Resolved once here, in the dispatcher, and forwarded to the worker, so a
-  // backgrounded run does not pay for a second `agy models` call.
-  if (!flags.model) {
-    flags.model = (await resolveDefaultModel()) ?? undefined;
+  // Cache read, not a network call — see `cachedModels`. Resolved once here in
+  // the dispatcher and forwarded to the worker, so a backgrounded run does not
+  // repeat it. A cold cache yields null, which means "send no `--model`" and
+  // lets agy pick its own default; `/agy:setup` is what fills the cache.
+  //
+  // Skipped entirely on a resume: `--conversation` already carries the model the
+  // conversation was started with, and pinning the auto-picked flash id here
+  // would silently downgrade a follow-up to a run the user deliberately started
+  // on a pro model.
+  if (!flags.model && !isResume(flags)) {
+    flags.model = resolveDefaultModel() ?? undefined;
   }
 
   const taskText = prompt || 'continue';
@@ -281,7 +302,7 @@ export async function main(rawArgv) {
   });
   process.stdout.write(`agy \`${jobId}\`\n\n`);
 
-  await runAndRecord(flags, prompt || 'Continue from where you left off.', jobId, root);
+  await runOrMarkFailed(flags, prompt || 'Continue from where you left off.', jobId, root);
   const finished = readJob(root, jobId);
   if (finished) process.stdout.write(renderResult(viewFromJob(finished)));
   return 0;
