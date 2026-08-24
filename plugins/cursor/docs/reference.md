@@ -76,8 +76,7 @@ Full flag table for `/cursor:delegate <task...>` (the README covers the core sub
 | Flag | Default | Effect |
 | ---- | ------- | ------ |
 | `--model <id>` | recommended automatically (or `$CCD_DEFAULT_MODEL`) | Aliases → real Cursor ids: `composer`/`fast` → `composer-2.5-fast`, `composer-full` → `composer-2.5`, `sonnet` → `claude-4.6-sonnet-medium`, `opus` → `claude-opus-4-7-high`, `gpt`/`codex` → `gpt-5.3-codex`, `grok` → `grok-4.3`, `gemini` → `gemini-3.1-pro`, `auto` → `auto`. Unknown or retired ids are forwarded as-is. Omit this flag entirely to get task-aware model selection instead of a fixed default — see the README's [Model selection](../README.md#model-selection) section. |
-| `--background` | off | Detach; the command returns a job id immediately. |
-| `--wait` | on (if not `--background`) | Block until finished. |
+| `--background` | off | Detach the worker. Scripting only — it severs the harness notification, which is what forces polling. Claude backgrounds the job with the Bash tool's `run_in_background` instead, which keeps the notification. |
 | `--fresh` | off | Start a brand-new Cursor session (no resume). |
 | `--resume[=<chat-id>]` | off | Resume a prior chat. With no id, resume the latest for this repo. |
 | `--no-force` | `--force` is ON | Disable auto-approve (paranoid mode). |

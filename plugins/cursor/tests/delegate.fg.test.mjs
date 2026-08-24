@@ -112,8 +112,9 @@ describe('delegate foreground', () => {
     expect(job.model).toBe('composer-2.5-fast');
     // The `--` is part of the task, so it must survive into the prompt.
     expect(job.prompt).toBe('fix the bug -- see notes');
-    // And the result block must state which model actually ran.
-    expect(lines.some((l) => l.includes('**Model:** composer-2.5-fast'))).toBe(true);
+    // And the dispatch line must state which model actually ran — `composer`
+    // is an alias, so the id that reaches cursor-agent is not the one typed.
+    expect(lines.some((l) => l.includes('composer-2.5-fast'))).toBe(true);
   });
 
   // Issue F: when the caller asked for `auto`, the job record should end up
@@ -286,7 +287,9 @@ describe('delegate → status/result id retrieval (issue A)', () => {
   function capturedJobId(writeSpy) {
     for (const call of writeSpy.mock.calls) {
       const text = String(call[0]);
-      const match = text.match(/Job `([^`]+)`/);
+      // The dispatch banner is `cursor \`<id>\` (<model>)` — the id is
+      // backticked precisely so the caller (and this test) can lift it.
+      const match = text.match(/^(?:cursor|Job) `([^`]+)`/m);
       if (match) return match[1];
     }
     return undefined;
@@ -323,8 +326,11 @@ describe('delegate → status/result id retrieval (issue A)', () => {
     } finally {
       resultSpy.mockRestore();
     }
-    expect(resultOut).toContain('done');
-    expect(resultOut).toContain(`\`${jobId}\``);
+    // `/cursor:result` prints cursor-agent's write-up, not a status block, so
+    // what issue A actually needs is that the printed id *resolves* — exit 0
+    // and the run's own report coming back, rather than the id being echoed.
+    expect(resultOut).toContain('Added src/foo.ts');
+    expect(resultOut).not.toMatch(/[*][*]Status:[*][*]/);
   });
 
   it('a background job reaches "done" and is found by status/result using the launch id', async () => {
@@ -366,7 +372,10 @@ describe('delegate → status/result id retrieval (issue A)', () => {
     } finally {
       resultSpy.mockRestore();
     }
-    expect(resultOut).toContain(`\`${jobId}\``);
-    expect(resultOut).toContain('done');
+    // `/cursor:result` prints cursor-agent's write-up, not a status block, so
+    // what issue A actually needs is that the printed id *resolves* — exit 0
+    // and the run's own report coming back, rather than the id being echoed.
+    expect(resultOut).toContain('Added src/foo.ts');
+    expect(resultOut).not.toMatch(/\*\*Status:\*\*/);
   }, 15_000);
 });

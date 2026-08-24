@@ -108,13 +108,24 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" \
 
 Never place a flag after the task text and never split the task across arguments.
 
-Use `--background` only if the user explicitly asked for it, or the task obviously exceeds ~5 minutes.
+Set the Bash tool's `run_in_background: true`. The CLI then runs in the foreground
+of its own process, the harness reports the exit, and nothing polls. Do **not**
+pass the plugin's `--background` flag — it detaches the worker and breaks exactly
+that.
 
-**Delegating from a spec file.** When the spec already lives in a file, do not paste its contents into the prompt. If the file is **inside the target repo**, reference it inline (`… "implement @tasks/spec.md, follow it exactly"`) so cursor-agent opens it. If it is **outside the repo** (e.g. a plan under `~/.claude/plans/`), pass `--prompt-file <path>` so the plugin reads it. For several independent specs, run one `--background` delegation per file rather than merging them.
+**Delegating from a spec file.** When the spec already lives in a file, do not paste its contents into the prompt. If the file is **inside the target repo**, reference it inline (`… "implement @tasks/spec.md, follow it exactly"`) so cursor-agent opens it. If it is **outside the repo** (e.g. a plan under `~/.claude/plans/`), pass `--prompt-file <path>` so the plugin reads it. For several independent specs, run one delegation per file rather than merging them.
 
 ### 4. Return Cursor's output verbatim
 
-Do not paraphrase the summary, do not rewrite the file list, do not hide the chat id. The main Claude will read the diff and decide what comes next.
+Do not paraphrase the write-up and do not add a status table, file list, or
+timings of your own. On a clean run cursor-agent's write-up is the entire output,
+and that is deliberate — the main Claude will read the diff and decide what comes
+next.
+
+Keep every line starting `⚠`, and keep them separate. `⚠ cursor-agent did not
+report success` is the CLI's own verdict and `⚠ exit N` is the process exit code —
+independent facts that disagree in both directions. `⚠ N commands exited non-zero`
+is the part most likely to contradict cursor-agent's own account; never drop it.
 
 ## What you must NOT do
 

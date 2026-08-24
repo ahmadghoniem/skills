@@ -21,7 +21,7 @@ import {
   summariseEvents,
   walkToolUses,
 } from './lib/parse.mjs';
-import { renderRunDetail } from './lib/render.mjs';
+import { renderOutcome } from './lib/render.mjs';
 
 const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'force', 'cloud', 'help', 'resume'];
 
@@ -132,7 +132,7 @@ async function foreground(flags, prompt, jobId, root) {
   const resume = isResumeRequested(flags.resume, flags.fresh);
   const resumeId = resume ? resumeChatId(flags.resume) : undefined;
 
-  process.stdout.write(`Job \`${jobId}\` started on model \`${model}\` (foreground).\n\n`);
+  process.stdout.write(`cursor \`${jobId}\` (${model})\n\n`);
 
   // Tool-use blocks are typically nested inside `assistant.message.content[]`
   // (Anthropic Messages API shape), not flat on the event — `walkToolUses`
@@ -194,30 +194,26 @@ async function foreground(flags, prompt, jobId, root) {
     summary: summary.summary + killedNote,
     filesTouched: summary.filesTouched,
     failedCommands: summary.failedCommands,
+    // Persisted so `/cursor:result` can tell cursor-agent's own verdict apart
+    // from a non-zero process exit rather than inferring one from the other.
+    cliSuccess: summary.success,
     model: resolvedModel,
     ...(chatId ? { cursorChatId: chatId } : {}),
   });
 
-  process.stdout.write('\n---\n');
-  process.stdout.write(`**Status:** ${status}\n`);
-  // Echo the model that actually ran. The start line prints the *requested*
-  // model, so without this an `auto` run — or a `--model` that never arrived —
-  // is invisible in the result.
-  process.stdout.write(`**Model:** ${resolvedModel}\n`);
-  if (result.killed)
-    process.stdout.write('**⚠ Run was killed before finishing** (timeout/watchdog).\n');
   process.stdout.write('\n');
-  process.stdout.write(renderRunDetail(summary));
-  if (summary.summary) {
-    process.stdout.write('**Summary:**\n\n');
-    process.stdout.write(summary.summary.trim() + '\n');
-  }
-  if (chatId) {
-    process.stdout.write(
-      `\n**Cursor chat id:** \`${chatId}\` — resume with \`cursor-agent --resume=${chatId}\`.\n`,
-    );
-  }
-  process.stdout.write(`\nRun \`/cursor:result ${jobId}\` for the full record.\n`);
+  process.stdout.write(
+    renderOutcome({
+      summary: summary.summary,
+      success: summary.success,
+      exitReason: summary.exitReason,
+      exitCode: result.exitCode,
+      killed: result.killed,
+      failedCommands: summary.failedCommands,
+      ranAs: resolvedModel !== model ? resolvedModel : undefined,
+      chatLost: result.killed && !chatId,
+    }),
+  );
   return result.exitCode;
 }
 
@@ -231,6 +227,12 @@ function spawnBackground(jobId, argv, root, extraEnv = {}) {
   const err = openSync(`${logPath}.stderr`, 'a');
   const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
     detached: true,
+    // Mandatory alongside `detached` on Windows. Without it the OS gives the
+    // detached child its own console, which on Win11 surfaces as a Windows
+    // Terminal window that opens on dispatch and sits there for the whole life
+    // of the job. `killtree.mjs` already sets this on its own spawn; this call
+    // was simply missed.
+    windowsHide: true,
     stdio: ['ignore', out, err],
     env: {
       ...process.env,

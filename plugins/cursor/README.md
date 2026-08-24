@@ -153,8 +153,7 @@ Hand a coding task to `cursor-agent -p …`.
 | Flag | Default | Effect |
 | ---- | ------- | ------ |
 | `--model <id>` | recommended automatically (or `$CCD_DEFAULT_MODEL`) | Aliases resolve to real Cursor ids (`composer`/`fast` → `composer-2.5-fast`, `opus` → `claude-opus-4-7-high`, …). Unknown ids forward as-is. Omit this flag to get task-aware model selection — see [Model selection](#model-selection). Run `/cursor:setup --print-models` for the live list. |
-| `--background` | off | Detach; the command returns a job id immediately. |
-| `--wait` | on (if not `--background`) | Block until finished. |
+| `--background` | off | Detach the worker. Scripting only — it severs the harness notification, which is what forces polling. Claude backgrounds the job for you with the Bash tool instead. |
 | `--timeout <sec>` | `1800` | Kill the job if it exceeds this. |
 | `--no-git-check` | off | Allow running outside a git repo. |
 | `--cloud` | off | Pass `-c` to cursor-agent. |
@@ -167,19 +166,32 @@ Full flag reference (`--fresh`, `--resume`, `--no-force`) and more examples: [`d
 ```
 /cursor:delegate add a dark-mode toggle to the settings page
 /cursor:delegate --model composer "write jest tests for utils/date.ts"
-/cursor:delegate --background "migrate user repository to Doctrine 3"
+/cursor:delegate "migrate user repository to Doctrine 3"
 /cursor:delegate --resume "continue with the failing edge case"
 /cursor:delegate --prompt-file ~/.claude/plans/dark-mode.md   # inline a spec/plan file
 git show HEAD:spec.md | /cursor:delegate --prompt-file -      # or pipe one in via stdin
 ```
 
-**Delegating a plan or spec file.** There's no separate command for this — a spec is just a task that lives in a file. If it's **inside the repo**, reference it inline (`/cursor:delegate "implement @tasks/spec.md, follow it exactly"`) and cursor-agent opens it itself. If it's **outside the repo** (a plan under `~/.claude/plans/`, a generated file, anything cursor-agent can't see), read it in with `--prompt-file`. For several independent specs, fan out one `--background` delegation per file.
+**Delegating a plan or spec file.** There's no separate command for this — a spec is just a task that lives in a file. If it's **inside the repo**, reference it inline (`/cursor:delegate "implement @tasks/spec.md, follow it exactly"`) and cursor-agent opens it itself. If it's **outside the repo** (a plan under `~/.claude/plans/`, a generated file, anything cursor-agent can't see), read it in with `--prompt-file`. For several independent specs, fan out one delegation per file.
 
 ### `/cursor:result [job-id] [--list] [--all]`
 
-Prints the final summary of a finished job. Defaults to the most recent one for this repo.
+Prints cursor-agent's write-up for a finished job. Defaults to the most recent one for this repo.
 
-With `--list`, prints a table of tracked jobs instead — the last 10, or every one with `--all`. Running jobs are included, so this is also how you find the id of a job started with `--background`.
+On a clean run that write-up is the entire output — no status table, no file list, no model id, no timestamps. `git status` and `git diff` are one call away and are the actual ground truth; a formatted summary of them is just something else to read.
+
+What does get surfaced is the set of ways a run can be wrong while cursor-agent still calls it done. Each is its own `⚠` line, and any can fire alone:
+
+| Line | Means |
+| --- | --- |
+| `⚠ cursor-agent did not report success` | The CLI's own verdict, with its exit reason when there is one. |
+| `⚠ exit N` | The process exit code. Independent of the above — they disagree in both directions. |
+| `⚠ ran as <id>, not the model the dispatch line named` | Under `--model auto`, the concrete model the run actually used. |
+| `⚠ run was killed before finishing` | The watchdog fired; output may be incomplete. |
+| `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. Reported, never judged — a `grep` miss or a red TDD test exits non-zero on purpose. |
+| `⚠ no cursor chat id was captured` | A killed run never reported one, so this job cannot be resumed. |
+
+With `--list`, prints a table of tracked jobs instead — the last 10, or every one with `--all`. Running jobs are included, so this is also how you find a job id.
 
 ### `/cursor:cancel [job-id]`
 

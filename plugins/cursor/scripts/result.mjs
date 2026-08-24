@@ -4,35 +4,21 @@ import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { listJobs, mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
 import { renderJobTable } from './lib/jobtable.mjs';
-import { renderRunDetail } from './lib/render.mjs';
+import { renderOutcome } from './lib/render.mjs';
 
+// A finished job carries no `killed` flag of its own: the worker records a kill
+// by appending a post-flight note to the summary and by landing the job at
+// status `failed`, which already raises its own warning here.
 function render(job) {
-  const summary = typeof job.summary === 'string' ? job.summary : '';
-  const lines = [];
-  lines.push(`### Result of job \`${job.id}\` — ${job.status}`);
-  lines.push('');
-  lines.push(`**Model:** ${String(job.model ?? '?')}`);
-  if (job.finishedAt) lines.push(`**Finished:** ${job.finishedAt}`);
-  if (typeof job.exitCode === 'number') lines.push(`**Exit code:** ${job.exitCode}`);
-  lines.push('');
-  lines.push(`**Prompt:** ${String(job.prompt ?? '')}`);
-  lines.push('');
-  // `renderRunDetail` ends with its own trailing blank line so a caller writing
-  // straight to stdout gets correct spacing. Here the result is being joined
-  // into a line array, so that trailing newline would double up — trim it and
-  // let the array's own separator do the work.
-  const detail = renderRunDetail(job);
-  if (detail) lines.push(detail.trimEnd(), '');
-  lines.push('**Summary:**');
-  lines.push('');
-  lines.push((summary || '(no summary captured)').trim());
-  lines.push('');
-  if (job.cursorChatId) {
-    lines.push(`Resume: \`cursor-agent --resume=${job.cursorChatId}\``);
-  } else {
-    lines.push('Cursor chat id was not captured for this job.');
-  }
-  return lines.join('\n') + '\n';
+  return renderOutcome({
+    summary: job.summary,
+    // `cliSuccess` is cursor-agent's own verdict, recorded by the worker.
+    // Older job records predate it; fall back to plugin status for those.
+    success: typeof job.cliSuccess === 'boolean' ? job.cliSuccess : job.status !== 'failed',
+    exitCode: job.exitCode,
+    failedCommands: job.failedCommands,
+    chatLost: job.status === 'failed' && !job.cursorChatId,
+  });
 }
 
 /**

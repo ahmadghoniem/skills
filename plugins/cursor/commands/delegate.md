@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task to the Cursor CLI agent (Composer by default).
-argument-hint: '[--background] [--wait] [--fresh] [--resume[=chat-id]] [--model <id>] [--cloud] [--no-force] [--no-git-check] [--timeout <sec>] [--prompt-file <path|->] <task...>'
+argument-hint: '[--fresh] [--resume[=chat-id]] [--model <id>] [--cloud] [--no-force] [--no-git-check] [--timeout <sec>] [--prompt-file <path|->] <task...>'
 allowed-tools: Bash(node:*), AskUserQuestion
 ---
 
@@ -12,7 +12,7 @@ allowed-tools: Bash(node:*), AskUserQuestion
 
 Key flags, all forwarded through `$ARGUMENTS` verbatim:
 
-- **`--wait` / `--background`** — `--wait` (default) blocks until the run finishes and prints the full result inline. `--background` detaches immediately and prints the job id right away; fetch the final write-up with `/cursor:result <id>` once it's done. `--wait` always wins if both are passed.
+- **`--background`** — detaches the worker. **Do not pass it.** It severs the harness notification and leaves polling as the only way to find out the job is done; it exists for scripting. Backgrounding for the user is the Bash tool's job — see below.
 - **`--timeout <sec>`** — kills the run (SIGTERM, then SIGKILL after 5s) if it hasn't finished by then. Default 1800s (30 min). A killed run is still recorded as `failed` with a note — never silently dropped.
 - **`--no-git-check`** — the only supported spelling. By default `/cursor:delegate` refuses to run outside a git repository; pass this to override (e.g. scratch directories).
 - **`--prompt-file <path>`** (or `--prompt-file -` for stdin) — read the task from a file instead of the command line. Use it for long, multi-line, or quote-heavy specs that would be mangled as shell arguments; it is mutually exclusive with an inline task. For a spec already living in the repo, prefer an `@path` reference in the inline task instead — that lets cursor-agent open the file itself.
@@ -33,7 +33,7 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
 
    **Question 2 — fast variant.** Ask **only if** the chosen model's `--print-models` entry showed a fast variant. Many models have none, and then this question must be skipped entirely. State in the option that fast runs the same model on faster hardware for roughly **2x the usage cost**, so on an included model it burns the plan's pool about twice as quickly. If the user picks fast, use the `-fast` id.
 
-3. **Run the job** with the `Bash` tool, putting flags **before** the task and keeping the task as one quoted argument:
+3. **Run the job** with the `Bash` tool and **`run_in_background: true`**. The command runs cursor-agent in the foreground of its own process, so the harness sees the exit and tells you when it lands — the user keeps chatting with you the whole time, and you never poll. Put flags **before** the task and keep the task as one quoted argument:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --model <resolved-id> "<task>"
@@ -47,4 +47,11 @@ Key flags, all forwarded through `$ARGUMENTS` verbatim:
 
    Do not paraphrase or reconstruct the command's output.
 
-4. **Render the result verbatim.** If the job ran in the foreground, present the status, files touched, and summary sections as a compact Markdown block. If the job was started in the background, show the returned job id and the `/cursor:result` hint. Do not paraphrase Cursor's summary.
+4. **Render the result verbatim.** The output is cursor-agent's own write-up, and on a clean run that is all of it. Do not paraphrase it, and do not add a status table, a file list, or timings of your own — you have `git status` and `git diff` if you want to know what changed, and running them is cheaper than making the user read a summary of them.
+
+   Lines starting `⚠` are the exceptions the plugin does surface. Never drop one, and never fold two into one verdict:
+
+   - `⚠ cursor-agent did not report success` is the CLI's own verdict; `⚠ exit N` is the process exit code. They are independent and disagree in both directions.
+   - `⚠ N commands exited non-zero` lists terminal commands that failed. It does **not** mean the job failed — a `grep` that matches nothing, or a deliberately red test, exits non-zero on purpose. Surface it and let the user judge.
+
+   After a job that changed code, review the diff yourself before telling the user it is done.

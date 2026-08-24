@@ -1,6 +1,6 @@
 {
   "name": "cursor",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Hand off tasks from Claude Code to cursor-agent. Composer-optimised.",
   "author": {
     "name": "Ahmed Ghoniem",

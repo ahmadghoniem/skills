@@ -232,6 +232,13 @@ export async function runHeadless(opts) {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
+    // Mandatory on Windows. The background worker is detached and therefore has
+    // no console of its own, so without this the OS hands this child a brand new
+    // one — on Win11 a Windows Terminal window titled with the CLI's exe path,
+    // which opens on dispatch and sits there for the whole life of the job. This
+    // is the spawn that was actually producing it; the worker's own spawn only
+    // sets the stage.
+    windowsHide: true,
     ...(process.platform === 'win32' ? {} : { detached: true }),
   });
   if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {

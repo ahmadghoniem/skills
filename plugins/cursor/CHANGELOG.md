@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.0 — the console window is gone, and the result block is just cursor-agent's write-up
+
+Two changes you feel immediately: dispatching a job no longer opens a terminal window that sits
+there for the life of the run, and the write-up that comes back is cursor-agent's own, without a
+wrapper of facts you already had.
+
+### Fixed
+
+- **A console window opened on every background dispatch and stayed open.** The background worker
+  is spawned `detached`, so it has no console of its own; Windows therefore handed the
+  `cursor-agent` it spawned a brand new one — on Win11 a Windows Terminal window titled with the
+  binary's path, alive for the whole job. `windowsHide: true` was missing from every spawn that
+  could create one: the CLI spawn in `lib/cursor.mjs` (the load-bearing one — the window's owner
+  was the CLI process itself), the probe spawn in `lib/run.mjs` (`--version`, model listing), and
+  the worker spawn in `delegate.mjs`. `lib/killtree.mjs` already set it; these three were missed.
+
+### Changed
+
+- **The result block is cursor-agent's write-up and nothing else on a clean run.** Gone: the model
+  id, the finish timestamp, `exit 0`, and a re-print of the entire prompt just typed (`result.mjs`
+  echoed it unconditionally and untruncated). Gone too: **Files touched**, which was built from
+  every path cursor-agent's tools mentioned — reads included — so a run that read forty files and
+  edited one listed forty-one. `git status` is the ground truth and is one call away.
+
+  What survives is the set of ways a run can be wrong while still looking done, one `⚠` line each,
+  any of which may fire alone: cursor-agent not reporting success (with its exit reason), a
+  non-zero process exit, a watchdog kill, commands that exited non-zero (reported, never judged),
+  and a lost chat id. The CLI's own verdict and the process exit code stay separate — they
+  disagree in both directions.
+
+  One line was kept deliberately: `⚠ ran as <id>, not the model the dispatch line named`. Under
+  `--model auto` the old `**Model:**` line was the only place the concrete id ever appeared, so
+  dropping it silently would have lost real information. It fires only when the id differs from
+  the one the dispatch line announced. `cliSuccess` is now persisted on the job record so
+  `/cursor:result` can tell the CLI's verdict apart from a non-zero exit rather than inferring one
+  from the other.
+
+- **Dispatch is non-blocking without detaching.** The command now runs cursor-agent in the
+  foreground of its own process, invoked under a backgrounded Bash call, so the session stays free
+  *and* the harness announces the exit. The plugin's own `--background` detaches the worker, which
+  severs that notification and leaves polling as the only way to learn the job finished; it is now
+  documented as scripting-only and the command docs tell Claude not to pass it.
+
+- **The dispatch line is one line:** ``cursor `job-id` (model)``. The job id stays backticked so
+  it is still liftable by eye and by regex.
+
+### Added
+
+- `tests/render.test.mjs` — 14 tests pinning the new block, including that the prompt is never
+  echoed, no file list is emitted, and a clean run produces no warnings at all. 139 tests total.
+
 ## 0.11.0 — cancel actually kills cursor-agent, and long prompts leave argv
 
 A research pass (grok-4.6 with Exa, sourced against libuv, Node, and the CLI wrappers' own issue
