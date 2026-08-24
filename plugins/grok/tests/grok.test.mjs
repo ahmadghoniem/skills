@@ -2,8 +2,14 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HAPPY_FIXTURE, STUB_BIN, makeTempHome } from './helpers.mjs';
 
+// Captured verbatim from `grok models` on 1.0.5, exit 0, authenticated.
+// The previous version of this fixture opened with "You are not authenticated."
+// on the belief that grok printed that even on a working install. It does not —
+// that claim is disproved and the code comments asserting it are gone.
 const REAL_MODELS_STDOUT = [
-  'You are not authenticated.',
+  'You are logged in with grok.com.',
+  '',
+  'Default model: grok-4.6',
   '',
   'Available models:',
   '  * grok-4.6 (default)',
@@ -221,5 +227,43 @@ describe('runHeadless against stub binary', () => {
     expect(onSpawn).toHaveBeenCalledTimes(1);
     expect(onSpawn.mock.calls[0][0]).toEqual(expect.any(Number));
     expect(onSpawn.mock.calls[0][0]).toBeGreaterThan(0);
+  });
+});
+
+describe('buildArgs session pre-assignment', () => {
+  const base = {
+    promptFile: 'C:\tmp\brief.md',
+    model: 'grok-4.6',
+  };
+
+  it('names a fresh session with -s so a killed run stays resumable', async () => {
+    const { buildArgs } = await import('../scripts/lib/grok.mjs');
+    const args = buildArgs({ ...base, sessionId: '11111111-2222-3333-4444-555555555555' });
+    expect(args).toContain('-s');
+    expect(args[args.indexOf('-s') + 1]).toBe('11111111-2222-3333-4444-555555555555');
+  });
+
+  it('never passes -s on a resume — it declares a NEW conversation', async () => {
+    const { buildArgs } = await import('../scripts/lib/grok.mjs');
+    const byId = buildArgs({
+      ...base,
+      sessionId: '11111111-2222-3333-4444-555555555555',
+      resumeSessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    });
+    expect(byId).not.toContain('-s');
+    expect(byId).toContain('--resume');
+
+    const latest = buildArgs({
+      ...base,
+      sessionId: '11111111-2222-3333-4444-555555555555',
+      resumeLatest: true,
+    });
+    expect(latest).not.toContain('-s');
+    expect(latest).toContain('--continue');
+  });
+
+  it('omits -s entirely when no session id was assigned', async () => {
+    const { buildArgs } = await import('../scripts/lib/grok.mjs');
+    expect(buildArgs(base)).not.toContain('-s');
   });
 });

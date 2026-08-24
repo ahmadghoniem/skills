@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, openSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { collapseCommandArgv, parseArgv, parseTimeout } from './lib/args.mjs';
@@ -101,12 +102,29 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
   const resume = isResumeRequested(flags.resume, flags.fresh);
   const sessionId = resume ? resumeSessionId(flags.resume) : undefined;
 
+  // A fresh dispatch names its own session up front and records it BEFORE grok
+  // is spawned, so the job is resumable from the instant it starts. Previously
+  // the id arrived only on the terminal `end` event, which meant precisely the
+  // runs you most want to resume — killed, crashed, timed out — were the ones
+  // that could not be. Verified on grok 1.0.5: a run killed mid-stream with no
+  // `end` event still leaves its session on disk under this id, and `-r <uuid>`
+  // resumes it with prior context intact.
+  const freshSessionId = resume ? undefined : randomUUID();
+  if (freshSessionId) {
+    try {
+      updateJob(root, jobId, { grokSessionId: freshSessionId });
+    } catch {
+      // Losing the pre-assignment costs resumability, not the run.
+    }
+  }
+
   let toolCalls = 0;
   let omitted = 0;
   const result = await runHeadless({
     prompt,
     model,
     effort: flags.effort,
+    sessionId: freshSessionId,
     resumeSessionId: sessionId,
     resumeLatest: resume && !sessionId,
     timeoutSec: flags.timeout,
@@ -185,7 +203,9 @@ async function foreground(flags, prompt, jobId, root) {
       // `end` is the only streaming event carrying `sessionId`, so a watchdog
       // kill never delivers one. Saying the job is unresumable beats printing a
       // resume line that points at nothing.
-      sessionLost: result.killed && !summary.sessionId,
+      // A fresh dispatch pre-assigns its id, so this can now only fire on a
+      // resume — where `-s` is illegal and the id must still come from `end`.
+      sessionLost: result.killed && !summary.sessionId && !freshSessionId,
     }),
   );
   return result.exitCode;

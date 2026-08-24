@@ -170,6 +170,7 @@ export async function resolveBin() {
  * @property {string} promptFile      Path to the file holding the brief.
  * @property {string} model
  * @property {string=} effort         Passed through to `--reasoning-effort`.
+ * @property {string=} sessionId        Pre-assigned UUID for a NEW session.
  * @property {string=} resumeSessionId
  * @property {boolean=} resumeLatest
  */
@@ -190,6 +191,16 @@ export async function resolveBin() {
  * silently and runs anyway (verified: `--sandbox __invalid__` produced no error),
  * so it reads like a guarantee while providing none.
  *
+ * `-s <uuid>` names the session BEFORE the run starts, on fresh dispatches only.
+ * Without it the id arrives only on the terminal `end` event, so a killed,
+ * crashed, or truncated run was permanently unresumable — the one case where you
+ * most want to resume. Verified on grok 1.0.5: a run killed mid-stream with no
+ * `end` event still leaves `~/.grok/sessions/<cwd>/<uuid>` on disk, and
+ * `-r <uuid>` resumes it with full prior context.
+ *
+ * `-s` is illegal on a resume (it declares a NEW conversation), so the resume
+ * branch continues to read the id back from `end`.
+ *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
  */
@@ -207,6 +218,7 @@ export function buildArgs(opts) {
   if (opts.effort) args.push('--reasoning-effort', opts.effort);
   if (opts.resumeSessionId) args.push('--resume', opts.resumeSessionId);
   else if (opts.resumeLatest) args.push('--continue');
+  else if (opts.sessionId) args.push('-s', opts.sessionId);
   return args;
 }
 
@@ -215,6 +227,7 @@ export function buildArgs(opts) {
  * @property {string} prompt
  * @property {string} model
  * @property {string=} effort
+ * @property {string=} sessionId
  * @property {string=} resumeSessionId
  * @property {boolean=} resumeLatest
  * @property {string=} cwd
@@ -265,6 +278,7 @@ export async function runHeadless(opts) {
     promptFile,
     model: opts.model,
     effort: opts.effort,
+    sessionId: opts.sessionId,
     resumeSessionId: opts.resumeSessionId,
     resumeLatest: opts.resumeLatest,
   });
