@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.4.0 — the console window is gone, and the result block is just grok's write-up
+
+Two changes you feel immediately: dispatching a job no longer opens a terminal window that sits
+there for the life of the run, and the write-up that comes back is grok's own, without a wrapper
+of facts you already had.
+
+### Fixed
+
+- **A console window opened on every background dispatch and stayed open.** The background worker
+  is spawned `detached`, so it has no console of its own; Windows therefore handed the `grok.exe`
+  it spawned a brand new one — on Win11 a Windows Terminal window titled with the binary's path,
+  alive for the whole job. `windowsHide: true` was missing from every spawn that could create one:
+  the CLI spawn in `lib/grok.mjs` (the load-bearing one — the window's owner was `grok.exe`
+  itself), the probe spawn in `lib/run.mjs` (`--version`, `models`), and the worker spawn in
+  `delegate.mjs`. `lib/killtree.mjs` already set it; these three were simply missed.
+
+### Changed
+
+- **The result block is grok's write-up and nothing else on a clean run.** Gone: the model id, the
+  finish timestamp, `exit 0`, the cost and turn count, and a re-print of the entire prompt just
+  typed (`result.mjs` echoed it unconditionally and untruncated, so a 5KB brief came back in full).
+  Gone too: **Files touched**, which was built from every `file_path` grok's tools mentioned —
+  reads included — so a run that read forty files and edited one listed forty-one. `git status` is
+  the ground truth and is one call away.
+
+  What survives is the set of ways a run can be wrong while still looking done, one `⚠` line each,
+  any of which may fire alone: a stop reason that is not `end_turn`, a non-zero process exit, a
+  watchdog kill, commands that exited non-zero (reported, never judged), and a lost session id.
+  grok's own verdict and the process exit code stay separate — they disagree in both directions.
+
+- **Dispatch is non-blocking without detaching.** The command now runs grok in the foreground of
+  its own process, invoked under a backgrounded Bash call, so the session stays free *and* the
+  harness announces the exit. The plugin's own `--background` detaches the worker, which severs
+  that notification and leaves polling as the only way to learn the job finished; it is now
+  documented as scripting-only and the command docs tell Claude not to pass it.
+
+- **The dispatch line is one line:** ``grok `job-id` (model)``.
+
+### Added
+
+- `tests/render.test.mjs` — 13 tests pinning the new block, including that the prompt is never
+  echoed, no file list is emitted, and a clean run produces no warnings at all. 127 tests total.
+
 ## 0.3.0 — cancel actually kills the CLI, and the prompt leaves the environment
 
 A research pass (grok-4.6 with Exa, sourced against libuv, Node, and the CLI wrappers' own issue

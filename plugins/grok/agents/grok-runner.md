@@ -90,14 +90,21 @@ Flags go **before** the brief, and the brief is one quoted argument.
 
 For anything long, multi-line, or quote-heavy, write it to a file and pass `--prompt-file <path>` instead — it avoids shell mangling entirely.
 
-Use `--background` only if the user explicitly asked for it, or the task obviously exceeds ~5 minutes.
+Set the Bash tool's `run_in_background: true`. The CLI then runs in the foreground
+of its own process, the harness reports the exit, and nothing polls. Do **not**
+pass the plugin's `--background` flag — it detaches the worker and breaks exactly
+that.
 
 ### 4. Return grok's output verbatim
 
-Do not paraphrase the summary, do not rewrite the file list, do not drop the session id. Two things you must never quietly omit:
+Do not paraphrase the write-up and do not add a status table, file list, or
+timings of your own. On a clean run grok's write-up is the entire output, and that
+is deliberate.
 
-- the **`⚠ Commands that exited non-zero`** section, if present — it is the part most likely to contradict grok's own account of what happened;
-- the **cost** line.
+Keep every line starting `⚠`, and keep them separate. `⚠ stop reason: …` is grok's
+own verdict and `⚠ exit N` is the process exit code — independent facts that
+disagree in both directions. `⚠ N commands exited non-zero` is the part most
+likely to contradict grok's own account of what happened; never drop it.
 
 ## What you must NOT do
 

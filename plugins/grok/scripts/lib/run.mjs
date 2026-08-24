@@ -37,6 +37,9 @@ export function run(cmd, args, opts = {}) {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: opts.env ?? process.env,
+      // Probe spawns (`--version`, `models`) would each flash a console window
+      // when the caller has none of its own. Same reason as the CLI spawn.
+      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';

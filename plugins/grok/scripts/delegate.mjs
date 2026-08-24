@@ -15,7 +15,7 @@ import {
 } from './lib/jobs.mjs';
 import { describeToolCall, summariseEvents } from './lib/parse.mjs';
 import { ensureDir, jobsDir, logsDir } from './lib/paths.mjs';
-import { costLine, renderRunDetail } from './lib/render.mjs';
+import { renderOutcome } from './lib/render.mjs';
 
 const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'help', 'resume'];
 
@@ -171,41 +171,26 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
 async function foreground(flags, prompt, jobId, root) {
   const model = await resolveModel(flags.model);
   createJob({ id: jobId, repoPath: root, prompt, model });
-  process.stdout.write(
-    `Job \`${jobId}\` started on model \`${model}\`${flags.effort ? ` (effort: ${flags.effort})` : ''} (foreground).\n\n`,
-  );
+  process.stdout.write(`grok \`${jobId}\` (${model})\n\n`);
 
-  const { result, summary, status } = await runAndRecord(flags, prompt, jobId, root, {
+  const { result, summary } = await runAndRecord(flags, prompt, jobId, root, {
     live: true,
   });
 
-  process.stdout.write('\n---\n');
-  process.stdout.write(`**Status:** ${status}\n`);
-  process.stdout.write(`**Model:** ${summary.resolvedModel ?? model}\n`);
-  if (summary.stopReason && summary.stopReason !== 'end_turn') {
-    process.stdout.write(`**Stop reason:** ${summary.stopReason}\n`);
-  }
-  process.stdout.write(costLine(summary));
-  if (result.killed) {
-    process.stdout.write('**⚠ Run was killed before finishing** (timeout/watchdog).\n');
-  }
   process.stdout.write('\n');
-  process.stdout.write(renderRunDetail(summary));
-  process.stdout.write('**Summary:**\n\n');
-  process.stdout.write(summary.summary.trim() + '\n');
-  if (summary.sessionId) {
-    process.stdout.write(
-      `\n**Grok session:** \`${summary.sessionId}\` — continue with \`/grok:delegate --resume=${summary.sessionId} <follow-up>\`.\n`,
-    );
-  } else if (result.killed) {
-    // `end` is the only streaming event that carries `sessionId`. A watchdog
-    // kill never delivers it, so printing a --resume line would point at
-    // nothing. Say so rather than implying the session is continuable.
-    process.stdout.write(
-      '\n**Grok session:** lost — the run was killed before grok reported a session id, so this job cannot be resumed.\n',
-    );
-  }
-  process.stdout.write(`\nRun \`/grok:result ${jobId}\` for the full record.\n`);
+  process.stdout.write(
+    renderOutcome({
+      summary: summary.summary,
+      stopReason: summary.stopReason,
+      exitCode: result.exitCode,
+      killed: result.killed,
+      failedCommands: summary.failedCommands,
+      // `end` is the only streaming event carrying `sessionId`, so a watchdog
+      // kill never delivers one. Saying the job is unresumable beats printing a
+      // resume line that points at nothing.
+      sessionLost: result.killed && !summary.sessionId,
+    }),
+  );
   return result.exitCode;
 }
 
@@ -217,6 +202,12 @@ function spawnBackground(jobId, argv, root) {
   const err = openSync(`${logPath}.stderr`, 'a');
   const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
     detached: true,
+    // Mandatory alongside `detached` on Windows. Without it the OS gives the
+    // detached child its own console, which on Win11 surfaces as a Windows
+    // Terminal window that opens on dispatch and sits there for the whole life
+    // of the job. `killtree.mjs` already sets this on its own spawn; this call
+    // was simply missed.
+    windowsHide: true,
     stdio: ['ignore', out, err],
     env: { ...process.env, CGD_WORKER: '1', CGD_REPO_ROOT: root },
   });

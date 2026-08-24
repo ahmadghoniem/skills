@@ -4,42 +4,21 @@ import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { listJobs, mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
 import { renderJobTable } from './lib/jobtable.mjs';
-import { costLine, renderRunDetail } from './lib/render.mjs';
+import { renderOutcome } from './lib/render.mjs';
 
+// A finished job carries no `killed` flag of its own; the worker records the
+// kill by appending a post-flight note to the summary and by landing the job at
+// status `failed` with a truncated stream (`stopReason` never reaches
+// `end_turn`). Those two already raise their own warnings, so nothing is lost by
+// not re-deriving it here.
 function render(job) {
-  const summary = typeof job.summary === 'string' ? job.summary : '';
-  const lines = [];
-  lines.push(`### Result of job \`${job.id}\` — ${job.status}`);
-  lines.push('');
-  lines.push(`**Model:** ${String(job.model ?? '?')}`);
-  if (job.finishedAt) lines.push(`**Finished:** ${job.finishedAt}`);
-  if (typeof job.exitCode === 'number') lines.push(`**Exit code:** ${job.exitCode}`);
-  if (job.stopReason && job.stopReason !== 'end_turn') {
-    lines.push(`**Stop reason:** ${job.stopReason}`);
-  }
-  const cost = costLine(job);
-  if (cost) lines.push(cost.trimEnd());
-  lines.push('');
-  lines.push(`**Prompt:** ${String(job.prompt ?? '')}`);
-  lines.push('');
-  // `renderRunDetail` ends with its own trailing blank line so a caller writing
-  // straight to stdout gets correct spacing. Here the result is being joined
-  // into a line array, so that trailing newline would double up — trim it and
-  // let the array's own separator do the work.
-  const detail = renderRunDetail(job);
-  if (detail) lines.push(detail.trimEnd(), '');
-  lines.push('**Summary:**');
-  lines.push('');
-  lines.push((summary || '(no summary captured)').trim());
-  lines.push('');
-  if (job.grokSessionId) {
-    lines.push(
-      `Continue this session: \`/grok:delegate --resume=${job.grokSessionId} <follow-up>\``,
-    );
-  } else {
-    lines.push('No grok session id was captured for this job.');
-  }
-  return lines.join('\n') + '\n';
+  return renderOutcome({
+    summary: job.summary,
+    stopReason: job.stopReason,
+    exitCode: job.exitCode,
+    failedCommands: job.failedCommands,
+    sessionLost: job.status === 'failed' && !job.grokSessionId,
+  });
 }
 
 /**

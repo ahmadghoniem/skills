@@ -1,59 +1,102 @@
 // Presentation shared by the foreground dispatch and `/grok:result`, so the
 // write-up you see when a job finishes and the one you fetch later cannot drift.
+//
+// The default output is grok's own write-up and nothing else. What used to sit
+// around it — the model id, the finish timestamp, `exit 0`, the cost and turn
+// count, and a re-print of the entire prompt you just typed — was either already
+// known to whoever dispatched the job or noise on the runs that simply worked.
+// The file list went too: it was built from every `file_path` grok's tools
+// mentioned, reads included, so a run that read forty files and edited one
+// listed forty-one. `git status` is the ground truth and is one call away.
+//
+// What survives is the set of ways a run can be wrong while still looking done.
 
 /**
- * Files touched, plus the failed-command report.
- *
- * The failed-command section is reported, never fatal. A non-zero exit is
- * routinely intentional — `grep` finding nothing, a deliberately red test in a
- * TDD cycle, a `command -v` probe — so the plugin puts the fact in front of a
- * human instead of deciding the run failed. Grok's own `stopReason` remains the
- * only input to job status.
- *
- * @param {{filesTouched: string[], failedCommands: Array<{command: string, exitCode: number|null, output: string, timedOut: boolean}>}} summary
- * @returns {string}
+ * @typedef {Object} CommandRun
+ * @property {string} command
+ * @property {number|null} exitCode
+ * @property {string} output
+ * @property {boolean} timedOut
  */
-export function renderRunDetail(summary) {
-  const files = summary.filesTouched ?? [];
-  const failed = summary.failedCommands ?? [];
+
+/**
+ * @typedef {Object} OutcomeView
+ * @property {string|undefined} summary
+ * @property {string|undefined} stopReason
+ * @property {number|null|undefined} exitCode
+ * @property {boolean} [killed]
+ * @property {CommandRun[]} [failedCommands]
+ * @property {boolean} [sessionLost]
+ */
+
+/**
+ * The warning lines for a finished run, in print order. Exported so a test can
+ * assert directly that a clean run produces none of them.
+ *
+ * @param {OutcomeView} view
+ * @returns {string[]}
+ */
+export function warnings(view) {
   const out = [];
-  if (files.length > 0) {
-    out.push('**Files touched:**');
-    for (const f of files) out.push(`- ${f}`);
-    out.push('');
+
+  const stop = view.stopReason;
+  if (stop && stop !== 'end_turn') {
+    out.push(`stop reason: ${stop}`);
   }
+
+  if (typeof view.exitCode === 'number' && view.exitCode !== 0) {
+    out.push(`exit ${view.exitCode}`);
+  }
+
+  if (view.killed) {
+    out.push('run was killed before finishing (timeout or watchdog) — output may be incomplete');
+  }
+
+  // Reported, never fatal. A non-zero exit is routinely intentional — `grep`
+  // finding nothing, a deliberately red test in a TDD cycle, a `command -v`
+  // probe — so the plugin puts the fact in front of a human instead of deciding
+  // the run failed. Grok's own `stopReason` remains the only input to status.
+  const failed = view.failedCommands ?? [];
   if (failed.length > 0) {
-    out.push(`**⚠ Commands that exited non-zero (${failed.length}):**`);
-    out.push('');
+    const n = failed.length;
+    out.push(
+      `${n} command${n === 1 ? '' : 's'} exited non-zero — reported, not judged; grok may have meant them:`,
+    );
     for (const c of failed) {
-      out.push(`- \`${c.command}\` → exit ${c.exitCode}${c.timedOut ? ' (timed out)' : ''}`);
+      out.push(`    ${c.command} → exit ${c.exitCode}${c.timedOut ? ' (timed out)' : ''}`);
       const trimmed = (c.output ?? '').trim();
-      if (trimmed) {
-        out.push('  ```');
-        for (const line of trimmed.split('\n').slice(0, 10)) out.push(`  ${line}`);
-        out.push('  ```');
+      for (const line of trimmed ? trimmed.split('\n').slice(0, 10) : []) {
+        out.push(`      ${line}`);
       }
     }
-    out.push('');
-    out.push(
-      'These are reported, not judged — grok may have meant them (a `grep` miss, a red test). Check them before trusting the summary.',
-    );
-    out.push('');
   }
-  // A trailing blank line, so whatever the caller prints next (the summary
-  // heading) is separated rather than butted against the last bullet.
-  return out.length > 0 ? `${out.join('\n')}\n` : '';
+
+  if (view.sessionLost) {
+    out.push('no session id was captured — this job cannot be resumed');
+  }
+
+  return out;
 }
 
 /**
- * Grok reports real spend per run in its `end` event, so show it. Returns ''
- * when the stream never surfaced a cost (a killed or truncated run).
+ * Grok's write-up, plus a warning line per way the run may have gone wrong.
+ * A clean run renders as the write-up alone.
  *
- * @param {{costUsd?: number, numTurns?: number}} summary
+ * @param {OutcomeView} view
  * @returns {string}
  */
-export function costLine(summary) {
-  if (typeof summary.costUsd !== 'number') return '';
-  const turns = typeof summary.numTurns === 'number' ? `, ${summary.numTurns} turns` : '';
-  return `**Cost:** $${summary.costUsd.toFixed(4)}${turns}\n`;
+export function renderOutcome(view) {
+  const report = (view.summary == null ? '' : String(view.summary)).replace(/\s+$/, '');
+  const warns = warnings(view);
+
+  const lines = [];
+  if (report.length > 0) lines.push(report);
+  else if (warns.length === 0) lines.push('(grok returned no write-up)');
+
+  if (warns.length > 0) {
+    if (lines.length > 0) lines.push('');
+    for (const w of warns) lines.push(w.startsWith('    ') ? w : `⚠ ${w}`);
+  }
+
+  return `${lines.join('\n')}\n`;
 }
