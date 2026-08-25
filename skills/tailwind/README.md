@@ -44,6 +44,8 @@ Keep `research/` if you want to check a claim offline — it is inert either way
 
 ### What actually loads
 
+`scripts/oklch.mjs` is run, not read — `SKILL.md` and `cleanup.md` give the invocation, so the source never enters context.
+
 Only the `description` in `SKILL.md`'s frontmatter is always in context — currently **154 characters**. That is the whole always-on cost. When the model judges the skill relevant it invokes it, and *only then* does `SKILL.md`'s body load; the files in `references/` load individually, on demand, when the situation calls for one. `evals/` and `research/` are never referenced by `SKILL.md` and are never read.
 
 Measured, not assumed: a real invocation was captured with `claude -p --output-format stream-json` and the transcript contains `SKILL.md`'s body and nothing else — no `references/`, no `research/`, no directory listing.
@@ -75,7 +77,10 @@ tailwind/
 │   ├── setup.md          # globals.css scaffold, build entry, next-themes, cn(), button cursor
 │   ├── gotchas.md        # v4 traps
 │   ├── editor.md         # IntelliSense + linter recommendations
+│   ├── affordances.md    # when a repeated class string becomes an @utility
 │   └── cleanup.md        # the cleanup pass
+├── scripts/
+│   └── oklch.mjs         # hex/rgb/hsl <-> oklch; zero deps, node only
 ├── evals/                # trigger eval — does the description actually fire the skill?
 ├── research/             # provenance; not installed by default — see Install
 └── README.md

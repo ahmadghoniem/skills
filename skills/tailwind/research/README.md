@@ -48,6 +48,7 @@ Folded here from the old root `EVALUATION-CONTEXT.md` (2026-08-18 audit index). 
 | [09-trigger-eval-run.md](09-trigger-eval-run.md) | Does the description actually fire the skill, and is a shorter one worse? | **live** — four rounds on a corrected harness; negatives 40/40, positives 0.3 in an empty dir; 199→154 chars with no change in behaviour |
 | [10-container-units-compile.md](10-container-units-compile.md) | Do `cqi`/`cqw`/`cqh` resolve, and does Tailwind warn? | **live** — evidence for the container-unit paragraph |
 | [11-crlf-frontmatter.md](11-crlf-frontmatter.md) | Why did the skill list its H1 instead of its description? | **live** — CRLF breaks frontmatter parsing; control clone + trigger test; fixed by `.gitattributes` |
+| [12-2026-08-25-revision-compile.md](12-2026-08-25-revision-compile.md) | Do the 2026-08-25 additions — affordances, the container scale, the radius and `--spacing` preconditions — hold on 4.3.3? | **live** — nine checks re-run on `latest`; all confirmed, and it closes the spacing-formula soft row |
 
 ## Historical / rejected
 
@@ -90,6 +91,11 @@ This skill has shipped confidently-worded false claims. Treat that as the base r
 | `hsl(var(--x))` is "shadcn's prescribed v4 shape" | Current shadcn stores complete `oklch()` | `02` |
 | Biome `"fix": "safe"` applies `useSortedClasses` | Fix is **unsafe** | `02` |
 | Canonical rule only conflicts with `enforce-shorthand-classes` | Also important-position + variable-syntax | `02` |
+| `rootFontSize` defaults to 16, so setting it restates a default | The **option's** default is `undefined`; the docs' "16px" describes the browser. Left out, the rule skips px rewrites entirely | Ran the rule with and without it |
+| px→scale-step rewrite listed under *Auto-apply* with no precondition | On a `--spacing: 0.2rem` project `p-[16px]` is `p-5`; the rewrite is a 20% resize with a clean exit code | Compiled the override (`12` §7) |
+| `borderRadius: "2px"` → `rounded-[2px]` in the new inline-style rule | `--radius-xs` **is** `0.125rem` — exactly 2px. The rule broke the skill's own ladder in its first draft | Compiled the radius scale (`12` §6) |
+| `restrict: [{ pattern: "-\\[#" }]` written with one backslash | The plugin hands the string to `String.match` unescaped; ESLint dies with `Unterminated character class` on the first file | Ran the config |
+| A clean `eslint .` run means the tree is clean | `enforce-canonical-classes` silently stops reporting across more than one top-level directory: 26 findings per-directory vs 8 for `.` | Compared invocations on the same tree |
 
 **Pattern:** four early bugs were self-contradictions between the skill’s own files. Cross-read SKILL.md against `references/setup.md` before checking either against the docs.
 
@@ -101,7 +107,8 @@ This skill has shipped confidently-worded false claims. Treat that as the base r
 | Authoring rules stay **in** SKILL.md | Pushing always-on rules to `references/` is how they silently stop applying |
 | OKLCH-only tokens; no 50–950 ramp; no invert-for-dark | Matches shadcn + Tailwind palettes; roles are re-set under `.dark` |
 | No `@supports` / P3 fallback ladder | `oklch()` is Baseline widely available since May 2023 |
-| No `scripts/` | `eslint --fix` already enforces; don’t wrap a tool that exists |
+| One `script/` — `oklch.mjs` — and no more | **Reversed 2026-08-25.** The original rule (don’t wrap a tool that exists) still holds for linting, which is why there is no lint script. It did not hold for OKLCH conversion: `cleanup.md` said “use a converter” and named none, and nothing portable exists — `oklch.fyi` is a closed web app, and the comparable skill tells the agent to “use a color library” without shipping one. `culori` would add an install to every repo the skill lands in. The transform is ~40 lines of Ottosson, so the script implements it directly. Run, never read |
+| A repeated class string is a missing **component** before it is a missing class | Tailwind's own *Managing duplication* scopes the custom-CSS escape hatch to templating languages, not React/Vue/Svelte. `@utility` is for markup no component can own — the gate goes first in `affordances.md`, ahead of the pattern |
 | `enforce-canonical-classes` over `@tailwindcss/upgrade` | Upgrade CLI has no templates-only mode and skips `rem` so px rewrites don’t fire |
 | Duplicate-property pairs are **flagged, never auto-fixed** | Emission order decides; `cn()` / tailwind-merge changes the answer again |
 | No docs-index always-on catalogue | Evaluated `candidate-hairyf-index.md` and rejected it |
@@ -118,6 +125,6 @@ This skill has shipped confidently-worded false claims. Treat that as the base r
 
 ## Known open
 
-- The **no-evidence list is closed** — all ten rows settled, see the bottom of [CLAIMS.md](CLAIMS.md). Two claims remain *soft* (the `--spacing()` integer formula, `group`/`peer` markers); they have evidence that is stale or absent rather than contradictory.
+- The **no-evidence list is closed** — all ten rows settled, see the bottom of [CLAIMS.md](CLAIMS.md). One claim remains *soft* (`group`/`peer` marker classes); the `--spacing()` integer formula was closed by `12` §9.
 - **Trigger rate.** `09` measures 0.3 positives / 40-of-40 negatives in an **empty directory**, and shows wording is not the lever — seven query shapes never fire under any variant. Nobody has run the eval inside a **real Tailwind project**, where the model has files and a `CLAUDE.md` to go on; that is the next measurement. A hook on Tailwind file edits is the untested way to raise it.
-- Whether to teach more `@utility` authoring than “not `@layer utilities`” is still undecided (`archive/research-utility-directive.md`).
+- **Settled 2026-08-25:** how much `@utility` authoring to teach. `references/affordances.md` is the answer — a gate (most repeated class strings are missing components), one pattern, and guard rails. The risk `archive/research-utility-directive.md` flagged, inventing a parallel utility vocabulary, is held off by the gate rather than by saying nothing.
