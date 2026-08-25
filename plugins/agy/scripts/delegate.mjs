@@ -32,6 +32,11 @@ import { renderResult, viewFromJob } from './lib/render.mjs';
 // session free *and* lets the harness announce the exit. The detached
 // `--background` worker severs that notification and forces polling, so it is
 // opt-in only.
+// agy encodes effort in the model id (`gemini-3.7-flash-low`), so picking the
+// default model and picking the default effort are the same act. Medium is the
+// everyday setting; the caller raises or lowers it per task with `--effort`.
+const DEFAULT_EFFORT = 'medium';
+
 const BOOLEAN_FLAGS = ['wait', 'sandbox', 'help', 'continue', 'background'];
 const USAGE =
   'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] [--background] <task...>\n';
@@ -281,7 +286,7 @@ export async function main(rawArgv) {
   // would silently downgrade a follow-up to a run the user deliberately started
   // on a pro model.
   if (!flags.model && !isResume(flags)) {
-    flags.model = resolveDefaultModel() ?? undefined;
+    flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }
 
   const taskText = prompt || 'continue';

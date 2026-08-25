@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`--effort` now reaches the default model.** agy encodes effort in the model id, so the
+  auto-pick used to resolve to `…-flash-high` and `--effort` was discarded on every run that
+  did not also pin `--model` — the flag was unreachable. `pickDefaultModel` now takes the
+  effort and picks within the newest flash version; the default is `medium`, not `high`.
+  `agy-runner` gained the same low/medium/high rubric the grok plugin already had.
+- **Trimmed `agents/agy-runner.md` and `commands/delegate.md` by ~40%.** Removed the
+  restatements of "you are a forwarder", the hedged task-size thresholds, the list of ways a
+  user might signal they want a say in the model, the delegation examples, the job-registry
+  path duplicated from `result.md`, and the paragraph restating the first rule of the
+  contract file injected two lines below it. No instruction was dropped, only its repeats.
+
 ## 0.1.0 — first cut
 
 Delegate coding tasks from Claude Code to the Antigravity CLI (`agy` 1.1.19). Sibling of

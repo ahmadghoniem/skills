@@ -8,47 +8,31 @@ allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 
 ## What agy is for
 
-agy is the cheap, fast, high-volume worker. Reach for it whenever the work is
-well-specified but tedious, and whenever doing it yourself would burn context you
-would rather spend on judgement:
-
-- **Code sweeps** — find every call site of X and change it to Y.
-- **Mini refactors** — extract a helper, rename through a module, split a file.
-- **Bulk reading** — "which of these 40 files defines the retry policy?"
-- **Research** — read the docs/spec/changelog and come back with the answer.
-- **Implementation** — a scoped feature or fix with clear acceptance criteria.
+agy is the cheap, fast, high-volume worker: work that is well-specified but
+tedious, and work that would burn context you would rather spend on judgement.
 
 The point of delegating is that the tokens land in agy's context, not yours. So
 send the task and let it read; do not pre-read the whole tree and paste it in.
 
-## Two entrypoints, one job registry
+## The job name
 
-`/agy:delegate` starts a job; `/agy:result [job-id]` inspects it afterwards. Both
-share the same file-backed job record (`~/.cad/jobs/<repo-hash>/<name>.json`),
-keyed by the **job name** this command prints (kebab slug plus a 4-char suffix,
-e.g. `add-retry-to-fetchuser-a7f3`). It also resolves by unique prefix or by the
-4-char suffix alone.
+This command prints one (`add-retry-to-fetchuser-a7f3`). `/agy:result` takes it.
 
-## Model: do not ask
+## Effort: your call. Model: not your call.
 
-The plugin picks the newest, highest-effort **flash** id from the live
-`agy models` list on its own. That is the right default for essentially
-everything above, and asking about it every time is friction for no gain. Send no
-`--model` and say nothing about models.
+Send no `--model`. The plugin resolves the newest **flash** id from the live
+`agy models` list at whatever `--effort` you pass, because agy encodes effort in
+the id itself.
 
-Ask **one** `AskUserQuestion` only when the user's own message shows they want a
-say in what runs. That is a judgement call about intent, not a phrase match — any
-of these count, and so does anything in the same spirit:
+Set `--effort` per task: **low** for mechanical, fully-specified work, **medium**
+(the default) for a bounded change needing some judgment, **high** for an unclear
+bug or a design with real trade-offs. Match it to the task, not to its size —
+long mechanical work still wants low.
 
-- they name a model, or a family ("use Gemini Pro", "try the Claude one"),
-- they ask what models are available,
-- they say the default is not up to this one ("this needs something smarter",
-  "the last run was too shallow"),
-- they ask for cheaper / faster / stronger,
-- they ask you to choose together, or ask which you would pick.
-
-If they name a model outright, just pass it — do not ask to confirm a choice they
-already made.
+Ask **one** `AskUserQuestion` about models only when the user raises them: they
+name a model or a family, ask what is available, say the default is not up to
+this one, or ask for cheaper / faster / stronger. If they name one outright, pass
+it without confirming a choice they already made.
 
 When you do ask, get the real ids first and offer only those:
 
@@ -85,8 +69,8 @@ job is done. It exists for scripting, not for you.
 | Flag | Effect |
 | --- | --- |
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
-| `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one. |
-| `--effort <level>` | `low`, `medium`, or `high`. Send only when the model id does not already end in `-low`/`-medium`/`-high`. |
+| `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
+| `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 900 (15m); the watchdog is that plus 60s grace. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
 | `--no-git-check` | Allow dispatching outside a git repository. |
@@ -94,11 +78,6 @@ job is done. It exists for scripting, not for you.
 | `--continue` | Resume the most recent conversation for this directory. |
 
 ## Reading the output
-
-The output is agy's own report, and on a clean run that is all of it. Relay it
-without a status table, a file list, or a duration of your own — you have `git
-status` and `git diff` if you want the ground truth, and running them is cheaper
-than making the user read a summary of them.
 
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 

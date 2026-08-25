@@ -162,15 +162,23 @@ function versionOf(id) {
  * The model to use when the caller did not pin one.
  *
  * Flash is the point of this plugin — cheap, fast, high volume — so the pick is
- * the highest-effort, highest-version flash id agy currently offers, resolved
- * from the live `agy models` list rather than hardcoded (the ids change).
+ * the newest flash id agy currently offers, resolved from the live `agy models`
+ * list rather than hardcoded (the ids change).
+ *
+ * Effort is the caller's, not this function's. agy encodes it in the id
+ * (`gemini-3.7-flash-low`), so choosing the model and choosing the effort are
+ * the same act; picking `-high` here would make `--effort` unreachable on every
+ * run that does not also pin `--model`. When the newest version does not offer
+ * the requested level, its highest-ranked id stands in.
+ *
  * Falls back to the account default, then the first model, then nothing.
  *
  * @param {ModelInfo[]} models
  * @param {string|null=} accountDefaultLabel
+ * @param {'low'|'medium'|'high'=} effort
  * @returns {string|null}
  */
-export function pickDefaultModel(models, accountDefaultLabel) {
+export function pickDefaultModel(models, accountDefaultLabel, effort = 'medium') {
   const list = Array.isArray(models) ? models : [];
   if (list.length === 0) return null;
 
@@ -182,7 +190,9 @@ export function pickDefaultModel(models, accountDefaultLabel) {
         return { id: m.id, effort: suffix ? EFFORT_RANK[suffix] : 0, version: versionOf(m.id) };
       })
       .sort((a, b) => b.version - a.version || b.effort - a.effort || a.id.localeCompare(b.id));
-    return scored[0].id;
+    const newest = scored[0].version;
+    const sameVersion = scored.filter((m) => m.version === newest);
+    return (sameVersion.find((m) => m.id.endsWith(`-${effort}`)) ?? sameVersion[0]).id;
   }
 
   if (accountDefaultLabel) {
@@ -322,13 +332,14 @@ export function writeModelCache(models, accountDefaultLabel) {
  * is not a reason to refuse the job. Returning null means "pass no `--model`",
  * and agy then picks the account default on its own.
  *
+ * @param {'low'|'medium'|'high'=} effort
  * @returns {string|null}
  */
-export function resolveDefaultModel() {
+export function resolveDefaultModel(effort = 'medium') {
   try {
     const models = cachedModels();
     if (models == null) return null;
-    return pickDefaultModel(models, readAccountDefaultLabel());
+    return pickDefaultModel(models, readAccountDefaultLabel(), effort);
   } catch {
     return null;
   }

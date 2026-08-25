@@ -178,13 +178,29 @@ describe('pickDefaultModel', () => {
     { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
     { id: 'gemini-3.1-flash-high', label: 'Gemini 3.1 Flash (High)' },
     { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
+    { id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' },
     { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
     { id: 'gemini-3.7-pro-high', label: 'Gemini 3.7 Pro (High)' },
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
   ];
 
-  it('picks the newest, highest-effort flash', () => {
-    expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-high');
+  it('picks the newest flash at medium when the caller says nothing', () => {
+    expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-medium');
+  });
+
+  it('honours the requested effort within the newest flash version', () => {
+    expect(pickDefaultModel(list, null, 'low')).toBe('gemini-3.7-flash-low');
+    expect(pickDefaultModel(list, null, 'medium')).toBe('gemini-3.7-flash-medium');
+    expect(pickDefaultModel(list, null, 'high')).toBe('gemini-3.7-flash-high');
+  });
+
+  it('never drops to an older version to satisfy the effort', () => {
+    // 3.1 offers high and 3.7 does not; the newer version still wins.
+    const gapped = [
+      { id: 'gemini-3.1-flash-high', label: 'a' },
+      { id: 'gemini-3.7-flash-low', label: 'b' },
+    ];
+    expect(pickDefaultModel(gapped, null, 'high')).toBe('gemini-3.7-flash-low');
   });
 
   it('prefers a newer flash over an older one even at higher effort', () => {

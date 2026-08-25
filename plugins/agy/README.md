@@ -37,11 +37,11 @@ Plus an **`agy-runner`** agent that shapes a task into a self-contained brief an
 /agy:delegate --model gemini-3.7-pro-high --timeout 1800 "the hard one"
 ```
 
-**No model question.** The plugin picks the newest, highest-effort `flash` id from the live `agy models` list. Claude only asks when your own message shows you want a say — you name a model, ask what is available, or ask for something cheaper/faster/stronger.
+**No model question.** The plugin picks the newest `flash` id from the live `agy models` list, at whatever `--effort` Claude chose for the task (`medium` by default). Claude only asks when your own message shows you want a say — you name a model, ask what is available, or ask for something cheaper/faster/stronger.
 
 | Flag | Effect |
 | --- | --- |
-| `--model <id>` | Pin a model from the live `agy models` list. Omit it and the newest, highest-effort flash is used. |
+| `--model <id>` | Pin a model from the live `agy models` list. Omit it and the newest flash at the chosen `--effort` is used. |
 | `--effort <level>` | Sent only when the model id does not already end in `-low` / `-medium` / `-high`. |
 | `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 900 (15m); watchdog is that plus 60s. |
 | `--background` | Detach the worker. Scripting only — it severs the harness notification, which is what forces polling. |
@@ -79,7 +79,7 @@ The same table, in the form the orchestrator actually reads, is `plugins/agy/ski
 - **`--add-dir <absolute repo path>` is always passed on a fresh dispatch, and it is the only workspace flag sent.** Without it agy does not use the spawn cwd at all: it reuses the persistent default CLI project, whose root is `~/.gemini/antigravity-cli/scratch`, writes there, leaves the repo untouched, and still reports `status: SUCCESS`. `--new-project` binds the cwd too, but it does the same job while creating a throwaway project on every dispatch. `--project` binds nothing — neither an absolute path nor a project name stops the fallback to scratch.
 - **The brief is always a sidecar file.** Written to `<job>.prompt.md` (outside the workspace is fine; agy can still read it), then dispatched with `--print=Read the file at <abs> in full and carry out that task exactly.` Last on the command line, attached to the flag, so a bare `-p` cannot swallow the next flag.
 - **Permission bypass is always on.** The first shell command otherwise hard-kills the run, which makes an opt-out a foot-gun rather than a safety feature. There is no `--safe` and no plan mode: this plugin dispatches implementors and researchers, and planning is the orchestrator's job.
-- **No hardcoded model list, and no model prompt.** `agy models` is parsed at runtime (TSV of id then label); the default is the newest, highest-effort flash id in it. The account default is the display label in `~/.gemini/antigravity-cli/settings.json`, used only as a fallback when nothing in the list is flash.
+- **No hardcoded model list, and no model prompt.** `agy models` is parsed at runtime (TSV of id then label); the default is the newest flash version in it, at the requested effort. agy encodes effort in the id (`gemini-3.7-flash-low`), so choosing the model and choosing the effort are one act — which is why `--effort` steers the pick instead of being a separate flag. The account default is the display label in `~/.gemini/antigravity-cli/settings.json`, used only as a fallback when nothing in the list is flash.
 - **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. Detaching would sever that and leave polling as the only option.
 - **agy.exe is a native Go binary.** Spawned directly, no shell, stdin ignored.
 - **The plugin never commits.** You read the diff.
