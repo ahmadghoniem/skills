@@ -6,9 +6,9 @@ allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 
 `$ARGUMENTS` is the raw text the user typed after `/grok:delegate`.
 
-## Two entrypoints, one job registry
+## The job id
 
-`/grok:delegate` starts a job; `/grok:result [job-id]` inspects it afterwards. Both share the same file-backed job record (`~/.cgd/jobs/<repo-hash>/<id>.json`), keyed by the **Grok job id** this command prints — not any wrapper id a background-execution mechanism might report. Copy that id verbatim for follow-up commands.
+Copy the **Grok job id** this command prints — not the wrapper id a background-execution mechanism might report. `/grok:result` takes it.
 
 ## Run it — always backgrounded
 
@@ -42,11 +42,6 @@ job is done. It exists for scripting, not for you.
 | `--no-git-check` | Allow dispatching outside a git repository. |
 
 ## Reading the output
-
-The output is grok's own write-up, and on a clean run that is all of it. Relay it
-without a status table, a file list, or timings of your own — you have `git
-status` and `git diff` if you want to know what changed, and running them is
-cheaper than making the user read a summary of them.
 
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 

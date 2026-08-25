@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Trimmed `agents/grok-runner.md` and `commands/delegate.md` by ~30%.** Removed the
+  restatements of "you are a forwarder", the hedged task-size thresholds, and the paragraph
+  restating the first rule of the contract file injected two lines below it. The per-run
+  billing note and the "copy grok's job id, not the wrapper's" warning both stay — they are
+  the only place either fact is stated. No instruction was dropped, only its repeats.
+
 ## 0.4.0 — the console window is gone, and the result block is just grok's write-up
 
 Two changes you feel immediately: dispatching a job no longer opens a terminal window that sits
