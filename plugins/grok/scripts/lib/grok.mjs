@@ -1,13 +1,12 @@
-import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createWriteStream, readFileSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
 import { ensureDir, pluginHome } from './paths.mjs';
-import { run } from './run.mjs';
-import { adaptWindowsBin, defaultGrokBin } from './winbin.mjs';
+import { run, spawnDirect } from './run.mjs';
 
 // Last-resort pin, used only when `grok models` cannot be read. Grok ships very
 // few models (grok-4.6 and grok-4.5 as of 1.0.5), and the newest is the one we
@@ -135,6 +134,21 @@ export async function resolveModel(input) {
 let cachedBin = null;
 
 /**
+ * Where the Grok installer puts the CLI, if it is there.
+ *
+ * The installer appends its directory to the *persistent* user PATH, which a
+ * Claude Code session started beforehand will not have picked up — so a
+ * `where grok` miss does not mean grok is absent. Checking this path directly
+ * is what makes the plugin work in an already-running session.
+ *
+ * @returns {string|null}
+ */
+export function defaultGrokBin() {
+  const candidate = join(homedir(), '.grok', 'bin', 'grok.exe');
+  return existsSync(candidate) ? candidate : null;
+}
+
+/**
  * @returns {Promise<string>}
  */
 export async function resolveBin() {
@@ -144,8 +158,7 @@ export async function resolveBin() {
     cachedBin = override;
     return cachedBin;
   }
-  const locator = process.platform === 'win32' ? 'where' : 'which';
-  const res = await run(locator, ['grok'], { timeoutMs: 5_000 });
+  const res = await run('where', ['grok'], { timeoutMs: 5_000 });
   const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
   if (res.exitCode === 0 && hit) {
     cachedBin = hit.trim();
@@ -161,7 +174,7 @@ export async function resolveBin() {
     return cachedBin;
   }
   throw new Error(
-    'grok not found on PATH or at ~/.grok/bin. Install the Grok CLI, or set GROK_BIN to its full path.',
+    'grok not found on PATH or at %USERPROFILE%\\.grok\\bin. Install the Grok CLI, or set GROK_BIN to its full path.',
   );
 }
 
@@ -282,8 +295,7 @@ export async function runHeadless(opts) {
     resumeSessionId: opts.resumeSessionId,
     resumeLatest: opts.resumeLatest,
   });
-  const [spawnCmd, spawnArgs] = adaptWindowsBin(bin, args);
-  const child = spawn(spawnCmd, spawnArgs, {
+  const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
@@ -294,11 +306,9 @@ export async function runHeadless(opts) {
     // is the spawn that was actually producing it; the worker's own spawn only
     // sets the stage.
     windowsHide: true,
-    // POSIX: own process group so killTree can signal `-pid`. Do not unref —
-    // we still wait on 'close'. Windows: stay in libuv's job; taskkill /T
-    // walks the tree instead. The background worker's detached+unref is a
-    // separate spawn and must stay as it is.
-    ...(process.platform === 'win32' ? {} : { detached: true }),
+    // Deliberately NOT detached: this child stays inside libuv's job object so
+    // `taskkill /T` can walk the tree. The background worker's detached+unref
+    // is a separate spawn and must stay as it is.
   });
   if (!child.stdout || !child.stderr) {
     throw new Error('grok spawn failed: stdout/stderr not attached');

@@ -7,7 +7,29 @@
 
 import { spawn } from 'node:child_process';
 import { killTree } from './killtree.mjs';
-import { adaptWindowsBin } from './winbin.mjs';
+
+/**
+ * Spawn a process. If `cmd` is a Node script (test stub), run it with
+ * `process.execPath`: a `.mjs` path is not directly executable on Windows —
+ * a shebang means nothing to it — and spawning one raises EFTYPE.
+ * Production `grok.exe` is a real binary and is spawned directly.
+ *
+ * `shell: true` is never an option here, so a `.cmd`/`.bat` path (which Node
+ * refuses to spawn without it, since CVE-2024-27980) is passed through
+ * untouched: the caller sees the spawn error rather than a command line
+ * silently mangled by cmd.exe, where `%VAR%` would still expand.
+ *
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptions} options
+ */
+export function spawnDirect(cmd, args, options) {
+  const opts = { shell: false, ...options };
+  if (typeof cmd === 'string' && /\.(mjs|cjs|js)$/i.test(cmd)) {
+    return spawn(process.execPath, [cmd, ...args], opts);
+  }
+  return spawn(cmd, args, opts);
+}
 
 /**
  * @typedef {Object} RunOpts
@@ -32,8 +54,7 @@ import { adaptWindowsBin } from './winbin.mjs';
  */
 export function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    const [spawnCmd, spawnArgs] = adaptWindowsBin(cmd, args);
-    const child = spawn(spawnCmd, spawnArgs, {
+    const child = spawnDirect(cmd, args, {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: opts.env ?? process.env,

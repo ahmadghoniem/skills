@@ -10,7 +10,6 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 describe('killTree (Windows)', () => {
   beforeEach(() => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     execFile.mockReset();
   });
 
@@ -45,43 +44,6 @@ describe('killTree (Windows)', () => {
     const result = await killTree(99, { graceMs: 1000 });
     expect(result).toBe('killed');
     expect(execFile.mock.calls[0][2].shell).toBe(false);
-  });
-});
-
-describe('killTree (POSIX)', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('signals the process group and escalates to SIGKILL if SIGTERM does not reap', async () => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-    let alive = true;
-    const spy = vi.spyOn(process, 'kill').mockImplementation((pid, sig) => {
-      if (sig === 0) {
-        if (alive) return true;
-        const err = Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
-        throw err;
-      }
-      if (pid === -77 && sig === 'SIGKILL') {
-        alive = false;
-        return true;
-      }
-      return true;
-    });
-
-    const result = await killTree(77, { graceMs: 80 });
-    expect(spy).toHaveBeenCalledWith(-77, 'SIGTERM');
-    expect(spy).toHaveBeenCalledWith(-77, 'SIGKILL');
-    expect(result).toBe('killed');
-  });
-
-  it('returns already-gone when the group is missing (ESRCH)', async () => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-    vi.spyOn(process, 'kill').mockImplementation(() => {
-      const err = Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
-      throw err;
-    });
-    expect(await killTree(88, { graceMs: 50 })).toBe('already-gone');
   });
 });
 

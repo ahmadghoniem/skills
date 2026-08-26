@@ -12,6 +12,9 @@
 // `--` is treated as an explicit delimiter: tokens after it are ALL positional
 // (no further flag parsing), matching the conventional Unix meaning.
 
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 /**
  * Split a raw argument string on whitespace, honouring single/double quotes
  * and backslash escapes. Quoted spans preserve inner whitespace.
@@ -33,8 +36,8 @@ export function splitArgString(arg) {
       escape = false;
       continue;
     }
-    // Inside single quotes everything is literal (POSIX semantics): a
-    // backslash is NOT an escape character there.
+    // Inside single quotes everything is literal: a backslash is NOT an
+    // escape character there.
     if (ch === '\\' && quote !== "'") {
       escape = true;
       continue;
@@ -239,4 +242,24 @@ export function parseCommandArgv(rawArgv, booleans = []) {
 export function parseTimeout(raw, fallback = 1800) {
   const n = typeof raw === 'number' ? raw : raw == null || raw === '' ? NaN : Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * `process.argv[1] === fileURLToPath(import.meta.url)` is the usual "am I
+ * the entry point?" check, but junctions and 8.3 short names make lexical
+ * comparison unreliable on Windows. Compare real paths instead.
+ *
+ * @param {string} moduleUrl    Pass `import.meta.url` from the calling script.
+ * @returns {boolean}
+ */
+export function invokedAsScript(moduleUrl) {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    const entryReal = realpathSync(entry);
+    const selfReal = realpathSync(fileURLToPath(moduleUrl));
+    return entryReal === selfReal;
+  } catch {
+    return false;
+  }
 }

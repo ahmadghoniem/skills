@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { parseCommandArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { parseModelList, resolveBin } from './lib/grok.mjs';
 import { run } from './lib/run.mjs';
 
@@ -122,10 +122,7 @@ export async function main(rawArgv) {
   return baseCheck();
 }
 
-import { invokedAsScript as __isScript } from './lib/invoked.mjs';
-const invokedAsScript = __isScript(import.meta.url);
-
-if (invokedAsScript) {
+if (invokedAsScript(import.meta.url)) {
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {

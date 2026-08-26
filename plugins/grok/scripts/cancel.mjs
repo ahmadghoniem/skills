@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { parseCommandArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
 import { cancelJob, findRunningJobs, isPidGone, readJob } from './lib/jobs.mjs';
@@ -91,10 +91,7 @@ export async function main(rawArgv) {
   return 0;
 }
 
-import { invokedAsScript as __isScript } from './lib/invoked.mjs';
-const invokedAsScript = __isScript(import.meta.url);
-
-if (invokedAsScript) {
+if (invokedAsScript(import.meta.url)) {
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {

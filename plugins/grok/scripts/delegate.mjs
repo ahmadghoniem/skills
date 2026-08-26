@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, openSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { collapseCommandArgv, parseArgv, parseTimeout } from './lib/args.mjs';
+import { collapseCommandArgv, invokedAsScript, parseArgv, parseTimeout } from './lib/args.mjs';
 import { isGitRepo, repoRoot } from './lib/git.mjs';
 import { resolveModel, runHeadless } from './lib/grok.mjs';
 import { id as newId } from './lib/id.mjs';
@@ -317,10 +317,7 @@ export async function main(rawArgv) {
   return foreground(flags, prompt || '(resume)', jobId, root);
 }
 
-import { invokedAsScript as __isScript } from './lib/invoked.mjs';
-const invokedAsScript = __isScript(import.meta.url);
-
-if (invokedAsScript) {
+if (invokedAsScript(import.meta.url)) {
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {

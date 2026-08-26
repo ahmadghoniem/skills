@@ -13,15 +13,15 @@ claude plugin marketplace add ahmadghoniem/claude-grok-delegate
 claude plugin install grok@claude-grok-delegate
 ```
 
-Requires the Grok CLI on `PATH` (or at `~/.grok/bin/grok`), authenticated with `grok login`. Node 18.18+.
+**Windows only.** Requires the Grok CLI on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), authenticated with `grok login`. Node 18.18+.
 
-If a Claude Code session was already open when you installed grok, its `PATH` will not have picked up the installer's change — the plugin checks `~/.grok/bin` directly for exactly that reason, and `GROK_BIN` overrides both.
+If a Claude Code session was already open when you installed grok, its `PATH` will not have picked up the installer's change — the plugin checks `%USERPROFILE%\.grok\bin` directly for exactly that reason, and `GROK_BIN` overrides both.
 
 ## Commands
 
 - **`/grok:delegate <task>`** — hand a task to grok. Claude runs it under a backgrounded Bash call, so you keep chatting while grok works and the harness announces the result — no polling.
 - **`/grok:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (SIGTERM, then SIGKILL after 5s; `taskkill /T /F` on Windows), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
+- **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
 - **`/grok:resume [--resume=<id>] [follow-up]`** — continue the latest grok session for this repo, or a named one.
 - **`/grok:setup`** — health-check the CLI: resolved binary, version, login state, available models.
 
@@ -79,7 +79,7 @@ in fact exited 1.
 ## Design notes
 
 - **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. Detaching (`--background`) would sever that and leave polling as the only option.
-- **`windowsHide: true` on every spawn that could create a console.** A detached worker has no console of its own, so Windows hands the `grok.exe` it spawns a brand new one — a Windows Terminal window that opens on dispatch and lives as long as the job. The CLI spawn is the load-bearing one; the probe and worker spawns set it too.
+- **`windowsHide: true` on every spawn that could create a console.** The detached worker has no console of its own, so the OS hands the `grok.exe` it spawns a brand new one — a Windows Terminal window that opens on dispatch and lives as long as the job. The CLI spawn is the load-bearing one; the probe and worker spawns set it too.
 - **The brief goes via `--prompt-file`, never argv.** It stays out of the host process list, is not bounded by the OS argument-length cap, and a brief starting with `-` cannot be misread as a flag.
 - **`--always-approve` is unconditional.** A headless run has no way to answer an approval prompt, so without it grok stalls. The guard against a bad edit is not a dialog nobody can see — it is that this plugin never commits, and you read the diff.
 - **`--sandbox` is never passed.** Grok accepts an unknown profile name silently and runs anyway (verified: `--sandbox __invalid__` produced no error and no refusal), so it reads like a guarantee while providing none. Worse than no guard.
@@ -92,7 +92,7 @@ in fact exited 1.
 | --- | --- |
 | `GROK_BIN` | Full path to the grok binary; skips discovery. |
 | `CGD_DEFAULT_MODEL` | Default model when `--model` is omitted. |
-| `CGD_HOME` | Job registry location. Default `~/.cgd`. |
+| `CGD_HOME` | Job registry location. Default `%USERPROFILE%\.cgd`. |
 
 ## Licence
 

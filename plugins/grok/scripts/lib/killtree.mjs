@@ -30,9 +30,6 @@ export function isPidGone(pid) {
  * no longer enumerate descendants and grandchildren leak. Exit code 128 is
  * "process not found" (`already-gone`); do not parse stderr (it is localised).
  *
- * POSIX: signal the process group (`-pid`). The CLI child must have been
- * spawned `detached: true` without `unref()` so it is a group leader.
- *
  * @param {number} pid
  * @param {{ graceMs?: number }} [opts]
  * @returns {Promise<'killed'|'already-gone'|'failed'>}
@@ -40,8 +37,7 @@ export function isPidGone(pid) {
 export async function killTree(pid, { graceMs = 5000 } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return 'failed';
   const budget = Number.isFinite(graceMs) && graceMs > 0 ? graceMs : 5000;
-  if (process.platform === 'win32') return killWindows(pid, budget);
-  return killPosix(pid, budget);
+  return killWindows(pid, budget);
 }
 
 /**
@@ -96,34 +92,4 @@ function killWindows(pid, graceMs) {
       }, graceMs);
     }
   });
-}
-
-/**
- * @param {number} pid
- * @param {number} graceMs
- * @returns {Promise<'killed'|'already-gone'|'failed'>}
- */
-async function killPosix(pid, graceMs) {
-  try {
-    process.kill(-pid, 'SIGTERM');
-  } catch (err) {
-    if (err && typeof err === 'object' && err.code === 'ESRCH') return 'already-gone';
-    return 'failed';
-  }
-  const deadline = Date.now() + graceMs;
-  while (Date.now() < deadline && !isPidGone(pid)) {
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  if (isPidGone(pid)) return 'killed';
-  try {
-    process.kill(-pid, 'SIGKILL');
-  } catch (err) {
-    if (err && typeof err === 'object' && err.code === 'ESRCH') return 'killed';
-    return 'failed';
-  }
-  const killDeadline = Date.now() + Math.min(200, graceMs);
-  while (Date.now() < killDeadline && !isPidGone(pid)) {
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  return isPidGone(pid) ? 'killed' : 'failed';
 }

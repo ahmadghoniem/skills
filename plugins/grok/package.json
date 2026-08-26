@@ -15,6 +15,7 @@
   },
   "keywords": ["claude-code", "claude-code-plugin", "grok", "grok-cli", "xai", "agent-delegation"],
   "engines": { "node": ">=18.18" },
+  "os": ["win32"],
   "files": ["plugin.json", "scripts", "commands", "agents"],
   "scripts": {
     "test": "vitest run",
