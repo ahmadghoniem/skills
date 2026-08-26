@@ -242,26 +242,20 @@ export async function resolveBin() {
     cachedBin = override;
     return cachedBin;
   }
-  const locator = process.platform === 'win32' ? 'where' : 'which';
-  const res = await run(locator, ['agy'], { timeoutMs: 5_000 });
+  const res = await run('where', ['agy'], { timeoutMs: 5_000 });
   const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
   if (res.exitCode === 0 && hit) {
     cachedBin = hit.trim();
     return cachedBin;
   }
-  if (process.platform === 'win32') {
-    const localApp = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
-    const fallback = join(localApp, 'agy', 'bin', 'agy.exe');
-    if (existsSync(fallback)) {
-      cachedBin = fallback;
-      return cachedBin;
-    }
-    throw new Error(
-      `agy not found on PATH or at ${fallback}. Install the Antigravity CLI, or set AGY_BIN to its full path.`,
-    );
+  const localApp = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+  const fallback = join(localApp, 'agy', 'bin', 'agy.exe');
+  if (existsSync(fallback)) {
+    cachedBin = fallback;
+    return cachedBin;
   }
   throw new Error(
-    'agy not found on PATH. Install the Antigravity CLI, or set AGY_BIN to its full path.',
+    `agy not found on PATH or at ${fallback}. Install the Antigravity CLI, or set AGY_BIN to its full path.`,
   );
 }
 
@@ -402,7 +396,6 @@ export async function runHeadless(opts) {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
     windowsHide: true,
-    ...(process.platform === 'win32' ? {} : { detached: true }),
   });
   if (!child.stdout || !child.stderr) {
     throw new Error('agy spawn failed: stdout/stderr not attached');

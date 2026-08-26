@@ -30,7 +30,7 @@ describe('splitArgString', () => {
     expect(splitArgString("--flag 'value with spaces'")).toEqual(['--flag', 'value with spaces']);
   });
 
-  it('treats backslashes inside single quotes as literal (POSIX)', () => {
+  it('treats backslashes inside single quotes as literal', () => {
     expect(splitArgString("'a\\b'")).toEqual(['a\\b']);
   });
 

@@ -36,8 +36,8 @@ export function splitArgString(arg) {
       escape = false;
       continue;
     }
-    // Inside single quotes everything is literal (POSIX semantics): a
-    // backslash is NOT an escape character there.
+    // Inside single quotes everything is literal: a backslash is NOT an
+    // escape character there.
     if (ch === '\\' && quote !== "'") {
       escape = true;
       continue;
@@ -245,8 +245,8 @@ export function parseTimeout(raw, fallback = 900) {
 }
 
 /**
- * `process.argv[1] === fileURLToPath(import.meta.url)` breaks under symlinks
- * (macOS resolves /tmp → /private/tmp). Compare real paths instead.
+ * `process.argv[1] === fileURLToPath(import.meta.url)` breaks under symlinks,
+ * Windows junctions, and 8.3 short names. Compare real paths instead.
  *
  * @param {string} moduleUrl    Pass `import.meta.url` from the calling script.
  * @returns {boolean}

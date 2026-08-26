@@ -15,7 +15,7 @@ claude plugin marketplace add ahmadghoniem/claude-agy-delegate
 claude plugin install agy@claude-agy-delegate
 ```
 
-Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.
+**Windows only.** Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.
 
 If a Claude Code session was already open when you installed agy, its `PATH` will not have picked up the installer's change — the plugin checks `%LOCALAPPDATA%\agy\bin\agy.exe` directly for exactly that reason, and `AGY_BIN` overrides both.
 
@@ -23,7 +23,7 @@ If a Claude Code session was already open when you installed agy, its `PATH` wil
 
 - **`/agy:delegate <task>`** — hand a task to agy. Claude runs it under a backgrounded Bash call, so you keep chatting while agy works and the harness announces the result — no polling.
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/agy:cancel [job-id]`** — terminate a running job and everything it spawned (SIGTERM, then SIGKILL after 5s; `taskkill /T /F` on Windows). Also reaps a record left stuck at `running` because its parent process died.
+- **`/agy:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree). Also reaps a record left stuck at `running` because its parent process died.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
 - **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list.
 
@@ -89,7 +89,7 @@ The same table, in the form the orchestrator actually reads, is `plugins/agy/ski
 | Variable | Effect |
 | --- | --- |
 | `AGY_BIN` | Full path to the agy binary; skips discovery. |
-| `CAD_HOME` | Job registry location. Default `~/.cad`. |
+| `CAD_HOME` | Job registry location. Default `%USERPROFILE%\.cad`. |
 
 ## Licence
 

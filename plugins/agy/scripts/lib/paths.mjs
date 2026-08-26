@@ -16,9 +16,8 @@ export function pluginHome() {
  */
 export function repoHash(repoRoot) {
   // Always canonicalise the same way so a repo maps to ONE hash regardless of
-  // whether the path currently exists or contains a symlinked component
-  // (e.g. macOS `/tmp` → `/private/tmp`). `realpathSync` throws when the path
-  // is gone, so fall back to a plain resolve.
+  // whether the path currently exists or contains a symlinked component.
+  // `realpathSync` throws when the path is gone, so fall back to a plain resolve.
   let canonical;
   try {
     canonical = realpathSync(repoRoot);
