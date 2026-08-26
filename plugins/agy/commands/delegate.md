@@ -59,10 +59,6 @@ slash-command case) so the plugin splits it and newlines survive. When the shell
 has already tokenised argv, drop `--arg-string` and pass argv after a leading
 `--`; flags go **before** the task, and the task is one quoted argument.
 
-Do **not** pass the plugin's own `--background`. It detaches the worker, which
-severs the harness notification and leaves polling as the only way to find out the
-job is done. It exists for scripting, not for you.
-
 | Flag | Effect |
 | --- | --- |
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |

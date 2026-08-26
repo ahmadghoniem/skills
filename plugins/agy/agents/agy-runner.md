@@ -79,8 +79,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- "<brief>"
 Flags go **before** the brief, and the brief is one quoted argument. For a long or quote-heavy brief, pass `--arg-string` with the flags and the brief together.
 
 Set the Bash tool's `run_in_background: true`. agy then runs in the foreground of
-its own process, the harness reports the exit, and nothing polls. Do **not** pass
-the plugin's `--background` flag — it detaches the worker and breaks exactly that.
+its own process, the harness reports the exit, and nothing polls.
 
 ### 4. Return agy's output verbatim
 

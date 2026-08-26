@@ -45,7 +45,6 @@ export { isPidGone };
  * @property {Array<{status: string, path: string}>=} gitBefore
  * @property {Array<{status: string, path: string}>=} gitFiles
  * @property {boolean=} claimedFileChanges
- * @property {boolean=} background
  * @property {boolean=} killed
  * @property {boolean=} sandbox
  */
@@ -56,7 +55,6 @@ export { isPidGone };
  * @property {string} repoPath
  * @property {string} prompt
  * @property {string} model
- * @property {boolean=} background
  */
 
 /**
@@ -139,7 +137,6 @@ export function createJob(init) {
     rawLogPath: rawLogPath(init.repoPath, init.id),
     agyLogPath: agyLogPath(init.repoPath, init.id),
     promptPath: promptPath(init.repoPath, init.id),
-    ...(init.background ? { background: true } : {}),
   };
   atomicWrite(jobFilePath(init.repoPath, init.id), JSON.stringify(record, null, 2));
   return record;
@@ -308,7 +305,7 @@ export function updateJob(repoPath, id, patch) {
   }
   const merged = { ...existing, ...patch };
   // Read-modify-write is last-writer-wins; the one race we actively guard is a
-  // background worker finishing (status → done/failed) AFTER the user cancelled
+  // run finishing (status → done/failed) AFTER the user cancelled
   // the job. A cancellation is terminal and must not be silently overwritten.
   if (existing.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
     merged.status = 'cancelled';

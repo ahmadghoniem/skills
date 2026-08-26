@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
-import { openSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
   WATCHDOG_GRACE_SEC,
@@ -24,22 +22,20 @@ import {
   updateJob,
 } from './lib/jobs.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { ensureDir, jobsDir } from './lib/paths.mjs';
 import { renderResult, viewFromJob } from './lib/render.mjs';
 
-// `--wait` is accepted and ignored. Foreground is the default now: the
-// orchestrator runs this under a backgrounded Bash call, which keeps the user's
-// session free *and* lets the harness announce the exit. The detached
-// `--background` worker severs that notification and forces polling, so it is
-// opt-in only.
+// This always runs in the foreground of its own process. The orchestrator
+// invokes it under a backgrounded Bash call, which keeps the user's session
+// free *and* lets the harness announce the exit — a detached worker would sever
+// that notification and leave polling as the only way to find out.
 // agy encodes effort in the model id (`gemini-3.7-flash-low`), so picking the
 // default model and picking the default effort are the same act. Medium is the
 // everyday setting; the caller raises or lowers it per task with `--effort`.
 const DEFAULT_EFFORT = 'medium';
 
-const BOOLEAN_FLAGS = ['wait', 'sandbox', 'help', 'continue', 'background'];
+const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] [--background] <task...>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>\n';
 
 function parseFlags(argv) {
   const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
@@ -53,14 +49,12 @@ function parseFlags(argv) {
     positional,
     model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    background: flags['background'] === true,
     timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
     noGitCheck,
     sandbox: flags['sandbox'] === true,
     help: flags['help'] === true,
     conversation,
     continueLatest,
-    worker: typeof flags['worker'] === 'string' ? flags['worker'] : undefined,
   };
 }
 
@@ -174,34 +168,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
   return { result, summary, gitFiles, gitRepo };
 }
 
-function spawnBackground(jobId, argv, root) {
-  const selfPath = fileURLToPath(import.meta.url);
-  const logPath = rawLogPathFor(root, jobId);
-  ensureDir(jobsDir(root));
-  const out = openSync(`${logPath}.stdout`, 'a');
-  const err = openSync(`${logPath}.stderr`, 'a');
-  const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
-    detached: true,
-    stdio: ['ignore', out, err],
-    env: { ...process.env, CAD_WORKER: '1', CAD_REPO_ROOT: root },
-    windowsHide: true,
-  });
-  child.unref();
-  return child.pid ?? -1;
-}
-
-function forwardFlags(flags) {
-  /** @type {string[]} */
-  const forwarded = [];
-  if (flags.model) forwarded.push('--model', flags.model);
-  if (flags.effort) forwarded.push('--effort', flags.effort);
-  if (flags.sandbox) forwarded.push('--sandbox');
-  if (flags.conversation) forwarded.push('--conversation', flags.conversation);
-  if (flags.continueLatest) forwarded.push('--continue');
-  forwarded.push('--timeout', String(flags.timeout));
-  return forwarded;
-}
-
 /**
  * `runAndRecord`, but a throw still moves the record off `running`.
  *
@@ -245,13 +211,6 @@ export async function main(rawArgv) {
     return 0;
   }
 
-  if (flags.worker) {
-    const root = process.env.CAD_REPO_ROOT ?? (await repoRoot(process.cwd()));
-    const prompt = readJob(root, flags.worker)?.prompt ?? flags.positional.join(' ').trim();
-    await runOrMarkFailed(flags, prompt, flags.worker, root);
-    return 0;
-  }
-
   const prompt = flags.positional.join(' ').trim();
   if (!prompt && !isResume(flags)) {
     process.stderr.write('Error: no task description provided.\n');
@@ -276,10 +235,9 @@ export async function main(rawArgv) {
     }
   }
 
-  // Cache read, not a network call — see `cachedModels`. Resolved once here in
-  // the dispatcher and forwarded to the worker, so a backgrounded run does not
-  // repeat it. A cold cache yields null, which means "send no `--model`" and
-  // lets agy pick its own default; `/agy:setup` is what fills the cache.
+  // Cache read, not a network call — see `cachedModels`. A cold cache yields
+  // null, which means "send no `--model`" and lets agy pick its own default;
+  // `/agy:setup` is what fills the cache.
   //
   // Skipped entirely on a resume: `--conversation` already carries the model the
   // conversation was started with, and pinning the auto-picked flash id here
@@ -292,23 +250,6 @@ export async function main(rawArgv) {
   const taskText = prompt || 'continue';
   const jobId = uniqueJobName(root, taskText);
   const model = flags.model ?? '';
-
-  if (flags.background) {
-    createJob({
-      id: jobId,
-      repoPath: root,
-      prompt: prompt || 'Continue from where you left off.',
-      model,
-      background: true,
-    });
-    const pid = spawnBackground(jobId, forwardFlags(flags), root);
-    updateJob(root, jobId, { pid });
-    process.stdout.write(`${jobId}\n`);
-    process.stdout.write(
-      `Job \`${jobId}\` started in background (pid ${pid}). Collect with \`/agy:result ${jobId}\`.\n`,
-    );
-    return 0;
-  }
 
   createJob({
     id: jobId,

@@ -2,13 +2,40 @@
 
 ## Unreleased
 
+### Removed
+
+- **`--background`, `--wait`, and the `--worker` re-entry point.** One run path now: the
+  foreground of this process, under the orchestrator's backgrounded Bash call. `--background`
+  detached a worker and severed the harness notification, so every doc already told the caller
+  not to pass it — a flag whose documentation is "don't", that raises no error when passed, and
+  whose failure mode is silence. `--wait` was accepted and ignored outright. Gone with them:
+  `spawnBackground`, `forwardFlags`, the `CAD_WORKER`/`CAD_REPO_ROOT` handoff, the `background`
+  field on the job record, and `--background` forwarding in `/agy:resume`.
+- **Windows-only: every non-`win32` code path.** `killPosix` and the platform test in
+  `killTree`, the `which`-vs-`where` locator, the `detached: true` ternary on the CLI spawn, and
+  the POSIX/macOS asides in `args.mjs` and `paths.mjs`. `"os": ["win32"]` is now declared in
+  `package.json`. Every comment recording verified CLI behaviour stays — that is the expensive
+  knowledge here.
+- **The low/medium/high effort rubric in `agy-runner.md` and `commands/delegate.md`.** It
+  pre-judged on a mechanical-vs-reasoning axis that misses per-site judgement, and it displaced
+  the delegating model's own read of the task. The instruction that remains is the mechanism:
+  omit `--model`, pass `--effort` per task.
+
+### Added
+
+- **A resume line when a killed run kept its conversation id.** `⚠ this run can be resumed
+  where it stopped: /agy:resume <id>`. Says the option exists; does not tell you to take it.
+
 ### Changed
 
+- **`⚠ agy status: ERROR` now carries the facts next to it** — whether a write-up came back and
+  how many files changed, both read from the run itself (the `result` event, and two
+  `git status --porcelain` snapshots). agy reports `ERROR` for retryable provider hiccups on
+  runs whose work landed intact, and the bare line read as a failure.
 - **`--effort` now reaches the default model.** agy encodes effort in the model id, so the
   auto-pick used to resolve to `…-flash-high` and `--effort` was discarded on every run that
   did not also pin `--model` — the flag was unreachable. `pickDefaultModel` now takes the
   effort and picks within the newest flash version; the default is `medium`, not `high`.
-  `agy-runner` gained the same low/medium/high rubric the grok plugin already had.
 - **Trimmed `agents/agy-runner.md` and `commands/delegate.md` by ~40%.** Removed the
   restatements of "you are a forwarder", the hedged task-size thresholds, the list of ways a
   user might signal they want a say in the model, the delegation examples, the job-registry

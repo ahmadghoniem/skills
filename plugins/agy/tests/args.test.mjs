@@ -84,9 +84,9 @@ describe('a `--` inside the task text does not swallow flags', () => {
 
 describe('parseArgv', () => {
   it('splits positional vs flags', () => {
-    const r = parseArgv(['--model', 'gemini-3.1-pro-high', '--wait', 'do', 'thing'], ['wait']);
+    const r = parseArgv(['--model', 'gemini-3.1-pro-high', '--sandbox', 'do', 'thing'], ['sandbox']);
     expect(r.flags['model']).toBe('gemini-3.1-pro-high');
-    expect(r.flags['wait']).toBe(true);
+    expect(r.flags['sandbox']).toBe(true);
     expect(r.positional).toEqual(['do', 'thing']);
   });
 
@@ -125,8 +125,8 @@ describe('parseArgv', () => {
   });
 
   it('boolean flag does not consume next token', () => {
-    const r = parseArgv(['--wait', 'task-text'], ['wait']);
-    expect(r.flags['wait']).toBe(true);
+    const r = parseArgv(['--sandbox', 'task-text'], ['sandbox']);
+    expect(r.flags['sandbox']).toBe(true);
     expect(r.positional).toEqual(['task-text']);
   });
 
@@ -136,9 +136,9 @@ describe('parseArgv', () => {
   });
 
   it('undeclared flag does not consume a following flag-looking token', () => {
-    const r = parseArgv(['--model', '--wait'], []);
+    const r = parseArgv(['--model', '--verbose'], []);
     expect(r.flags['model']).toBe(true);
-    expect(r.flags['wait']).toBe(true);
+    expect(r.flags['verbose']).toBe(true);
   });
 
   it('--continue followed by a prompt does not eat the prompt token', () => {
@@ -163,8 +163,8 @@ describe('collapseCommandArgv', () => {
   });
 
   it('splits an --arg-string blob and merges it in order', () => {
-    expect(collapseCommandArgv(['--', '--arg-string', '--wait fix the parser'])).toEqual([
-      '--wait',
+    expect(collapseCommandArgv(['--', '--arg-string', '--sandbox fix the parser'])).toEqual([
+      '--sandbox',
       'fix',
       'the',
       'parser',
@@ -197,10 +197,10 @@ describe('collapseCommandArgv', () => {
 describe('acceptance: --arg-string round-trip', () => {
   it('parses flags and leaves the task text as `do the thing`', () => {
     const r = parseCommandArgv(
-      ['--arg-string', '--background --model gemini-3.1-pro-high do the thing'],
-      ['background', 'wait', 'safe', 'plan', 'sandbox'],
+      ['--arg-string', '--sandbox --model gemini-3.1-pro-high do the thing'],
+      ['sandbox', 'continue'],
     );
-    expect(r.flags.background).toBe(true);
+    expect(r.flags.sandbox).toBe(true);
     expect(r.flags.model).toBe('gemini-3.1-pro-high');
     expect(r.positional.join(' ')).toBe('do the thing');
   });

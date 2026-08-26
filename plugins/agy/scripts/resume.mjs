@@ -16,12 +16,7 @@ const UUID_RE =
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { positional, flags } = parseCommandArgv(rawArgv, [
-    'wait',
-    'sandbox',
-    'continue',
-    'background',
-  ]);
+  const { positional, flags } = parseCommandArgv(rawArgv, ['sandbox', 'continue']);
 
   const argv = rawArgv.slice();
   const hasConversation = argv.some((a) => a === '--conversation' || a.startsWith('--conversation='));
@@ -74,7 +69,6 @@ export async function main(rawArgv) {
 async function dispatchWithConversation(conversationId, rest, flags, originalArgv) {
   /** @type {string[]} */
   const rebuilt = ['--conversation', conversationId];
-  if (flags.background) rebuilt.push('--background');
   if (flags.sandbox) rebuilt.push('--sandbox');
   if (typeof flags.model === 'string') rebuilt.push('--model', flags.model);
   if (typeof flags.effort === 'string') rebuilt.push('--effort', flags.effort);
