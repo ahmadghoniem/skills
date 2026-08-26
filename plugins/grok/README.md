@@ -39,7 +39,6 @@ Plus a **`grok-runner`** agent that shapes a task into a self-contained brief an
 | --- | --- |
 | `--model <id>` | Pin a model. Omitted, the plugin uses the newest one `grok models` reports. |
 | `--effort <level>` | Grok's `--reasoning-effort`. Choose per task. |
-| `--background` | Detach the worker. Scripting only — it severs the harness notification, which is what forces polling. |
 | `--resume[=<id>]` | Continue the latest grok session, or a named one. Send only the delta. |
 | `--fresh` | Start a new session regardless. |
 | `--timeout <sec>` | Watchdog, default 3600. |
@@ -78,8 +77,8 @@ in fact exited 1.
 
 ## Design notes
 
-- **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. Detaching (`--background`) would sever that and leave polling as the only option.
-- **`windowsHide: true` on every spawn that could create a console.** The detached worker has no console of its own, so the OS hands the `grok.exe` it spawns a brand new one — a Windows Terminal window that opens on dispatch and lives as long as the job. The CLI spawn is the load-bearing one; the probe and worker spawns set it too.
+- **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. There is no detached-worker mode: it would sever that notification and leave polling as the only option.
+- **`windowsHide: true` on every spawn that could create a console.** A dispatch launched from a backgrounded Bash call has no console of its own, so the OS hands the `grok.exe` it spawns a brand new one — a Windows Terminal window that opens on dispatch and lives as long as the job. The CLI spawn is the load-bearing one; the probe spawn sets it too.
 - **The brief goes via `--prompt-file`, never argv.** It stays out of the host process list, is not bounded by the OS argument-length cap, and a brief starting with `-` cannot be misread as a flag.
 - **`--always-approve` is unconditional.** A headless run has no way to answer an approval prompt, so without it grok stalls. The guard against a bad edit is not a dialog nobody can see — it is that this plugin never commits, and you read the diff.
 - **`--sandbox` is never passed.** Grok accepts an unknown profile name silently and runs anyway (verified: `--sandbox __invalid__` produced no error and no refusal), so it reads like a guarantee while providing none. Worse than no guard.

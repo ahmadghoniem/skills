@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, openSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
 import { collapseCommandArgv, invokedAsScript, parseArgv, parseTimeout } from './lib/args.mjs';
 import { isGitRepo, repoRoot } from './lib/git.mjs';
 import { resolveModel, runHeadless } from './lib/grok.mjs';
@@ -11,14 +9,15 @@ import {
   createJob,
   pruneOlderThanDays,
   rawLogPath as rawLogPathFor,
-  readJob,
   updateJob,
 } from './lib/jobs.mjs';
 import { describeToolCall, summariseEvents } from './lib/parse.mjs';
 import { ensureDir, jobsDir, logsDir } from './lib/paths.mjs';
 import { renderOutcome } from './lib/render.mjs';
 
-const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'help', 'resume'];
+const BOOLEAN_FLAGS = ['fresh', 'help', 'resume'];
+const USAGE =
+  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume[=<id>]] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
 
 // Implementation runs go long, and grok bills per run — a watchdog that fires
 // too early wastes a paid run, one that never fires lets a stuck run bill on.
@@ -30,21 +29,15 @@ function parseFlags(argv) {
   // slash-command delimiter, so a `--` left in here is part of the task text.
   const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
   const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
-  // `--wait` forces the foreground even if `--background` is also present,
-  // so it is a real toggle rather than a no-op.
-  const explicitWait = flags['wait'] === true;
-  const background = Boolean(flags['background']) && !explicitWait;
   return {
     positional,
     model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    background,
-    wait: !background,
     fresh: Boolean(flags['fresh']),
     resume: flags['resume'],
     timeout: parseTimeout(flags['timeout'], DEFAULT_TIMEOUT_SEC),
     noGitCheck,
-    worker: typeof flags['worker'] === 'string' ? flags['worker'] : undefined,
+    help: flags['help'] === true,
     // `undefined` = flag absent; `'-'` = stdin; a string path; `true` = bare
     // `--prompt-file` with no value (a usage error, caught in main).
     promptFile: flags['prompt-file'],
@@ -92,7 +85,7 @@ function resumeSessionId(resume) {
   return undefined;
 }
 
-async function runAndRecord(flags, prompt, jobId, root, { live }) {
+async function runAndRecord(flags, prompt, jobId, root) {
   const model = await resolveModel(flags.model);
   const logPath = rawLogPathFor(root, jobId);
   ensureDir(jobsDir(root));
@@ -137,18 +130,6 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
       }
     },
     onEvent: (ev) => {
-      if (!live) {
-        // The background worker records the session id as soon as it appears,
-        // so a job killed before `end` is still resumable.
-        if (ev.type === 'end' && typeof ev.sessionId === 'string') {
-          try {
-            updateJob(root, jobId, { grokSessionId: ev.sessionId });
-          } catch {
-            // noop
-          }
-        }
-        return;
-      }
       const label = describeToolCall(ev, root);
       if (!label) return;
       toolCalls += 1;
@@ -159,7 +140,7 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
       process.stdout.write(`• ${label}\n`);
     },
   });
-  if (live && omitted > 0) {
+  if (omitted > 0) {
     process.stdout.write(`• … (${omitted} further tool call${omitted === 1 ? '' : 's'} omitted)\n`);
   }
 
@@ -180,7 +161,10 @@ async function runAndRecord(flags, prompt, jobId, root, { live }) {
     ...(summary.sessionId ? { grokSessionId: summary.sessionId } : {}),
   });
 
-  return { result, summary, status, model };
+  // `freshSessionId` travels out because the caller renders the resume line
+  // from it: on a watchdog kill no `end` event arrives, so the pre-assigned id
+  // is the only one that exists.
+  return { result, summary, status, model, freshSessionId };
 }
 
 async function foreground(flags, prompt, jobId, root) {
@@ -188,9 +172,7 @@ async function foreground(flags, prompt, jobId, root) {
   createJob({ id: jobId, repoPath: root, prompt, model });
   process.stdout.write(`grok \`${jobId}\` (${model})\n\n`);
 
-  const { result, summary } = await runAndRecord(flags, prompt, jobId, root, {
-    live: true,
-  });
+  const { result, summary, freshSessionId } = await runAndRecord(flags, prompt, jobId, root);
 
   process.stdout.write('\n');
   process.stdout.write(
@@ -217,27 +199,6 @@ async function foreground(flags, prompt, jobId, root) {
   return result.exitCode;
 }
 
-function spawnBackground(jobId, argv, root) {
-  const selfPath = fileURLToPath(import.meta.url);
-  const logPath = rawLogPathFor(root, jobId);
-  ensureDir(logsDir(root));
-  const out = openSync(`${logPath}.stdout`, 'a');
-  const err = openSync(`${logPath}.stderr`, 'a');
-  const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
-    detached: true,
-    // Mandatory alongside `detached` on Windows. Without it the OS gives the
-    // detached child its own console, which on Win11 surfaces as a Windows
-    // Terminal window that opens on dispatch and sits there for the whole life
-    // of the job. `killtree.mjs` already sets this on its own spawn; this call
-    // was simply missed.
-    windowsHide: true,
-    stdio: ['ignore', out, err],
-    env: { ...process.env, CGD_WORKER: '1', CGD_REPO_ROOT: root },
-  });
-  child.unref();
-  return child.pid ?? -1;
-}
-
 /**
  * @param {string[]} rawArgv
  * @returns {Promise<number>}
@@ -245,16 +206,11 @@ function spawnBackground(jobId, argv, root) {
 export async function main(rawArgv) {
   const flags = parseFlags(collapseCommandArgv(rawArgv));
 
-  if (flags.worker) {
-    const root = process.env.CGD_REPO_ROOT ?? (await repoRoot(process.cwd()));
-    // Prompt lives on the job JSON (written at createJob). CGD_PROMPT is a
-    // one-release fallback so a worker already spawned by a previous plugin
-    // version is not broken; scheduled for removal.
-    const prompt =
-      process.env.CGD_PROMPT ??
-      readJob(root, flags.worker)?.prompt ??
-      flags.positional.join(' ').trim();
-    await runAndRecord(flags, prompt, flags.worker, root, { live: false });
+  // `help` was declared as a boolean flag but never read, so `--help` fell
+  // through and billed a real run. Checked before anything else, including the
+  // `--resume` that `/grok:resume` injects ahead of it.
+  if (flags.help) {
+    process.stdout.write(USAGE);
     return 0;
   }
 
@@ -275,7 +231,7 @@ export async function main(rawArgv) {
   }
   if (!prompt && !isResumeRequested(flags.resume, flags.fresh)) {
     process.stderr.write('Error: no task description provided.\n');
-    process.stderr.write('Usage: /grok:delegate [flags] <task | --prompt-file <path|->>\n');
+    process.stderr.write(USAGE);
     return 2;
   }
 
@@ -289,36 +245,6 @@ export async function main(rawArgv) {
   pruneOlderThanDays(root, 30);
 
   const jobId = newId(10);
-
-  if (flags.background) {
-    const model = await resolveModel(flags.model);
-    createJob({
-      id: jobId,
-      repoPath: root,
-      prompt: prompt || '(resume)',
-      model,
-      background: true,
-    });
-    const forwarded = [];
-    if (flags.model) forwarded.push('--model', flags.model);
-    if (flags.effort) forwarded.push('--effort', flags.effort);
-    if (flags.fresh) forwarded.push('--fresh');
-    if (flags.resume !== undefined) {
-      if (typeof flags.resume === 'boolean') {
-        if (flags.resume) forwarded.push('--resume');
-      } else {
-        forwarded.push(`--resume=${flags.resume}`);
-      }
-    }
-    forwarded.push('--timeout', String(flags.timeout));
-    const pid = spawnBackground(jobId, forwarded, root);
-    updateJob(root, jobId, { pid });
-    process.stdout.write(
-      `Job \`${jobId}\` started in background (model \`${model}\`, pid ${pid}).\n`,
-    );
-    process.stdout.write(`Fetch the write-up with \`/grok:result ${jobId}\` once it finishes.\n`);
-    return 0;
-  }
 
   return foreground(flags, prompt || '(resume)', jobId, root);
 }

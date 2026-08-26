@@ -87,9 +87,9 @@ describe('a `--` inside the task text does not swallow flags', () => {
 
 describe('parseArgv', () => {
   it('splits positional vs flags', () => {
-    const r = parseArgv(['--model', 'grok-4.6', '--background', 'do', 'thing'], ['background']);
+    const r = parseArgv(['--model', 'grok-4.6', '--fresh', 'do', 'thing'], ['fresh']);
     expect(r.flags['model']).toBe('grok-4.6');
-    expect(r.flags['background']).toBe(true);
+    expect(r.flags['fresh']).toBe(true);
     expect(r.positional).toEqual(['do', 'thing']);
   });
 
@@ -128,8 +128,8 @@ describe('parseArgv', () => {
   });
 
   it('boolean flag does not consume next token', () => {
-    const r = parseArgv(['--background', 'task-text'], ['background']);
-    expect(r.flags['background']).toBe(true);
+    const r = parseArgv(['--fresh', 'task-text'], ['fresh']);
+    expect(r.flags['fresh']).toBe(true);
     expect(r.positional).toEqual(['task-text']);
   });
 
@@ -175,8 +175,8 @@ describe('collapseCommandArgv', () => {
   });
 
   it('splits an --arg-string blob and merges it in order', () => {
-    expect(collapseCommandArgv(['--', '--arg-string', '--background fix the parser'])).toEqual([
-      '--background',
+    expect(collapseCommandArgv(['--', '--arg-string', '--fresh fix the parser'])).toEqual([
+      '--fresh',
       'fix',
       'the',
       'parser',

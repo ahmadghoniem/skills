@@ -78,9 +78,7 @@ Flags go **before** the brief, and the brief is one quoted argument.
 For anything long, multi-line, or quote-heavy, write it to a file and pass `--prompt-file <path>` instead — it avoids shell mangling entirely.
 
 Set the Bash tool's `run_in_background: true`. The CLI then runs in the foreground
-of its own process, the harness reports the exit, and nothing polls. Do **not**
-pass the plugin's `--background` flag — it detaches the worker and breaks exactly
-that.
+of its own process, the harness reports the exit, and nothing polls.
 
 ### 4. Return grok's output verbatim
 

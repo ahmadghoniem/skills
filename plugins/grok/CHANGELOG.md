@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Removed
+
+- **`--background`, `--wait`, and the `--worker` re-entry point.** One run path now: the
+  foreground of this process, under the orchestrator's backgrounded Bash call. `--background`
+  detached a worker and severed the harness notification, so every doc already told the caller
+  not to pass it — a flag whose documentation is "don't", that raises no error when passed, and
+  whose failure mode is silence. `--wait` existed only to negate it. Gone with them:
+  `spawnBackground`, the `CGD_WORKER`/`CGD_REPO_ROOT`/`CGD_PROMPT` handoff, the `background`
+  field on the job record, and the `live` split in `runAndRecord`.
+- **Windows-only: every non-`win32` code path.** `killPosix` and the platform test in
+  `killTree`, the `which`-vs-`where` locator, the `detached: true` ternary on the CLI spawn, and
+  the POSIX/macOS asides in `args.mjs` and `paths.mjs`. `scripts/lib/winbin.mjs` and
+  `scripts/lib/invoked.mjs` were both platform shims and are folded into `run.mjs`, `grok.mjs`,
+  and `args.mjs`. `"os": ["win32"]` is now declared in `package.json`.
+- **The low/medium/high effort rubric in `grok-runner.md`.** It pre-judged on a
+  mechanical-vs-reasoning axis that misses per-site judgement, and it displaced the delegating
+  model's own read of the task. What remains is the mechanism: pass `--effort` per task.
+
+### Fixed
+
+- **`--help` billed a real run.** `help` was declared as a boolean flag and never read, so it
+  fell through to a dispatch. It now prints usage and exits 0, checked ahead of the `--resume`
+  that `/grok:resume` injects.
+- **A killed run crashed instead of printing its resume line.** `foreground` read
+  `freshSessionId`, a const scoped to `runAndRecord`, so rendering the outcome of a
+  watchdog-killed run threw `ReferenceError` — after the work was done and the job record
+  written. A clean run short-circuited past the reference, which is how it survived. The
+  foreground path had no end-to-end test at all; `tests/delegate-foreground.test.mjs` now covers
+  both outcomes, with a hanging stub mode for the killed one.
+
+### Added
+
+- **A resume line when a killed run kept its session id**, and its inverse when it did not:
+  `⚠ this run ended early — resume it with /grok:resume --resume=<id>` versus `⚠ no session id
+  was captured — this job cannot be resumed`. Mutually exclusive, and both registered in the
+  output contract.
+
 ### Changed
 
 - **Trimmed `agents/grok-runner.md` and `commands/delegate.md` by ~30%.** Removed the

@@ -1,6 +1,6 @@
 ---
 description: Resume the latest Grok session (or a specific one) with an optional follow-up prompt.
-argument-hint: '[--resume=session-id] [--model <id>] [--background] [follow-up task...]'
+argument-hint: '[--resume=session-id] [--model <id>] [follow-up task...]'
 allowed-tools: Bash(node:*)
 ---
 

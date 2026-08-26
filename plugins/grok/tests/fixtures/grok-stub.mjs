@@ -32,6 +32,18 @@ if (args.includes('--version')) {
   process.exit(0);
 }
 
+// A run that never emits `end` and never exits, so the caller's watchdog is
+// what ends it. Set only for the run itself — `models` and `--version` are
+// answered above, so model resolution still works. This is the only way to
+// reach the killed-run render path.
+if (process.env.GROK_STUB_HANG === '1') {
+  // The interval is what holds the process open. Without it Node drains the
+  // loop with the await still pending and exits 13 ("never settled"), which
+  // looks like a crash rather than a hang.
+  setInterval(() => {}, 1_000);
+  await new Promise(() => {});
+}
+
 const fixture = process.env.GROK_STUB_FIXTURE;
 if (!fixture) {
   process.stderr.write('stub: GROK_STUB_FIXTURE not set\n');
