@@ -18,6 +18,8 @@ function render(job) {
     exitCode: job.exitCode,
     failedCommands: job.failedCommands,
     sessionLost: job.status === 'failed' && !job.grokSessionId,
+    resumableSessionId:
+      job.status === 'failed' && job.grokSessionId ? job.grokSessionId : undefined,
   });
 }
 

@@ -89,6 +89,24 @@ describe('renderOutcome', () => {
     expect(out).toContain('cannot be resumed');
   });
 
+  it('carries the session id when a killed job CAN be resumed', () => {
+    const out = renderOutcome({ ...clean, killed: true, resumableSessionId: 'abc-123' });
+    expect(out).toContain('/grok:resume --resume=abc-123');
+  });
+
+  it('never prints both halves of the resume pair', () => {
+    // `sessionLost` wins: it means there is no id, so a resume line would point
+    // at nothing even if a caller passed one.
+    const out = renderOutcome({
+      ...clean,
+      killed: true,
+      sessionLost: true,
+      resumableSessionId: 'abc-123',
+    });
+    expect(out).toContain('cannot be resumed');
+    expect(out).not.toContain('--resume=');
+  });
+
   it('says so when grok returned nothing at all', () => {
     expect(renderOutcome({ ...clean, summary: '' })).toBe('(grok returned no write-up)\n');
   });

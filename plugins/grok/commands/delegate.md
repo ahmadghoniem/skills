@@ -33,7 +33,7 @@ job is done. It exists for scripting, not for you.
 | --- | --- |
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit it when argv is already tokenised. |
 | `--model <id>` | Pin a model. Omit it and the plugin uses the newest model `grok models` reports. |
-| `--effort <level>` | Grok's `--reasoning-effort`. Pick per task: low for mechanical work, higher when the task needs thinking. |
+| `--effort <level>` | Grok's `--reasoning-effort`. Pick per task. |
 | `--background` | Detach the worker. Scripting only — it severs the harness notification, which is what forces polling. |
 | `--resume[=<id>]` | Continue a grok session — the most recent for this directory, or a specific one. Send only the delta, not the whole task again. |
 | `--fresh` | Start a new session even if a recent one exists. |

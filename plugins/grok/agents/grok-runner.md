@@ -64,13 +64,7 @@ One `/grok:delegate` call per coherent slice, unless the change is genuinely ind
 
 ### 2. Pick the reasoning effort
 
-The model is handled for you — omit `--model` and the plugin uses the newest one grok reports. What you choose is `--effort`:
-
-- **low** — mechanical, fully-specified work: a rename, a mechanical refactor, adding a test that mirrors an existing one.
-- **medium** — the normal case: a bounded feature or fix where some judgment is needed inside a clear contract.
-- **high** — the task genuinely requires reasoning: an unclear bug, a design with real trade-offs, anything where a wrong approach costs more than the extra thinking.
-
-Match the effort to the task, not to its size. Long mechanical work still wants low effort.
+The model is handled for you — omit `--model` and the plugin uses the newest one grok reports. What you choose is `--effort`, per task.
 
 ### 3. Invoke `/grok:delegate` via a single `Bash` call
 

@@ -84,4 +84,32 @@ describe('/grok:result --list / --all', () => {
     expect(code).toBe(0);
     expect(out).toContain('No Grok jobs tracked for this repository yet.');
   });
+
+  // The resume pair is gated here, not in the renderer: `result.mjs` decides
+  // from the stored status, because a finished job carries no `killed` flag of
+  // its own to gate on.
+  it('offers a resume for a failed job that kept its session id', async () => {
+    createJob({ id: 'cut-short', repoPath: tmp.dir, prompt: 'big one', model: 'grok-4.6' });
+    updateJob(tmp.dir, 'cut-short', {
+      status: 'failed',
+      summary: 'partial work',
+      grokSessionId: 'sess-42',
+    });
+    await resultMain(['cut-short']);
+    expect(out).toContain('/grok:resume --resume=sess-42');
+    expect(out).not.toContain('cannot be resumed');
+  });
+
+  it('offers no resume for a job that finished', async () => {
+    createJob({ id: 'finished', repoPath: tmp.dir, prompt: 'small one', model: 'grok-4.6' });
+    updateJob(tmp.dir, 'finished', {
+      status: 'done',
+      summary: 'all good',
+      stopReason: 'end_turn',
+      exitCode: 0,
+      grokSessionId: 'sess-99',
+    });
+    await resultMain(['finished']);
+    expect(out).not.toContain('--resume=');
+  });
 });

@@ -206,6 +206,12 @@ async function foreground(flags, prompt, jobId, root) {
       // A fresh dispatch pre-assigns its id, so this can now only fire on a
       // resume — where `-s` is illegal and the id must still come from `end`.
       sessionLost: result.killed && !summary.sessionId && !freshSessionId,
+      // The inverse: killed, but an id exists to attach to. A fresh dispatch
+      // pre-assigns one with `-s`, so this is the usual shape of a watchdog
+      // kill and the run is resumable rather than lost.
+      resumableSessionId: result.killed
+        ? (summary.sessionId ?? freshSessionId)
+        : undefined,
     }),
   );
   return result.exitCode;
