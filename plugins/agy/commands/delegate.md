@@ -24,10 +24,7 @@ Send no `--model`. The plugin resolves the newest **flash** id from the live
 `agy models` list at whatever `--effort` you pass, because agy encodes effort in
 the id itself.
 
-Set `--effort` per task: **low** for mechanical, fully-specified work, **medium**
-(the default) for a bounded change needing some judgment, **high** for an unclear
-bug or a design with real trade-offs. Match it to the task, not to its size —
-long mechanical work still wants low.
+Set `--effort` per task.
 
 Ask **one** `AskUserQuestion` about models only when the user raises them: they
 name a model or a family, ask what is available, say the default is not up to

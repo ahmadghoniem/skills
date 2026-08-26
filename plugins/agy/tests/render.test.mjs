@@ -41,6 +41,29 @@ describe('renderResult', () => {
     expect(out).toContain('\u26a0 agy status: ERROR');
   });
 
+  it('measures the ERROR so a blip is distinguishable from a dead run', () => {
+    // The case that motivated this: a provider stream interrupted in the last
+    // second of a run whose work had already landed.
+    expect(renderResult({ ...base, agyStatus: 'ERROR' })).toContain(
+      '\u26a0 agy status: ERROR (write-up present, 2 files changed)',
+    );
+    // And the case it must not read the same as.
+    expect(
+      renderResult({ ...base, agyStatus: 'ERROR', summary: '', gitFiles: [] }),
+    ).toContain('\u26a0 agy status: ERROR (no write-up, 0 files changed)');
+  });
+
+  it('singularises one file and omits the count outside a repo', () => {
+    expect(
+      renderResult({ ...base, agyStatus: 'ERROR', gitFiles: [{ status: 'M', path: 'a.ts' }] }),
+    ).toContain('(write-up present, 1 file changed)');
+    // Outside a repo there is no tree to compare against, so `0 files changed`
+    // would be a claim rather than a measurement.
+    expect(
+      renderResult({ ...base, agyStatus: 'ERROR', gitRepo: false, gitFiles: [] }),
+    ).toContain('\u26a0 agy status: ERROR (write-up present)');
+  });
+
   it('raises a non-zero exit independently of agy status', () => {
     const out = renderResult({ ...base, agyStatus: 'SUCCESS', exitCode: 1 });
     expect(out).toContain('\u26a0 exit 1');
@@ -101,6 +124,22 @@ describe('renderResult', () => {
   it('reports a watchdog kill', () => {
     const out = renderResult({ ...base, killed: true });
     expect(out).toContain('\u26a0 watchdog killed the run');
+  });
+
+  it('offers a resume only on a killed run that captured a conversation id', () => {
+    const killed = renderResult({ ...base, killed: true });
+    expect(killed).toContain(
+      '\u26a0 this run can be resumed where it stopped: /agy:resume add-retry-to-fetchuser-a7f3',
+    );
+
+    // A run that finished has nothing to resume, however it ended.
+    expect(renderResult({ ...base, agyStatus: 'ERROR', exitCode: 1 })).not.toContain(
+      '/agy:resume',
+    );
+    // No id captured means the line would point at nothing.
+    expect(renderResult({ ...base, killed: true, conversationId: undefined })).not.toContain(
+      '/agy:resume',
+    );
   });
 
   it('says so when agy returned nothing at all', () => {
@@ -271,6 +310,10 @@ describe('long agy errors', () => {
       error: 'one line only',
     });
     // status, exit code and error stay three separate facts — never collapsed.
-    expect(out).toBe('⚠ agy status: ERROR\n⚠ exit 1\n⚠ one line only\n');
+    // The status line carries its measured context; that is disambiguation, not
+    // a fourth fact folded into the first three.
+    expect(out).toBe(
+      '⚠ agy status: ERROR (no write-up, 0 files changed)\n⚠ exit 1\n⚠ one line only\n',
+    );
   });
 });

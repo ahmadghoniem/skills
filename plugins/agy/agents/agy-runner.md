@@ -62,16 +62,7 @@ One `/agy:delegate` call per coherent slice — the bigger the slice, the harder
 ### 2. Pick the reasoning effort
 
 The model is handled for you — omit `--model` and the plugin resolves the newest
-flash id at the effort you pass. What you choose is `--effort`:
-
-- **low** — mechanical, fully-specified work: a rename, a mechanical refactor, a
-  test that mirrors an existing one.
-- **medium** (the default) — a bounded feature or fix where some judgment is
-  needed inside a clear contract.
-- **high** — the task genuinely requires reasoning: an unclear bug, a design with
-  real trade-offs, anything where a wrong approach costs more than the thinking.
-
-Match effort to the task, not to its size. Long mechanical work still wants low.
+flash id at the effort you pass. What you choose is `--effort`, per task.
 
 Only if the main conversation passed you a model, or the user raised models
 themselves, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
