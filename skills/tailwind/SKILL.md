@@ -32,15 +32,14 @@ Both upstreams already work this way — shadcn's default theme ships OKLCH, and
 - **Every fill token has a paired `-foreground`,** and the contrast between them is a **lightness gap**.
 - **Fix contrast by moving L.** Push L further from the background and leave C and H alone; then re-check the ratio. Never raise C to "add contrast" — on some hues it measurably *lowers* it.
 - **If a colour looks wrong or over-saturated, lower C and keep L and H.** Not every `oklch()` triple is displayable; browsers substitute something nearby, and most still clip naively rather than reducing chroma for you. **Ceilings vary enormously by hue** — at L 0.55 the maximum in-gamut chroma runs from ~0.09 (cyan) to ~0.27 (purple), so there is no single safe number to memorise. Treat C ≤ 0.04 as the grey band and C ≤ 0.12 as comfortable for most accents; above that, copy a known-good value rather than inventing one. Vivid intent roles legitimately go higher — shadcn's own `--destructive` is `oklch(0.577 0.245 27.325)`.
-- **Never compute OKLCH by hand, and never eyeball one.** This skill ships a converter — `scripts/oklch.mjs`, zero dependencies, `node` only:
+- **Never compute OKLCH by hand.** This skill ships a converter — zero dependencies, `node` only:
 
   ```
-  node ~/.claude/skills/tailwind/scripts/oklch.mjs '#3b82f6'   # -> oklch(0.623 0.188 259.815)
-  node ~/.claude/skills/tailwind/scripts/oklch.mjs --hex 'oklch(0.623 0.188 259.815)'
+  node ~/.claude/skills/tailwind/scripts/oklch.mjs '#3b82f6'   # oklch(0.623 0.188 259.815)
   node ~/.claude/skills/tailwind/scripts/oklch.mjs --table '#0f172a' '#f5f5f4'
   ```
 
-  It takes hex, `rgb()`, `hsl()` and `oklch()`, reads stdin when given no arguments, carries alpha through as `/ A`, and warns on stderr when a value falls outside sRGB. Use it rather than a web tool so the same input gives the same digits every run. When converting an existing palette, convert the **values only** — leave `currentColor`, CSS keywords, gradient interpolation, and third-party library configs alone.
+  Takes hex / `rgb()` / `hsl()` / `oklch()`; `--hex` reverses it; warns on stderr outside sRGB. When converting an existing palette, convert the **values only** — leave `currentColor`, CSS keywords, gradient interpolation, and third-party library configs alone.
 - **No brand ramp unless asked.** This system is ~12 semantic roles, not a 50–950 palette. And don't build dark mode by inverting a ramp — re-set the same semantic roles under `.dark`.
 
 ## Authoring rules
@@ -53,7 +52,7 @@ Both upstreams already work this way — shadcn's default theme ships OKLCH, and
 - **Arbitrary values are the model's fallback, not a neutral choice.** An agent writes Tailwind syntax fluently but has no knowledge of the project's `@theme`, and faces thousands of equally-valid utilities with no signal which is "blessed" — so it emits the most literal value that hits the target (`p-[17px]`, `bg-[#3b82f6]`, even `padding:'16px'`). Unchecked, these become "a shadow scale nobody owns." Before writing a bracket, walk the ladder:
   1. **Native scale step?** Use the token — spacing on the 4px grid (`p-1`=4px … `p-4`=16px; `p-px`=1px), `rounded-md`, `z-40`, `opacity-70`, `text-sm`. Never `p-[16px]` for `p-4`.
      **The spacing scale is unbounded** — every integer works, compiling to `calc(var(--spacing) * N)`. `p-18`, `mt-21`, `gap-13`, `w-101` are all real, as are open-ended `z-N` and `grid-cols-N`. Never reach for a bracket because a number "looks too big for the scale": divide by 4 and use the step. For the same reason, never add `--spacing-18: 4.5rem` to `@theme` — `p-18` already *is* 4.5rem. Named `--spacing-*` keys are for names (`--spacing-gutter`), not for filling holes in a scale that has none.
-  1b. **A width?** `max-w-*` and `min-w-*` read the **named container scale** before the spacing scale — `max-w-md` is `--container-md` (28rem), `max-w-4xl` is 56rem, and so on up. Check it first for anything page- or card-sized. At large magnitudes the spacing step stops being readable: `max-w-[900px]` canonicalises to `max-w-225`, which is arithmetic, where `max-w-4xl` is 896px and says what it means. A near-miss like that 4px is a **design** call — offer it with the delta, never rewrite silently. Note `max-h-*` / `min-h-*` do **not** take container names; the height axis is spacing-only.
+  1b. **A width?** `max-w-*` / `min-w-*` read the **named container scale** first — `max-w-md` is 28rem, `max-w-4xl` is 56rem (896px). Prefer it for anything page- or card-sized: `max-w-4xl` says what it means where the equivalent `max-w-225` is arithmetic. A near-miss is a **design** call — offer the delta, never rewrite silently. `max-h-*` / `min-h-*` are spacing-only.
   2. **A colour?** Walk the colour ladder:
      - **Has a role** (surface, text, border, primary/brand, destructive, muted, ring, a chart series that themes) → use the semantic `@theme` token (`bg-primary`, `text-muted-foreground`). Never re-invent these with `bg-white` / `text-gray-500` / `dark:` pairs.
      - **Decorative, categorical, or a true one-off** with no role → soft-allow the nearest stock palette shade (`bg-sky-600`, `text-amber-500`). Match token count to the variability of the visual language — don't add a `@theme` token for a colour with no fixed meaning.
@@ -64,8 +63,7 @@ Both upstreams already work this way — shadcn's default theme ships OKLCH, and
 - **Treat `-px` utilities as intentional, not an escape hatch.** Keep `p-px`, `mt-px`, `gap-px`, `w-px` as-is; rewrite the long form `p-[1px]` → `p-px`. Bracket values that land on the 4px step map to the scale (`p-[4px]` → `p-1`, `p-[8px]` → `p-2`, `p-[16px]` → `p-4`); off-scale values (`p-[7px]`, `p-[13px]`) nudge to the nearest step.
 - **Get the two custom-CSS directives right — both have a v3/beta lookalike.**
   - A custom utility is `@utility name { … }`. `@layer utilities { .name { … } }` still emits the class, so it *looks* like it worked, but the utility is never registered and `hover:name` / `lg:name` won't exist.
-  - **`@utility` is also how a *reusable affordance* is written** — but check the gate first: where a framework owns the markup, a repeated class string is a missing **component**, and that is the answer Tailwind's own docs give. `@utility` is for the cases with no component to make — CMS output, third-party markup, a multi-framework design system.
-  - **When one is warranted** — a named, repeated class string like `ui-badge`. Wrap the body in `:where(&)` so utilities still override it, `@apply` the project's own tokens, and put each state in a `@variant` block. Promote when a class string repeats **and** has a name someone says out loud; leave one-offs and unnamed coincidences in the markup. Pattern and guard rails in `references/affordances.md`.
+  - **`@utility` is also how a reusable affordance is written** — but in a component framework a repeated class string is a missing **component** first. `@utility` is for markup no component can own. See `references/affordances.md`.
   - A custom variant is **`@custom-variant`**: `@custom-variant theme-midnight (&:where([data-theme="midnight"] *));`. `@variant` is a different directive that *applies* an already-registered variant inside CSS (`.x { @variant dark { … } }`). Defining with `@variant name (selector)` is v4-**beta** syntax — it is still silently accepted for compatibility, so it will not error, it will just be undocumented and ambiguous.
 
 ### Canonical syntax
@@ -111,6 +109,6 @@ Prose prevents; a linter catches the residue. Where the project has one configur
 
 - **Scaffolding a project** — no `globals.css`, no `@theme` block, wiring the PostCSS/Vite entry, adding the theme toggle, or setting up `cn()` or the button cursor for the first time: read `references/setup.md` before writing CSS. It wires the token contract and leaves the palette values to `shadcn init` or the user; it carries three decisions that must be **asked, not assumed**.
 - **A v4 trap** — a utility not applying, "Cannot apply unknown utility class", `@apply` in a Vue/Svelte/Astro `<style>` or CSS Module, `h-screen` on mobile, a dynamic `bg-${x}` class, `truncate` not clipping, container queries / `@md:` vs `md:`, or a token that looks v3-shaped: read `references/gotchas.md`.
-- **A repeated class string, or an existing `@layer components` block** — deciding whether a look should become a named `@utility`, and how to write one that utilities can still override: read `references/affordances.md`.
+- **A repeated class string, or an existing `@layer components` block** — whether a look should become a named `@utility`: read `references/affordances.md`.
 - **Tooling** — editor autocomplete inside `cva`/`cn`, class sorting, or a lint rule to enforce this house style: read `references/editor.md`.
 - **Cleanup / audit / simplify** — the user asked, or you are reviewing a component for class drift: read `references/cleanup.md` and follow its process and output format.

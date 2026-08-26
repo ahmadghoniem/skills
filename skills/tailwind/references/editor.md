@@ -7,7 +7,6 @@ Contents:
 - IntelliSense inside `cva`/`cn` — always recommend
 - Detect what the project already uses
 - Canonical classes (rewriting)
-- The rest of the rule set worth enabling
 - Class sorting
 
 ## IntelliSense inside `cva`/`cn`
@@ -36,9 +35,18 @@ Recommend against what's installed; don't propose replacing a working setup.
 
 **Sorting and canonicalising are different jobs.** A sorter only *reorders* classes; it never rewrites a non-canonical form into its first-class equivalent. Only an ESLint rule does that.
 
-**Use `eslint-plugin-better-tailwindcss`, not `eslint-plugin-tailwindcss`, and never both.** The older plugin did reach v4 (4.4.0, Aug 2026), so any survey turns up two live options and it reads like a real choice. Compared rule-for-rule against 4.7.0: **7 of its 9 rules have direct equivalents** (`enforces-canonical-classname`, `enforces-shorthand`, `no-contradicting-classname`, `classnames-order`, `important-modifier-suffix`, `no-custom-classname`, `no-unnecessary-arbitrary-value`), `no-arbitrary-value` is approximable with `no-restricted-classes`, and only **`enforces-negative-arbitrary-values`** has no counterpart. Going the other way, `better-tailwindcss` has ten rules with nothing on the other side, including `no-concatenated-classes` and `no-deprecated-classes`. Running both means two canonicalisers emitting conflicting fixes on the same line. If that one rule genuinely matters, add it *and* explicitly disable its seven overlaps.
+**Never `eslint-plugin-tailwindcss` alongside it.** The older plugin did reach v4 (4.4.0), so a survey turns up two live options — but 7 of its 9 rules duplicate `better-tailwindcss` 4.7.0, and two canonicalisers emit conflicting fixes on the same line. Only `enforces-negative-arbitrary-values` has no counterpart.
 
 Recommend **`eslint-plugin-better-tailwindcss`**, rule `enforce-canonical-classes`. It calls Tailwind's own `canonicalizeCandidates` API — the same one powering the VS Code "suggest canonical classes" hint — and is autofixable via `eslint --fix`. It ships in the plugin's `recommended` config.
+
+**Lint one directory at a time — `eslint .` silently under-reports.** Measured on plugin 4.7.0 / ESLint 10.9.1: four source directories linted separately produced **26** findings; `eslint .` over the same tree produced **8**. `enforce-canonical-classes` stops reporting once a run spans more than one top-level directory — it does not error, and the exit code is unchanged. Name each directory in the npm script:
+
+```json
+"lint": "eslint app && eslint features && eslint shared && eslint server",
+"lint:fix": "eslint app --fix && eslint features --fix && eslint shared --fix && eslint server --fix"
+```
+
+Finish an editing or cleanup pass with `lint:fix`. If a run comes back suspiciously clean, re-run one directory and compare before believing it.
 
 Recommended config for this house style:
 
@@ -55,40 +63,12 @@ rules: {
     collapse: true,    // w-4 h-4 -> size-4, px-4 py-4 -> p-4  (plugin default)
     logical: true,     // plugin default
   }],
-}
-```
-
-**`entryPoint` is not optional for this house style.** The plugin's own description: *"The path to the css entry point of the project. If not specified, the plugin will fall back to the default tailwind classes."* Without it the rule lints against stock Tailwind and cannot see your `@theme` tokens or a customised `--spacing` — so it reasons about a theme the project doesn't have.
-
-**`rootFontSize` is the one that changes the most output, and setting it is not restating a default.** The options table's default is `undefined`; the prose's "by default, the root font size is `16px` unless it is changed with CSS" describes the *browser's* root font size, not the option's default. Read together: leave the option out and the rule has no px basis to reason from, so it skips px rewrites entirely. Verified empirically — same file, same rule: `p-[16px]` and `translate-y-[2px]` produce **zero** warnings without it, and both rewrite with it. Set `rootFontSize: 16` explicitly; that is what turns px rewrites on. (Re-checked against the rule's docs 2026-08-25.)
-
-`collapse: true` is the plugin default and is what this house style wants — it produces the same shorthands the cleanup pass auto-applies. Note this is *stricter* than the VS Code hint, which canonicalises one class at a time and so never suggests list-level collapses. If you specifically want editor parity instead, set `collapse: false, logical: false`.
-
-With `collapse: true`, turn off `enforce-shorthand-classes`, `enforce-consistent-important-position` and `enforce-consistent-variable-syntax` — the plugin's own docs say canonical supersedes all three, and leaving them on produces duplicate reports and conflicting fixes.
-
-**Lint one directory at a time — a whole-project run silently under-reports.** Measured on plugin 4.7.0 / ESLint 10.9.1: linting four top-level source directories separately produced **26** findings; `eslint .` over the same tree produced **8**. `enforce-canonical-classes` stops reporting as soon as the run spans more than one top-level directory. It does not error — it returns nothing, while `no-restricted-classes` keeps working, so the run looks healthy and the exit code is unchanged. Chain the invocations in the npm script (`eslint app && eslint features && …`) rather than passing `.`, and if a run comes back suspiciously clean, re-run one directory and compare before believing it.
-
-Without ESLint a project has **no** canonical enforcement at all. Say that plainly rather than implying a formatter covers it.
-
-Do this with `eslint --fix`, never `@tailwindcss/upgrade` — that is a v3→v4 migration tool that rewrites every `.css` file including `globals.css`, and it doesn't do the px→scale rewrites anyway.
-
-## The rest of the rule set worth enabling
-
-`enforce-canonical-classes` handles syntax. Three more rules in the same plugin cover things it cannot see at all. Verified by running them: plugin 4.7.0, ESLint 10.9.1, all three fire on a fixture.
-
-```js
-rules: {
-  // Two classes setting the same property. Reports the pair rather than
-  // picking a winner, which is right - emission order decides that, not
-  // markup order (see references/cleanup.md).
+  // Two classes setting the same property. Warn, never autofix - emission
+  // order decides the winner, not markup order.
   "better-tailwindcss/no-conflicting-classes": "warn",
-
-  // `bg-${color}-500` - the scanner reads source as text, so the class is
-  // never generated. Silent at runtime; nothing else catches it.
+  // `bg-${color}-500` - never generated, silent at runtime.
   "better-tailwindcss/no-concatenated-classes": "warn",
-
-  // House style the plugin cannot infer. Bans raw arbitrary colours and
-  // fixes the mobile-viewport trap.
+  // House style the plugin cannot infer.
   "better-tailwindcss/no-restricted-classes": ["warn", {
     restrict: [
       { pattern: "^(bg|text|border|ring|fill|stroke)-\\[#", message: "Raw hex - use a semantic @theme token." },
@@ -98,13 +78,21 @@ rules: {
 }
 ```
 
-**`restrict` patterns are strings, and the plugin passes them to `String.match` unescaped.** So a literal `[` needs a **double** backslash in the JS source (`"-\\[#"` -> the regex `-\[#`). A single one is silently dropped by the JS string parser and ESLint dies with `Invalid regular expression: Unterminated character class` on the first file it lints. Shape is `{ pattern, fix?, message? }` - checked against the rule's schema in 4.7.0.
+**`entryPoint` is not optional for this house style.** The plugin's own description: *"The path to the css entry point of the project. If not specified, the plugin will fall back to the default tailwind classes."* Without it the rule lints against stock Tailwind and cannot see your `@theme` tokens or a customised `--spacing` — so it reasons about a theme the project doesn't have.
 
-**Do not also enable `no-deprecated-classes`.** Tested on the same fixture: `enforce-canonical-classes` catches `bg-gradient-to-r`, `flex-grow` **and** `break-words`; `no-deprecated-classes` catches only `flex-grow`, and reports it a second time on the same line. It is a strict subset that adds duplicate output - the same reason `enforce-shorthand-classes` is turned off above.
+**`rootFontSize` is the one that changes the most output, and setting it is not restating a default.** The options table's default is `undefined`; the prose's "by default the root font size is 16px" describes the *browser*, not the option. Leave it out and the rule has no px basis to reason from, so it skips px rewrites entirely — verified: same file, same rule, `p-[16px]` and `translate-y-[2px]` produce **zero** warnings without it and both rewrite with it.
 
-`no-conflicting-classes` and `no-concatenated-classes` are the two with no prose substitute: a human reading a 12-class string does not reliably spot either.
+`collapse: true` is the plugin default and is what this house style wants — it produces the same shorthands the cleanup pass auto-applies. Note this is *stricter* than the VS Code hint, which canonicalises one class at a time and so never suggests list-level collapses. If you specifically want editor parity instead, set `collapse: false, logical: false`.
 
-**`no-concatenated-classes` has one honest false positive** — a template literal joining **complete** class names, e.g. ``className={`size-full${active ? " app-text-tool" : ""}`}``. Nothing is interpolated *into* a utility, and the appended names are often plain CSS classes Tailwind never generates anyway. The rule cannot tell that from a real `bg-${x}-500`. Suppress those individually with `eslint-disable-next-line` **and a one-line reason**; never turn the rule off, and never widen the suppression to a file.
+With `collapse: true`, turn off `enforce-shorthand-classes`, `enforce-consistent-important-position`, `enforce-consistent-variable-syntax` and `no-deprecated-classes` — all four are subsets of canonical, and leaving them on produces duplicate reports and conflicting fixes.
+
+**`restrict` patterns need a double backslash.** The plugin hands the string to `String.match` unescaped, so a single one dies with `Unterminated character class` on the first file linted.
+
+**`no-concatenated-classes` has one honest false positive** — a template literal joining *complete* class names. Suppress per line with a reason; never disable the rule.
+
+Without ESLint a project has **no** canonical enforcement at all. Say that plainly rather than implying a formatter covers it.
+
+Do this with `eslint --fix`, never `@tailwindcss/upgrade` — that is a v3→v4 migration tool that rewrites every `.css` file including `globals.css`, and it doesn't do the px→scale rewrites anyway.
 
 ## Class sorting
 

@@ -8,7 +8,7 @@
 ## Why this file exists
 
 The 2026-08-25 revision (affordances, the container scale, the radius/`--spacing`
-preconditions, the OKLCH script, four new lint rules) was written against whatever Tailwind
+the `--spacing` rule, the OKLCH script, the extra lint rules) was written against whatever Tailwind
 the host project resolved — **4.1.18**. Every other row in [CLAIMS.md](CLAIMS.md) says
 *compiled on 4.3.3*. A provenance ledger carrying two unexplained version numbers is worth
 less than one, so the Tailwind-side claims were re-run on **4.3.3**, the current `latest`
@@ -154,8 +154,9 @@ Fixture reproduces the shadcn scaffold: `--radius: 0.625rem` in `:root`, derivat
 
 **Verdict: CONFIRMED on 4.3.3.** Two things the skill leans on:
 
-- `rounded-sm` is **6px** in a shadcn project, not the 4px an agent has memorised — the
-  generalised precondition at the top of `cleanup.md`.
+- `rounded-sm` is **6px** in a shadcn project, not the 4px an agent has memorised. Measured, but
+  **not carried into the skill** — a precondition section covering it was written and then cut as
+  bloat on review (2026-08-26). Kept here as evidence for the `rounded-xs` mapping below.
 - `borderRadius: "2px"` in an inline style maps to **`rounded-xs`**, not `rounded-[2px]` —
   the correction in `cleanup.md`'s *Colour literals outside class strings* section, which the
   first draft got wrong by reaching for a bracket.
@@ -176,7 +177,7 @@ Fixture: `@theme { --spacing: 0.2rem; }`, markup `p-4 p-5 p-[16px]`.
 
 **Verdict: CONFIRMED on 4.3.3.** `p-[16px]` is `p-5` here, not `p-4`. An `eslint --fix` that
 assumes the default rewrites it to `p-4` and shrinks the padding by 20% with a clean exit
-code — the worked example in `cleanup.md`'s precondition and in `gotchas.md`.
+code — the worked example in `gotchas.md`'s *Never override `--spacing`*.
 
 ## 8. Open-ended scales make a bracket pointless
 

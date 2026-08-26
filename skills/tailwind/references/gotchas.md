@@ -5,7 +5,7 @@ Read this when a utility isn't doing what it should, when a build errors on an u
 Contents:
 
 - `@apply` in separately-bundled CSS needs `@reference`
-- Where `--spacing` is declared decides what the build can see
+- Never override `--spacing`
 - Bare-channel tokens are completely dead
 - `group` / `peer` / `@container` need the marker class
 - `@md:` is a container query, not a breakpoint
@@ -34,13 +34,11 @@ Plain CSS, no `@reference`, no Tailwind involvement. Two traps here:
 - Reference `var(--primary)`, **not** `var(--color-primary)`. The `--color-*` names are the `@theme inline` bridge that generates utilities; `--primary` is the token that actually flips under `.dark`.
 - **Don't reach for `--spacing(6)` here.** It is a Tailwind *build-time* function, not a CSS variable. With no theme in scope it hard-errors — verbatim in 4.3.3: ``The --spacing(…) function requires that the `--spacing` theme variable exists, but it was not found.`` It *does* resolve under `@reference`, but that is the per-file re-run you came here to avoid. `calc(var(--spacing) * 6)` is the runtime equivalent and needs neither, since the main stylesheet emits `--spacing` into `:root`.
 
-## Where `--spacing` is declared decides what the build can see
+## Never override `--spacing`
 
-`--spacing` has two audiences. The **browser** reads it off the cascade, so a declaration in any winning selector governs every `calc(var(--spacing) * N)` already emitted. The **build** reads it only from `@theme` in the CSS entry point — that is what `--spacing(N)` resolves against and what `canonicalizeCandidates` reasons from.
+The scale is already unbounded, so a custom step buys nothing a different integer wouldn't — and it silently breaks every px equivalence, the linter's included. On `--spacing: 0.2rem`, `p-4` is 12.8px, so `eslint --fix` rewrites `p-[16px]` → `p-4` and shrinks the padding 20% with a clean exit code.
 
-Put a custom value in a runtime selector and the two disagree with nothing erroring. `enforce-canonical-classes` then assumes the `0.25rem` default and rewrites `p-[16px]` → `p-4`; on a `0.2rem` scale that is 12.8px, so `eslint --fix` shrinks the padding by 20% and reports a clean run.
-
-**Recommend deleting the override.** The spacing scale is unbounded, so a custom step buys nothing a different integer wouldn't, and it costs the linter, `--spacing(N)`, and every px equivalence an agent has memorised. If it must stay, declare it in `@theme` in the entry point, or scope it under a named key (`--spacing-tight`) rather than re-declaring `--spacing`.
+Recommend deleting the override rather than working around it; if it has to stay, give it a named key (`--spacing-tight`) instead of re-declaring `--spacing`.
 
 ## Bare-channel tokens are completely dead
 
