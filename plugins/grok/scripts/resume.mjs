@@ -3,9 +3,9 @@ import { main as delegateMain } from './delegate.mjs';
 import { invokedAsScript } from './lib/args.mjs';
 
 /**
- * Resume the most recent grok session for this repository, or a specific
- * session id, with an optional follow-up prompt. Same job-recording path as
- * `/grok:delegate` — `--resume` is injected when the caller did not pass one.
+ * Resume the grok session a job recorded, with an optional follow-up prompt.
+ * Same job-recording path as `/grok:delegate` — `--resume` is injected when the
+ * caller did not pass one, and `delegate.mjs` refuses it without a job id.
  *
  * @param {string[]} rawArgv
  * @returns {Promise<number>}

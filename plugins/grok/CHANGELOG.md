@@ -16,11 +16,29 @@
   the POSIX/macOS asides in `args.mjs` and `paths.mjs`. `scripts/lib/winbin.mjs` and
   `scripts/lib/invoked.mjs` were both platform shims and are folded into `run.mjs`, `grok.mjs`,
   and `args.mjs`. `"os": ["win32"]` is now declared in `package.json`.
+- **`toolPaths` from `parse.mjs`.** Dead since the file list was removed from the renderer — it
+  had no caller outside its own tests. `dedupePaths` and `normalisePaths` stay: they are live
+  through `describeToolCall`.
 - **The low/medium/high effort rubric in `grok-runner.md`.** It pre-judged on a
   mechanical-vs-reasoning axis that misses per-site judgement, and it displaced the delegating
   model's own read of the task. What remains is the mechanism: pass `--effort` per task.
 
 ### Fixed
+
+- **A failed run explained nothing.** Grok reports a refused dispatch on stderr, and carries the
+  reason a run died mid-stream in a `type: "error"` event. Both were dropped: stderr reached the
+  log file and nowhere else, and `error` fell through `summariseEvents`'s switch with every other
+  unrecognised type. A bad session id therefore rendered as `(no final message captured)` under a
+  bare `⚠ exit 1`, with grok's own explanation — `no session id or title matched "…"` — sitting on
+  disk. One `⚠ error:` line now carries it, fed by the `error` event when there is one and the
+  stderr tail on a failing exit otherwise, with the spawn-error path folded into the same buffer.
+  Persisted on the job record, so `/grok:result` re-renders it instead of losing it.
+- **A bare `--resume` could attach to another Claude session's conversation.** It became
+  `--continue`, which grok resolves as "newest session for this directory" — by directory, not by
+  who dispatched. Two Claude sessions working in one repo share a job store, so the second silently
+  won the race and the first answered from a conversation it never had, at exit 0 with no warning.
+  Reproduced before fixing. `--continue` and `resumeLatest` are gone; every resume names its
+  session, and a bare `--resume` is refused rather than guessed at.
 
 - **`--help` billed a real run.** `help` was declared as a boolean flag and never read, so it
   fell through to a dispatch. It now prints usage and exits 0, checked ahead of the `--resume`
@@ -35,12 +53,23 @@
 ### Added
 
 - **A resume line when a killed run kept its session id**, and its inverse when it did not:
-  `⚠ this run ended early — resume it with /grok:resume --resume=<id>` versus `⚠ no session id
+  `⚠ this run ended early — resume it with /grok:resume --resume=<job-id>` versus `⚠ no session id
   was captured — this job cannot be resumed`. Mutually exclusive, and both registered in the
   output contract.
 
 ### Changed
 
+- **`--resume=` takes a job id and nothing else.** It briefly accepted a job id or a grok session
+  uuid, while the resumable warning printed the uuid — two handles for one thing, and the one the
+  plugin printed was not the one it advertised. The job id is now the only accepted form and the
+  renderer prints it, so every id the plugin shows you is one it takes back and the kill hint can
+  be pasted exactly as printed. The uuid stays on the job record and is still what reaches grok as
+  `-r <uuid>`; it is no longer something you type. Known cost: a grok session with no job record —
+  pruned at 30 days, or a `grok` TUI session this plugin never dispatched — is no longer resumable
+  through the plugin.
+- **Watchdog default 3600 → 4800 seconds.** It matched grok's own idle timeout exactly, so the two
+  raced and a watchdog kill could pre-empt the `error` event naming the cause. Grok now fails first
+  and says why.
 - **Trimmed `agents/grok-runner.md` and `commands/delegate.md` by ~30%.** Removed the
   restatements of "you are a forwarder", the hedged task-size thresholds, and the paragraph
   restating the first rule of the contract file injected two lines below it. The per-run

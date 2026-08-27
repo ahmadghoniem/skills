@@ -115,13 +115,8 @@ async function runAndRecord(flags, prompt, jobId, root, resumeTarget, model) {
   ensureDir(logsDir(root));
   updateJob(root, jobId, { pid: process.pid, model });
 
-  // A fresh dispatch names its own session up front and records it BEFORE grok
-  // is spawned, so the job is resumable from the instant it starts. Previously
-  // the id arrived only on the terminal `end` event, which meant precisely the
-  // runs you most want to resume — killed, crashed, timed out — were the ones
-  // that could not be. Verified on grok 1.0.5: a run killed mid-stream with no
-  // `end` event still leaves its session on disk under this id, and `-r <uuid>`
-  // resumes it with prior context intact.
+  // Named and recorded before grok is spawned, so a run killed before its `end`
+  // event — the one you most want to resume — is still resumable. See `buildArgs`.
   const freshSessionId = resumeTarget ? undefined : randomUUID();
   if (freshSessionId) {
     try {
