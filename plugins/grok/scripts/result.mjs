@@ -16,6 +16,7 @@ function render(job) {
     summary: job.summary,
     stopReason: job.stopReason,
     exitCode: job.exitCode,
+    errorDetail: job.errorDetail,
     failedCommands: job.failedCommands,
     sessionLost: job.status === 'failed' && !job.grokSessionId,
     resumableSessionId:

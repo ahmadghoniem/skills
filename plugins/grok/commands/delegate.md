@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task to the Grok Build CLI.
-argument-hint: '[--fresh] [--resume[=session-id]] [--model <id>] [--effort <level>] [--timeout <sec>] [--no-git-check] [--prompt-file <path|->] <task...>'
+argument-hint: '[--fresh] [--resume=<job-id|session-uuid>] [--model <id>] [--effort <level>] [--timeout <sec>] [--no-git-check] [--prompt-file <path|->] <task...>'
 allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 ---
 
@@ -30,9 +30,9 @@ When the shell has already split the command line, omit `--arg-string` — argv 
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit it when argv is already tokenised. |
 | `--model <id>` | Pin a model. Omit it and the plugin uses the newest model `grok models` reports. |
 | `--effort <level>` | Grok's `--reasoning-effort`. Pick per task. |
-| `--resume[=<id>]` | Continue a grok session — the most recent for this directory, or a specific one. Send only the delta, not the whole task again. |
+| `--resume=<id>` | Continue a specific grok session. `<id>` is either the **job id** printed when that run was dispatched, or a grok **session uuid** (what the resume hint prints after a kill). A bare `--resume` is refused — jobs from every Claude session in this directory share one store, so "the most recent" is not reliably yours. Send only the delta, not the whole task again. |
 | `--fresh` | Start a new session even if a recent one exists. |
-| `--timeout <sec>` | Watchdog. Default 3600 (an hour) — grok bills per run, so a stuck run is worth killing. |
+| `--timeout <sec>` | Watchdog. Default 4800 — deliberately longer than grok's own 3600s idle timeout, so grok fails first and says why. |
 | `--prompt-file <path\|->` | Read the brief from a file, or `-` for stdin. Use this for anything long or quote-heavy. |
 | `--no-git-check` | Allow dispatching outside a git repository. |
 

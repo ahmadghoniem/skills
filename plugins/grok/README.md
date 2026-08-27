@@ -22,7 +22,7 @@ If a Claude Code session was already open when you installed grok, its `PATH` wi
 - **`/grok:delegate <task>`** — hand a task to grok. Claude runs it under a backgrounded Bash call, so you keep chatting while grok works and the harness announces the result — no polling.
 - **`/grok:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
 - **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
-- **`/grok:resume [--resume=<id>] [follow-up]`** — continue the latest grok session for this repo, or a named one.
+- **`/grok:resume --resume=<id> [follow-up]`** — continue a named grok session. `<id>` is the job id printed at dispatch, or a grok session uuid. A bare `--resume` is refused: every Claude session in a directory shares one job store, so "the latest" is not reliably yours.
 - **`/grok:setup`** — health-check the CLI: resolved binary, version, login state, available models.
 
 Plus a **`grok-runner`** agent that shapes a task into a self-contained brief and dispatches it.
@@ -32,16 +32,16 @@ Plus a **`grok-runner`** agent that shapes a task into a self-contained brief an
 ```bash
 /grok:delegate "Add retry-on-429 to src/api/client.ts. Verify with: pnpm test api"
 /grok:delegate --effort high --prompt-file plan.md
-/grok:delegate --resume "also cover the 503 path"
+/grok:delegate --resume=fmRyc45j_5 "also cover the 503 path"
 ```
 
 | Flag | Effect |
 | --- | --- |
 | `--model <id>` | Pin a model. Omitted, the plugin uses the newest one `grok models` reports. |
 | `--effort <level>` | Grok's `--reasoning-effort`. Choose per task. |
-| `--resume[=<id>]` | Continue the latest grok session, or a named one. Send only the delta. |
+| `--resume=<id>` | Continue a named session — a job id or a grok session uuid. Required; a bare `--resume` is refused. Send only the delta. |
 | `--fresh` | Start a new session regardless. |
-| `--timeout <sec>` | Watchdog, default 3600. |
+| `--timeout <sec>` | Watchdog, default 4800 — longer than grok's own 3600s idle timeout, so grok fails first and says why. |
 | `--prompt-file <path\|->` | Read the brief from a file or stdin. |
 | `--no-git-check` | Allow dispatching outside a git repo. |
 

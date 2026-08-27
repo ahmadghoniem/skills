@@ -32,6 +32,7 @@ export { isPidGone };
  * @property {string=} finishedAt
  * @property {string} rawLogPath
  * @property {string=} summary
+ * @property {string=} errorDetail
  * @property {boolean=} cloud
  */
 

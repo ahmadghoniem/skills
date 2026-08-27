@@ -30,6 +30,27 @@ describe('renderOutcome', () => {
     expect(out).not.toMatch(/files touched/i);
   });
 
+  // The case this was written for: a run refused for a bad session id exited 1
+  // with no write-up at all, and grok's explanation reached only the log file.
+  it('surfaces the reason a run failed, first line inline and the rest indented', () => {
+    const out = renderOutcome({
+      ...clean,
+      summary: '(no final message captured)',
+      stopReason: 'incomplete',
+      exitCode: 1,
+      errorDetail: 'no session id or title matched "notarealsessionid"\ntry `grok sessions search`',
+    });
+    expect(out).toContain('⚠ error: no session id or title matched');
+    expect(out).toContain('    try `grok sessions search`');
+  });
+
+  it('stays silent when nothing explained the failure', () => {
+    expect(renderOutcome({ ...clean, exitCode: 1 })).not.toMatch(/error:/);
+    expect(warnings({ ...clean, errorDetail: '   ' })).not.toContainEqual(
+      expect.stringContaining('error:'),
+    );
+  });
+
   it('never renders model, timestamp, cost, or token counts', () => {
     const out = renderOutcome({ ...clean, costUsd: 0.4936, numTurns: 26, model: 'grok-4.6' });
     expect(out).not.toMatch(/cost/i);

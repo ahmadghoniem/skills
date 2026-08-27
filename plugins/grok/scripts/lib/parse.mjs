@@ -13,6 +13,7 @@
 //   tool_call           — a tool is about to run; carries toolName/kind/rawInput
 //   tool_call_update    — progress/result for a tool_call, keyed by toolCallId
 //   usage               — per-turn token usage
+//   error               — the run failed; `.message` explains why
 //   end                 — terminal event; sessionId, stopReason, cost, turns
 //
 // Unknown types are ignored rather than treated as errors, so a grok release
@@ -65,44 +66,6 @@ export function describeToolCall(ev, root) {
     if (command) return `${name}: ${command}`;
   }
   return name;
-}
-
-/**
- * Pull every file path a tool_call / tool_call_update reveals.
- *
- * Two sources, deliberately both: `tool_call.rawInput.file_path` is the path as
- * the model asked for it (usually repo-relative), while `tool_call_update`
- * carries `locations[].path` (relative) alongside `content[].type === 'diff'`
- * entries whose `.path` is absolute. Preferring the relative forms keeps the
- * result readable; the absolute diff path is the fallback so an edit is never
- * silently dropped just because grok omitted `locations`.
- *
- * @param {GrokEvent} ev
- * @returns {string[]}
- */
-export function toolPaths(ev) {
-  /** @type {string[]} */
-  const out = [];
-  if (ev?.type === 'tool_call') {
-    const input = ev.rawInput;
-    if (input != null && typeof input === 'object' && typeof input.file_path === 'string') {
-      out.push(input.file_path);
-    }
-    return out;
-  }
-  if (ev?.type !== 'tool_call_update') return out;
-  const locations = Array.isArray(ev.locations) ? ev.locations : [];
-  for (const loc of locations) {
-    if (loc != null && typeof loc === 'object' && typeof loc.path === 'string') out.push(loc.path);
-  }
-  if (out.length > 0) return out;
-  const content = Array.isArray(ev.content) ? ev.content : [];
-  for (const c of content) {
-    if (c != null && typeof c === 'object' && c.type === 'diff' && typeof c.path === 'string') {
-      out.push(c.path);
-    }
-  }
-  return out;
 }
 
 /**
@@ -170,6 +133,7 @@ export function normalisePaths(paths, root) {
  * @property {CommandRun[]} failedCommands
  * @property {string|undefined} sessionId
  * @property {string} stopReason
+ * @property {string|undefined} errorDetail
  * @property {boolean} success
  */
 
@@ -193,6 +157,8 @@ export function summariseEvents(events, root) {
   const textParts = [];
   let sessionId;
   let stopReason = 'incomplete';
+  /** @type {string[]} */
+  const errors = [];
   let sawEnd = false;
   let toolCallSinceText = false;
 
@@ -249,6 +215,16 @@ export function summariseEvents(events, root) {
       continue;
     }
 
+    // The only event that says why a run died. It was previously dropped with
+    // every other unrecognised type, which is how a run could print
+    // `(no final message captured)` while an explicit explanation sat in the
+    // stream — e.g. `Internal error: inference idle timeout after 3600s`.
+    if (type === 'error') {
+      const message = typeof ev.message === 'string' ? ev.message.trim() : '';
+      if (message) errors.push(message);
+      continue;
+    }
+
     // `end` also carries `total_cost_usd`, `num_turns`, `usage`, and a
     // `modelUsage` map. None of them are read. The first two are deliberately
     // out of scope; `modelUsage`'s keys are internal ids (`grok-4.6-build`) that
@@ -270,6 +246,7 @@ export function summariseEvents(events, root) {
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     sessionId,
     stopReason,
+    errorDetail: errors.length > 0 ? errors.join('\n') : undefined,
     // No `end` event means the stream was truncated — a killed run, a crash, a
     // broken pipe. That is not a success even if everything before it looked fine.
     success: sawEnd && stopReason === 'end_turn',

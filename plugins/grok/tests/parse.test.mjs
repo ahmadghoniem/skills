@@ -6,7 +6,6 @@ import {
   normalisePaths,
   parseLine,
   summariseEvents,
-  toolPaths,
 } from '../scripts/lib/parse.mjs';
 import { FAILED_COMMAND_FIXTURE, HAPPY_FIXTURE, RELATIVE_ABSOLUTE_FIXTURE } from './helpers.mjs';
 
@@ -62,35 +61,10 @@ describe('describeToolCall', () => {
   });
 });
 
-describe('toolPaths / dedupePaths / normalisePaths', () => {
-  it('pulls file_path from a tool_call and locations from a tool_call_update', () => {
-    const events = loadFixture(RELATIVE_ABSOLUTE_FIXTURE);
-    const call = events.find((e) => e.type === 'tool_call');
-    const update = events.find((e) => e.type === 'tool_call_update');
-    expect(toolPaths(call)).toEqual(['math.js']);
-    expect(toolPaths(update)).toEqual(['math.js']);
-  });
-
-  it('falls back to a diff content path when locations are empty', () => {
-    expect(
-      toolPaths({
-        type: 'tool_call_update',
-        locations: [],
-        content: [{ type: 'diff', path: '/tmp/repo/src/foo.ts' }],
-      }),
-    ).toEqual(['/tmp/repo/src/foo.ts']);
-  });
-
-  it('ignores read_file target_file on the tool_call itself', () => {
-    // grok reports reads as `rawInput.target_file`, not `file_path`. Only an
-    // edit's file_path (or a later locations/diff update) is collected.
-    expect(
-      toolPaths({
-        type: 'tool_call',
-        toolName: 'read_file',
-        rawInput: { target_file: 'src/foo.ts' },
-      }),
-    ).toEqual([]);
+describe('dedupePaths / normalisePaths', () => {
+  it('names the edited file in the progress line for a real tool_call', () => {
+    const call = loadFixture(RELATIVE_ABSOLUTE_FIXTURE).find((e) => e.type === 'tool_call');
+    expect(describeToolCall(call, '/tmp/repo')).toBe('search_replace → math.js');
   });
 
   it('drops an absolute path when a relative suffix of it is already present', () => {
@@ -151,13 +125,6 @@ describe('summariseEvents', () => {
     ]);
   });
 
-  it('collapses relative and absolute spellings of the same file into one', () => {
-    // summariseEvents no longer builds a file list, but the helpers still back
-    // the live progress line, so the collapse behaviour is still asserted here.
-    const paths = loadFixture(RELATIVE_ABSOLUTE_FIXTURE).flatMap((ev) => toolPaths(ev));
-    expect(dedupePaths(paths)).toEqual(['math.js']);
-  });
-
   it('is not success when the stream has no end event', () => {
     const events = loadFixture(HAPPY_FIXTURE).filter((e) => e.type !== 'end');
     const s = summariseEvents(events);
@@ -169,5 +136,19 @@ describe('summariseEvents', () => {
     const s = summariseEvents([{ type: 'end', stopReason: 'max_turns', sessionId: 's1' }]);
     expect(s.success).toBe(false);
     expect(s.stopReason).toBe('max_turns');
+  });
+});
+
+describe('error events', () => {
+  it('keeps the message grok sends when a run dies mid-stream', () => {
+    const out = summariseEvents([
+      { type: 'text', data: 'partial work' },
+      { type: 'error', message: 'Internal error: inference idle timeout after 3600s' },
+    ]);
+    expect(out.errorDetail).toBe('Internal error: inference idle timeout after 3600s');
+  });
+
+  it('leaves errorDetail undefined on a run that raised none', () => {
+    expect(summariseEvents([{ type: 'end', stopReason: 'end_turn' }]).errorDetail).toBeUndefined();
   });
 });

@@ -25,6 +25,7 @@
  * @property {string|undefined} stopReason
  * @property {number|null|undefined} exitCode
  * @property {boolean} [killed]
+ * @property {string} [errorDetail]
  * @property {CommandRun[]} [failedCommands]
  * @property {boolean} [sessionLost]
  * @property {string} [resumableSessionId]
@@ -44,6 +45,7 @@
 export const WARNING_IDS = Object.freeze([
   "stop-reason",
   "exit",
+  "error-detail",
   "killed",
   "failed-commands",
   "session-lost",
@@ -67,6 +69,20 @@ export function warnings(view) {
 
   if (typeof view.exitCode === 'number' && view.exitCode !== 0) {
     out.push(`exit ${view.exitCode}`);
+  }
+
+  // Why the run stopped, in grok's own words. Two sources feed this: an
+  // `error` event when grok emitted one, otherwise the stderr tail on a
+  // non-zero exit — the caller picks. Independent of `stop-reason` and `exit`:
+  // those two say a run went wrong, this says what went wrong, and a run that
+  // dies before emitting anything raises the first two with nothing to explain
+  // them.
+  const detail = (view.errorDetail ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (detail.length > 0) {
+    out.push(`error: ${detail[0]}`);
+    for (const line of detail.slice(1, 20)) {
+      out.push(`    ${line}`);
+    }
   }
 
   if (view.killed) {

@@ -4,10 +4,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { collapseCommandArgv, invokedAsScript, parseArgv, parseTimeout } from './lib/args.mjs';
 import { isGitRepo, repoRoot } from './lib/git.mjs';
 import { resolveModel, runHeadless } from './lib/grok.mjs';
+import { jobNotFoundMessage } from './lib/hints.mjs';
 import { id as newId } from './lib/id.mjs';
 import {
   createJob,
   pruneOlderThanDays,
+  readJob,
   rawLogPath as rawLogPathFor,
   updateJob,
 } from './lib/jobs.mjs';
@@ -17,12 +19,14 @@ import { renderOutcome } from './lib/render.mjs';
 
 const BOOLEAN_FLAGS = ['fresh', 'help', 'resume'];
 const USAGE =
-  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume[=<id>]] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
+  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume=<job-id|session-uuid>] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
 
 // Implementation runs go long, and grok bills per run — a watchdog that fires
 // too early wastes a paid run, one that never fires lets a stuck run bill on.
-// An hour is the compromise; override with --timeout <seconds>.
-const DEFAULT_TIMEOUT_SEC = 3600;
+// Deliberately longer than grok's own 3600s idle timeout so grok gets to fail
+// first and say why: its `error` event names the cause, a watchdog kill only
+// reports that something was killed. Override with --timeout <seconds>.
+const DEFAULT_TIMEOUT_SEC = 4800;
 
 function parseFlags(argv) {
   // `honorDoubleDash: false` — `collapseCommandArgv` already consumed the
@@ -85,15 +89,39 @@ function resumeSessionId(resume) {
   return undefined;
 }
 
-async function runAndRecord(flags, prompt, jobId, root) {
-  const model = await resolveModel(flags.model);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Turn whatever followed `--resume=` into a grok session id.
+ *
+ * Both accepted forms are unambiguous by shape: a grok session id is a uuid,
+ * a plugin job id is ten base64url characters. The job id is the one you
+ * actually have — it is printed the moment a run is dispatched — so it is
+ * translated here rather than pushed back onto the caller. A uuid passes
+ * through untouched, which is what the `resumable` warning prints after a
+ * watchdog kill and what reaches sessions this plugin never recorded.
+ *
+ * @param {string} raw
+ * @param {string} root
+ * @returns {{sessionId: string}|{error: string}}
+ */
+function resolveResumeTarget(raw, root) {
+  if (UUID_RE.test(raw)) return { sessionId: raw };
+  const job = readJob(root, raw);
+  if (!job) return { error: jobNotFoundMessage(raw) };
+  if (!job.grokSessionId) {
+    return {
+      error: `Job \`${raw}\` never recorded a grok session id, so it cannot be resumed. Re-delegate instead.\n`,
+    };
+  }
+  return { sessionId: job.grokSessionId };
+}
+
+async function runAndRecord(flags, prompt, jobId, root, resumeTarget, model) {
   const logPath = rawLogPathFor(root, jobId);
   ensureDir(jobsDir(root));
   ensureDir(logsDir(root));
   updateJob(root, jobId, { pid: process.pid, model });
-
-  const resume = isResumeRequested(flags.resume, flags.fresh);
-  const sessionId = resume ? resumeSessionId(flags.resume) : undefined;
 
   // A fresh dispatch names its own session up front and records it BEFORE grok
   // is spawned, so the job is resumable from the instant it starts. Previously
@@ -102,7 +130,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   // that could not be. Verified on grok 1.0.5: a run killed mid-stream with no
   // `end` event still leaves its session on disk under this id, and `-r <uuid>`
   // resumes it with prior context intact.
-  const freshSessionId = resume ? undefined : randomUUID();
+  const freshSessionId = resumeTarget ? undefined : randomUUID();
   if (freshSessionId) {
     try {
       updateJob(root, jobId, { grokSessionId: freshSessionId });
@@ -118,8 +146,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     model,
     effort: flags.effort,
     sessionId: freshSessionId,
-    resumeSessionId: sessionId,
-    resumeLatest: resume && !sessionId,
+    resumeSessionId: resumeTarget,
     timeoutSec: flags.timeout,
     logPath,
     onSpawn: (cliPid) => {
@@ -145,6 +172,14 @@ async function runAndRecord(flags, prompt, jobId, root) {
   }
 
   const summary = summariseEvents(result.events, root);
+  // Grok's own `error` event when there is one; otherwise the stderr tail, and
+  // only on a failing exit — stderr also carries ordinary chatter, so a healthy
+  // run must not raise a warning out of it.
+  const errorDetail =
+    summary.errorDetail ??
+    (result.exitCode !== 0 && result.stderrTail.length > 0
+      ? result.stderrTail.join('\n')
+      : undefined);
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
   const killedNote = result.killed
     ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete. Re-run with a larger `--timeout` if needed.'
@@ -157,6 +192,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     summary: summary.summary + killedNote,
     failedCommands: summary.failedCommands,
     stopReason: summary.stopReason,
+    errorDetail,
     model,
     ...(summary.sessionId ? { grokSessionId: summary.sessionId } : {}),
   });
@@ -164,15 +200,22 @@ async function runAndRecord(flags, prompt, jobId, root) {
   // `freshSessionId` travels out because the caller renders the resume line
   // from it: on a watchdog kill no `end` event arrives, so the pre-assigned id
   // is the only one that exists.
-  return { result, summary, status, model, freshSessionId };
+  return { result, summary, freshSessionId, errorDetail };
 }
 
-async function foreground(flags, prompt, jobId, root) {
+async function foreground(flags, prompt, jobId, root, resumeTarget) {
   const model = await resolveModel(flags.model);
   createJob({ id: jobId, repoPath: root, prompt, model });
   process.stdout.write(`grok \`${jobId}\` (${model})\n\n`);
 
-  const { result, summary, freshSessionId } = await runAndRecord(flags, prompt, jobId, root);
+  const { result, summary, freshSessionId, errorDetail } = await runAndRecord(
+    flags,
+    prompt,
+    jobId,
+    root,
+    resumeTarget,
+    model,
+  );
 
   process.stdout.write('\n');
   process.stdout.write(
@@ -180,6 +223,7 @@ async function foreground(flags, prompt, jobId, root) {
       summary: summary.summary,
       stopReason: summary.stopReason,
       exitCode: result.exitCode,
+      errorDetail,
       killed: result.killed,
       failedCommands: summary.failedCommands,
       // `end` is the only streaming event carrying `sessionId`, so a watchdog
@@ -244,9 +288,41 @@ export async function main(rawArgv) {
   const root = await repoRoot(process.cwd());
   pruneOlderThanDays(root, 30);
 
+  // A bare `--resume` used to mean "grok picks the newest session in this
+  // directory". Grok resolves that by directory, not by who dispatched, so a
+  // second Claude session working in the same repo — or a `grok` TUI opened on
+  // the side — silently won the race and answered from a conversation this
+  // session never had, at exit 0 with no warning. Refusing is the only honest
+  // answer: the plugin has no basis for choosing, and the caller does.
+  let resumeTarget;
+  if (isResumeRequested(flags.resume, flags.fresh)) {
+    const raw = resumeSessionId(flags.resume);
+    if (!raw) {
+      process.stderr.write(
+        `Error: --resume needs an id. This plugin will not guess which session you meant —
+jobs from every Claude session in this directory share one store, so "the most
+recent" is not reliably yours.
+
+Pass either form:
+  --resume=<job-id>        the id printed when the run was dispatched
+  --resume=<session-uuid>  a grok session id, as the resume hint prints after a kill
+
+Lost the job id? \`/grok:result --list\` shows the tracked jobs.
+`,
+      );
+      return 2;
+    }
+    const resolved = resolveResumeTarget(raw, root);
+    if ('error' in resolved) {
+      process.stderr.write(resolved.error);
+      return 2;
+    }
+    resumeTarget = resolved.sessionId;
+  }
+
   const jobId = newId(10);
 
-  return foreground(flags, prompt || '(resume)', jobId, root);
+  return foreground(flags, prompt || '(resume)', jobId, root, resumeTarget);
 }
 
 if (invokedAsScript(import.meta.url)) {

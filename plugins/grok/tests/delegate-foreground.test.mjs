@@ -16,6 +16,7 @@ describe('/grok:delegate foreground run', () => {
   const prevFixture = process.env.GROK_STUB_FIXTURE;
   const prevCwd = process.cwd();
   let out;
+  let err;
 
   beforeEach(() => {
     tmp = makeTempHome();
@@ -26,6 +27,11 @@ describe('/grok:delegate foreground run', () => {
     out = '';
     vi.spyOn(process.stdout, 'write').mockImplementation((s) => {
       out += s;
+      return true;
+    });
+    err = '';
+    vi.spyOn(process.stderr, 'write').mockImplementation((s) => {
+      err += s;
       return true;
     });
   });
@@ -66,6 +72,35 @@ describe('/grok:delegate foreground run', () => {
     await main(['--no-git-check', '--timeout', '15', 'do the thing']);
     const id = /grok `([^`]+)`/.exec(out)?.[1];
     expect(readJob(tmp.dir, id)?.grokSessionId).toEqual(expect.any(String));
+  });
+
+  // The collision this exists to stop: two Claude sessions in one directory
+  // share a job store, so "resume the newest" attached to whichever session
+  // dispatched last and answered from a conversation the caller never had —
+  // at exit 0, with no warning.
+  it('refuses a bare --resume rather than guessing which session was meant', async () => {
+    expect(await main(['--no-git-check', '--resume', 'follow up'])).toBe(2);
+    expect(err).toContain('--resume needs an id');
+    expect(err).toContain('--resume=<job-id>');
+    expect(out).not.toContain('grok `');
+  });
+
+  it('translates a job id into the session it recorded', async () => {
+    await main(['--no-git-check', '--timeout', '15', 'do the thing']);
+    const id = /grok `([^`]+)`/.exec(out)?.[1];
+    const session = readJob(tmp.dir, id)?.grokSessionId;
+
+    out = '';
+    expect(await main(['--no-git-check', '--timeout', '15', `--resume=${id}`, 'and again'])).toBe(0);
+    const second = /grok `([^`]+)`/.exec(out)?.[1];
+    expect(second).not.toBe(id);
+    expect(readJob(tmp.dir, second)?.grokSessionId).toBe(session);
+  });
+
+  it('rejects a --resume id that matches no job', async () => {
+    expect(await main(['--no-git-check', '--resume=notarealjobid', 'x'])).toBe(2);
+    expect(err).toContain('No job');
+    expect(out).not.toContain('grok `');
   });
 
   // The killed branch is the one that reads `freshSessionId`; a clean run

@@ -185,7 +185,6 @@ export async function resolveBin() {
  * @property {string=} effort         Passed through to `--reasoning-effort`.
  * @property {string=} sessionId        Pre-assigned UUID for a NEW session.
  * @property {string=} resumeSessionId
- * @property {boolean=} resumeLatest
  */
 
 /**
@@ -214,6 +213,13 @@ export async function resolveBin() {
  * `-s` is illegal on a resume (it declares a NEW conversation), so the resume
  * branch continues to read the id back from `end`.
  *
+ * `--continue` is deliberately absent. It means "the most recent session for this
+ * directory", which grok resolves by looking at the directory rather than at who
+ * dispatched — so two Claude sessions in one repo, or a `grok` TUI opened on the
+ * side, silently attach to each other's conversation and answer confidently from
+ * the wrong context. Every resume names its session outright; the caller resolves
+ * which one before getting here.
+ *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
  */
@@ -230,7 +236,6 @@ export function buildArgs(opts) {
   ];
   if (opts.effort) args.push('--reasoning-effort', opts.effort);
   if (opts.resumeSessionId) args.push('--resume', opts.resumeSessionId);
-  else if (opts.resumeLatest) args.push('--continue');
   else if (opts.sessionId) args.push('-s', opts.sessionId);
   return args;
 }
@@ -242,7 +247,6 @@ export function buildArgs(opts) {
  * @property {string=} effort
  * @property {string=} sessionId
  * @property {string=} resumeSessionId
- * @property {boolean=} resumeLatest
  * @property {string=} cwd
  * @property {number=} timeoutSec
  * @property {string} logPath
@@ -255,6 +259,7 @@ export function buildArgs(opts) {
  * @property {number} exitCode
  * @property {Record<string, unknown>[]} events
  * @property {boolean} killed
+ * @property {string[]} stderrTail  Last few stderr lines, plus any spawn error.
  */
 
 /**
@@ -293,7 +298,6 @@ export async function runHeadless(opts) {
     effort: opts.effort,
     sessionId: opts.sessionId,
     resumeSessionId: opts.resumeSessionId,
-    resumeLatest: opts.resumeLatest,
   });
   const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
@@ -333,6 +337,20 @@ export async function runHeadless(opts) {
 
   /** @type {Record<string, unknown>[]} */
   const events = [];
+  // Grok explains a refused dispatch on stderr and nothing else — a bad session
+  // id answers with `no session id or title matched "…"`, which used to reach
+  // the log file and never the screen. Kept to a tail because stderr also
+  // carries progress chatter on a healthy run, and only the end of it is ever
+  // the reason a run stopped.
+  /** @type {string[]} */
+  const stderrTail = [];
+  const STDERR_TAIL_MAX = 20;
+  const keepStderr = (line) => {
+    const text = line.trim();
+    if (!text) return;
+    stderrTail.push(text);
+    if (stderrTail.length > STDERR_TAIL_MAX) stderrTail.shift();
+  };
   let killed = false;
 
   const stdoutLines = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -352,6 +370,7 @@ export async function runHeadless(opts) {
 
   stderrLines.on('line', (line) => {
     logSafe(`# stderr: ${line}\n`);
+    keepStderr(line);
   });
 
   let timeoutHandle;
@@ -376,7 +395,12 @@ export async function runHeadless(opts) {
     // Without an 'error' handler a spawn failure (missing/non-executable binary)
     // emits an uncaught exception that kills the process.
     child.on('error', (err) => {
-      logSafe(`# spawn error: ${err instanceof Error ? err.message : String(err)}\n`);
+      const message = err instanceof Error ? err.message : String(err);
+      logSafe(`# spawn error: ${message}\n`);
+      // A spawn failure produces no stdout, no stderr and no events, so this
+      // is the only place the reason exists. It joins the same tail rather
+      // than getting a channel of its own.
+      keepStderr(`spawn error: ${message}`);
       done(127);
     });
     child.on('close', (code) => {
@@ -393,7 +417,7 @@ export async function runHeadless(opts) {
       resolve();
     }
   });
-  return { exitCode, events, killed };
+  return { exitCode, events, killed, stderrTail };
 }
 
 /**

@@ -62,25 +62,24 @@ describe('buildArgs', () => {
     expect(without).not.toContain('--reasoning-effort');
   });
 
-  it('--resume <id> and --continue are mutually exclusive', async () => {
+  // `--continue` means "newest session in this directory", which grok resolves
+  // without regard to who dispatched — so a second Claude session in the same
+  // repo could be attached to silently. There is no longer any input that
+  // produces it: a resume always names its session.
+  it('names the session on a resume and never emits --continue', async () => {
     const { buildArgs } = await import('../scripts/lib/grok.mjs');
     const resume = buildArgs({
       promptFile: '/tmp/brief.md',
       model: 'grok-4.6',
-      resumeSessionId: 'sess_abc',
-      resumeLatest: true,
+      resumeSessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     });
     expect(resume).toContain('--resume');
-    expect(resume).toContain('sess_abc');
+    expect(resume).toContain('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
     expect(resume).not.toContain('--continue');
 
-    const cont = buildArgs({
-      promptFile: '/tmp/brief.md',
-      model: 'grok-4.6',
-      resumeLatest: true,
-    });
-    expect(cont).toContain('--continue');
-    expect(cont).not.toContain('--resume');
+    const bare = buildArgs({ promptFile: '/tmp/brief.md', model: 'grok-4.6' });
+    expect(bare).not.toContain('--continue');
+    expect(bare).not.toContain('--resume');
   });
 });
 
@@ -253,13 +252,6 @@ describe('buildArgs session pre-assignment', () => {
     expect(byId).not.toContain('-s');
     expect(byId).toContain('--resume');
 
-    const latest = buildArgs({
-      ...base,
-      sessionId: '11111111-2222-3333-4444-555555555555',
-      resumeLatest: true,
-    });
-    expect(latest).not.toContain('-s');
-    expect(latest).toContain('--continue');
   });
 
   it('omits -s entirely when no session id was assigned', async () => {
