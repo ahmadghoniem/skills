@@ -1,6 +1,6 @@
 ---
 description: Resume a named Grok session with an optional follow-up prompt.
-argument-hint: '--resume=<job-id|session-uuid> [--model <id>] [follow-up task...]'
+argument-hint: '--resume=<job-id> [--model <id>] [follow-up task...]'
 allowed-tools: Bash(node:*)
 ---
 
@@ -8,9 +8,5 @@ allowed-tools: Bash(node:*)
 
 Treat the output identically to `/grok:delegate` — it is the same pipeline, just with `--resume` injected.
 
-An id is required. `<id>` is either the **job id** printed when the run was dispatched, or a
-grok **session uuid** — the form the `resumable` warning prints after a watchdog kill. A bare
-`--resume` is refused rather than guessed at: jobs from every Claude session working in this
-directory land in one shared store, so "the most recent" may belong to a conversation this
-session never had. The job id you want is in this transcript, above the run's output; run
-`/grok:result --list` if it has scrolled away.
+A job id is required — a bare `--resume` is refused, and the script's error explains why.
+The id is above the run's output in this transcript, or in `/grok:result --list`.

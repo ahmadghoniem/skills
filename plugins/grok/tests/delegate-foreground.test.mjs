@@ -80,7 +80,7 @@ describe('/grok:delegate foreground run', () => {
   // at exit 0, with no warning.
   it('refuses a bare --resume rather than guessing which session was meant', async () => {
     expect(await main(['--no-git-check', '--resume', 'follow up'])).toBe(2);
-    expect(err).toContain('--resume needs an id');
+    expect(err).toContain('--resume needs a job id');
     expect(err).toContain('--resume=<job-id>');
     expect(out).not.toContain('grok `');
   });
@@ -114,7 +114,8 @@ describe('/grok:delegate foreground run', () => {
       delete process.env.GROK_STUB_HANG;
     }
     expect(out).toContain('⚠ run was killed before finishing');
-    expect(out).toMatch(/\/grok:resume --resume=[0-9a-f-]{36}/);
+    const jobId = /grok `([^`]+)`/.exec(out)?.[1];
+    expect(out).toContain(`/grok:resume --resume=${jobId}`);
     expect(out).not.toContain('cannot be resumed');
   });
 });

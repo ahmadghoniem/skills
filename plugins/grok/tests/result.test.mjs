@@ -96,7 +96,7 @@ describe('/grok:result --list / --all', () => {
       grokSessionId: 'sess-42',
     });
     await resultMain(['cut-short']);
-    expect(out).toContain('/grok:resume --resume=sess-42');
+    expect(out).toContain('/grok:resume --resume=cut-short');
     expect(out).not.toContain('cannot be resumed');
   });
 

@@ -58,8 +58,7 @@ One `/grok:delegate` call per coherent slice, unless the change is genuinely ind
 
 #### Resume or fresh
 
-- **`--resume=<job-id>`**: continue the session that job created. Use it when **iterating on the same task** — "also cover the 429 path", "rename the helper you just added". Send only the delta, never the whole brief again. The job id is printed at dispatch; a bare `--resume` is refused, because jobs from every Claude session in this directory share one store.
-- **`--resume=<session-uuid>`**: same, but naming grok's own session id — the form the `resumable` warning prints after a run is killed.
+- **`--resume=<job-id>`**: continue the session that job created. Use it when **iterating on the same task** — "also cover the 429 path", "rename the helper you just added". Send only the delta, never the whole brief again. The job id is printed at dispatch and by the resume hint after a kill; a bare `--resume` is refused, because jobs from every Claude session in this directory share one store.
 - **`--fresh`**: start a new session. Use it when the new task has nothing to do with the previous one, or the previous run went off the rails and resuming would carry the confusion forward.
 
 ### 2. Pick the reasoning effort

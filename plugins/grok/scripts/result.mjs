@@ -19,8 +19,7 @@ function render(job) {
     errorDetail: job.errorDetail,
     failedCommands: job.failedCommands,
     sessionLost: job.status === 'failed' && !job.grokSessionId,
-    resumableSessionId:
-      job.status === 'failed' && job.grokSessionId ? job.grokSessionId : undefined,
+    resumableJobId: job.status === 'failed' && job.grokSessionId ? job.id : undefined,
   });
 }
 

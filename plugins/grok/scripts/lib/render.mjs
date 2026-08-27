@@ -28,7 +28,7 @@
  * @property {string} [errorDetail]
  * @property {CommandRun[]} [failedCommands]
  * @property {boolean} [sessionLost]
- * @property {string} [resumableSessionId]
+ * @property {string} [resumableJobId]
  */
 
 /**
@@ -110,14 +110,15 @@ export function warnings(view) {
 
   if (view.sessionLost) {
     out.push('no session id was captured — this job cannot be resumed');
-  } else if (view.resumableSessionId) {
+  } else if (view.resumableJobId) {
     // The other half of `session-lost`. That line has always told you when a
     // cut-short run is unrecoverable; nothing told you when it was recoverable,
     // so a resumable session sat on disk and the reflex was to re-send the whole
     // brief. Mutually exclusive with the line above by construction: one says
-    // the id is missing, this one carries it.
+    // the session is missing, this one names the job holding it. The job id is
+    // what `--resume=` takes, so this line can be pasted as printed.
     out.push(
-      `this run ended early — resume it with \`/grok:resume --resume=${view.resumableSessionId}\``,
+      `this run ended early — resume it with \`/grok:resume --resume=${view.resumableJobId}\``,
     );
   }
 

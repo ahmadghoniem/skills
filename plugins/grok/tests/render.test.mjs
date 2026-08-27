@@ -111,7 +111,7 @@ describe('renderOutcome', () => {
   });
 
   it('carries the session id when a killed job CAN be resumed', () => {
-    const out = renderOutcome({ ...clean, killed: true, resumableSessionId: 'abc-123' });
+    const out = renderOutcome({ ...clean, killed: true, resumableJobId: 'abc-123' });
     expect(out).toContain('/grok:resume --resume=abc-123');
   });
 
@@ -122,7 +122,7 @@ describe('renderOutcome', () => {
       ...clean,
       killed: true,
       sessionLost: true,
-      resumableSessionId: 'abc-123',
+      resumableJobId: 'abc-123',
     });
     expect(out).toContain('cannot be resumed');
     expect(out).not.toContain('--resume=');

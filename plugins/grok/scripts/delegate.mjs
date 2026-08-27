@@ -19,7 +19,7 @@ import { renderOutcome } from './lib/render.mjs';
 
 const BOOLEAN_FLAGS = ['fresh', 'help', 'resume'];
 const USAGE =
-  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume=<job-id|session-uuid>] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
+  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume=<job-id>] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
 
 // Implementation runs go long, and grok bills per run — a watchdog that fires
 // too early wastes a paid run, one that never fires lets a stuck run bill on.
@@ -89,24 +89,16 @@ function resumeSessionId(resume) {
   return undefined;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
- * Turn whatever followed `--resume=` into a grok session id.
- *
- * Both accepted forms are unambiguous by shape: a grok session id is a uuid,
- * a plugin job id is ten base64url characters. The job id is the one you
- * actually have — it is printed the moment a run is dispatched — so it is
- * translated here rather than pushed back onto the caller. A uuid passes
- * through untouched, which is what the `resumable` warning prints after a
- * watchdog kill and what reaches sessions this plugin never recorded.
+ * Look up the grok session a job recorded. The job id is the only handle
+ * `--resume=` takes: it is printed at dispatch and by the resumable warning,
+ * so every id the plugin shows you is one it accepts back.
  *
  * @param {string} raw
  * @param {string} root
  * @returns {{sessionId: string}|{error: string}}
  */
 function resolveResumeTarget(raw, root) {
-  if (UUID_RE.test(raw)) return { sessionId: raw };
   const job = readJob(root, raw);
   if (!job) return { error: jobNotFoundMessage(raw) };
   if (!job.grokSessionId) {
@@ -235,9 +227,8 @@ async function foreground(flags, prompt, jobId, root, resumeTarget) {
       // The inverse: killed, but an id exists to attach to. A fresh dispatch
       // pre-assigns one with `-s`, so this is the usual shape of a watchdog
       // kill and the run is resumable rather than lost.
-      resumableSessionId: result.killed
-        ? (summary.sessionId ?? freshSessionId)
-        : undefined,
+      resumableJobId:
+        result.killed && (summary.sessionId ?? freshSessionId) ? jobId : undefined,
     }),
   );
   return result.exitCode;
@@ -299,15 +290,14 @@ export async function main(rawArgv) {
     const raw = resumeSessionId(flags.resume);
     if (!raw) {
       process.stderr.write(
-        `Error: --resume needs an id. This plugin will not guess which session you meant —
+        `Error: --resume needs a job id. This plugin will not guess which session you meant —
 jobs from every Claude session in this directory share one store, so "the most
 recent" is not reliably yours.
 
-Pass either form:
-  --resume=<job-id>        the id printed when the run was dispatched
-  --resume=<session-uuid>  a grok session id, as the resume hint prints after a kill
+Pass the job id printed when the run was dispatched:
+  --resume=<job-id>
 
-Lost the job id? \`/grok:result --list\` shows the tracked jobs.
+Lost it? \`/grok:result --list\` shows the tracked jobs.
 `,
       );
       return 2;

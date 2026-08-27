@@ -22,7 +22,7 @@ If a Claude Code session was already open when you installed grok, its `PATH` wi
 - **`/grok:delegate <task>`** — hand a task to grok. Claude runs it under a backgrounded Bash call, so you keep chatting while grok works and the harness announces the result — no polling.
 - **`/grok:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
 - **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
-- **`/grok:resume --resume=<id> [follow-up]`** — continue a named grok session. `<id>` is the job id printed at dispatch, or a grok session uuid. A bare `--resume` is refused: every Claude session in a directory shares one job store, so "the latest" is not reliably yours.
+- **`/grok:resume --resume=<job-id> [follow-up]`** — continue that job's grok session. The job id is printed at dispatch. A bare `--resume` is refused: every Claude session in a directory shares one job store, so "the latest" is not reliably yours.
 - **`/grok:setup`** — health-check the CLI: resolved binary, version, login state, available models.
 
 Plus a **`grok-runner`** agent that shapes a task into a self-contained brief and dispatches it.
@@ -39,7 +39,7 @@ Plus a **`grok-runner`** agent that shapes a task into a self-contained brief an
 | --- | --- |
 | `--model <id>` | Pin a model. Omitted, the plugin uses the newest one `grok models` reports. |
 | `--effort <level>` | Grok's `--reasoning-effort`. Choose per task. |
-| `--resume=<id>` | Continue a named session — a job id or a grok session uuid. Required; a bare `--resume` is refused. Send only the delta. |
+| `--resume=<job-id>` | Continue that job's session. Required; a bare `--resume` is refused. Send only the delta. |
 | `--fresh` | Start a new session regardless. |
 | `--timeout <sec>` | Watchdog, default 4800 — longer than grok's own 3600s idle timeout, so grok fails first and says why. |
 | `--prompt-file <path\|->` | Read the brief from a file or stdin. |
