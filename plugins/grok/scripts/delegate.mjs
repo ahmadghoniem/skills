@@ -187,7 +187,7 @@ async function runAndRecord(flags, prompt, jobId, root, resumeTarget, model) {
   // `freshSessionId` travels out because the caller renders the resume line
   // from it: on a watchdog kill no `end` event arrives, so the pre-assigned id
   // is the only one that exists.
-  return { result, summary, freshSessionId, errorDetail };
+  return { result, summary, freshSessionId, errorDetail, status };
 }
 
 async function foreground(flags, prompt, jobId, root, resumeTarget) {
@@ -195,7 +195,7 @@ async function foreground(flags, prompt, jobId, root, resumeTarget) {
   createJob({ id: jobId, repoPath: root, prompt, model });
   process.stdout.write(`grok \`${jobId}\` (${model})\n\n`);
 
-  const { result, summary, freshSessionId, errorDetail } = await runAndRecord(
+  const { result, summary, freshSessionId, errorDetail, status } = await runAndRecord(
     flags,
     prompt,
     jobId,
@@ -213,17 +213,26 @@ async function foreground(flags, prompt, jobId, root, resumeTarget) {
       errorDetail,
       killed: result.killed,
       failedCommands: summary.failedCommands,
-      // `end` is the only streaming event carrying `sessionId`, so a watchdog
-      // kill never delivers one. Saying the job is unresumable beats printing a
-      // resume line that points at nothing.
+      // `end` is the only streaming event carrying `sessionId`, so a run that
+      // dies before it never delivers one. Saying the job is unresumable beats
+      // printing a resume line that points at nothing.
       // A fresh dispatch pre-assigns its id, so this can now only fire on a
       // resume — where `-s` is illegal and the id must still come from `end`.
-      sessionLost: result.killed && !summary.sessionId && !freshSessionId,
-      // The inverse: killed, but an id exists to attach to. A fresh dispatch
-      // pre-assigns one with `-s`, so this is the usual shape of a watchdog
-      // kill and the run is resumable rather than lost.
+      sessionLost: status === 'failed' && !summary.sessionId && !freshSessionId,
+      // The inverse: the run did not finish cleanly, but an id exists to attach
+      // to. A fresh dispatch pre-assigns one with `-s`, so this is the usual
+      // shape of a failed run and it is resumable rather than lost.
+      //
+      // Gated on `status`, not `killed`. A watchdog kill is only one way to end
+      // up with a live session and no clean finish — a refused resume, a
+      // non-zero exit, or a stop reason short of `end_turn` all leave one too,
+      // and those printed nothing. `/grok:result` has always used `status`
+      // here, so the same job rendered live and rendered later disagreed about
+      // whether it could be resumed. Clean runs stay quiet: the job id is
+      // printed at dispatch and `--resume=` takes it, so a ⚠ line on a run that
+      // worked would be noise the output contract does not allow.
       resumableJobId:
-        result.killed && (summary.sessionId ?? freshSessionId) ? jobId : undefined,
+        status === 'failed' && (summary.sessionId ?? freshSessionId) ? jobId : undefined,
     }),
   );
   return result.exitCode;

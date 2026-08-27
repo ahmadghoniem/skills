@@ -66,7 +66,7 @@ is its own `⚠` line, and any can fire alone:
 | `⚠ run was killed before finishing` | The watchdog fired; output may be incomplete. |
 | `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. |
 | `⚠ no session id was captured` | A killed run never reached the `end` event, so this job cannot be resumed. |
-| `⚠ this run ended early — resume it with …` | The inverse of the line above: the run was cut short but its session survives, and the line names the job id to pass to `--resume=`. |
+| `⚠ this run did not finish cleanly — resume it with …` | The inverse of the line above: the run ended short of a clean finish but its session survives, and the line names the job id to pass to `--resume=`. |
 
 The same table, in the form the orchestrator actually reads, is `plugins/grok/skills/output-contract/contract.md` — preloaded into `grok-runner` and pulled into `/grok:delegate` and `/grok:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
 

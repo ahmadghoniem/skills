@@ -118,7 +118,7 @@ export function warnings(view) {
     // the session is missing, this one names the job holding it. The job id is
     // what `--resume=` takes, so this line can be pasted as printed.
     out.push(
-      `this run ended early — resume it with \`/grok:resume --resume=${view.resumableJobId}\``,
+      `this run did not finish cleanly — resume it with \`/grok:resume --resume=${view.resumableJobId}\``,
     );
   }
 
