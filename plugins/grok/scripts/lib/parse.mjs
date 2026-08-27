@@ -119,6 +119,34 @@ export function normalisePaths(paths, root) {
 }
 
 /**
+ * Ceiling on a stored write-up, and a last resort rather than a display cap.
+ *
+ * This used to be 8000, applied as a bare `.slice()` at persist time. A measured
+ * run produced 26,937 characters and the record kept 8,000 — 70% of a clean
+ * `end_turn` answer destroyed, mid-word, with no ellipsis, no flag, and no
+ * warning line. The failure did not read as truncation; it read as the model
+ * malfunctioning, and the reader re-prompted twice for brevity against a model
+ * that had never been the problem. The discarded tail held grok's own question
+ * about the task.
+ *
+ * `contract.md` promises the write-up is relayed as-is. 256 KB is far above any
+ * answer grok's output budget can produce, so in practice nothing is cut; the
+ * cap exists only so a pathological stream cannot write an unbounded job record.
+ * When it does fire it says so, in the summary itself, and names where the whole
+ * text still lives.
+ */
+export const MAX_SUMMARY_CHARS = 256_000;
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function capSummary(text) {
+  if (text.length <= MAX_SUMMARY_CHARS) return text;
+  return `${text.slice(0, MAX_SUMMARY_CHARS)}\n\n[plugin post-flight]\nWrite-up truncated: ${text.length} characters produced, ${MAX_SUMMARY_CHARS} kept. The full text is in this job's \`.ndjson\` log.`;
+}
+
+/**
  * @typedef {Object} CommandRun
  * @property {string} command
  * @property {number|null} exitCode
@@ -241,7 +269,7 @@ export function summariseEvents(events, root) {
   const summary = textParts.join('').trim();
 
   return {
-    summary: (summary || '(no final message captured)').slice(0, 8000),
+    summary: capSummary(summary || '(no final message captured)'),
     commands,
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     sessionId,

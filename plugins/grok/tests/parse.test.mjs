@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dedupePaths,
   describeToolCall,
+  MAX_SUMMARY_CHARS,
   normalisePaths,
   parseLine,
   summariseEvents,
@@ -150,5 +151,26 @@ describe('error events', () => {
 
   it('leaves errorDetail undefined on a run that raised none', () => {
     expect(summariseEvents([{ type: 'end', stopReason: 'end_turn' }]).errorDetail).toBeUndefined();
+  });
+});
+
+// The write-up used to be cut with a bare `.slice(0, 8000)` at persist time. A
+// measured run produced 26,937 characters and the record kept 8,000 — a clean
+// `end_turn` answer losing 70% of itself mid-word, with nothing saying so. It
+// did not read as truncation, it read as a broken model.
+describe('write-up length', () => {
+  const long = (n) => [{ type: 'text', data: 'x'.repeat(n) }];
+
+  it('keeps a long answer whole rather than cutting it at 8000 characters', () => {
+    const out = summariseEvents(long(30_000));
+    expect(out.summary.length).toBe(30_000);
+    expect(out.summary).not.toContain('truncated');
+  });
+
+  it('says so, and where the rest is, when the storage ceiling does fire', () => {
+    const out = summariseEvents(long(MAX_SUMMARY_CHARS + 500));
+    expect(out.summary).toContain(`${MAX_SUMMARY_CHARS + 500} characters produced`);
+    expect(out.summary).toContain('.ndjson');
+    expect(out.summary.length).toBeGreaterThan(MAX_SUMMARY_CHARS);
   });
 });
