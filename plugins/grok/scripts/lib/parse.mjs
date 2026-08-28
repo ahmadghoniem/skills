@@ -119,21 +119,9 @@ export function normalisePaths(paths, root) {
 }
 
 /**
- * Ceiling on a stored write-up, and a last resort rather than a display cap.
- *
- * This used to be 8000, applied as a bare `.slice()` at persist time. A measured
- * run produced 26,937 characters and the record kept 8,000 — 70% of a clean
- * `end_turn` answer destroyed, mid-word, with no ellipsis, no flag, and no
- * warning line. The failure did not read as truncation; it read as the model
- * malfunctioning, and the reader re-prompted twice for brevity against a model
- * that had never been the problem. The discarded tail held grok's own question
- * about the task.
- *
- * `contract.md` promises the write-up is relayed as-is. 256 KB is far above any
- * answer grok's output budget can produce, so in practice nothing is cut; the
- * cap exists only so a pathological stream cannot write an unbounded job record.
- * When it does fire it says so, in the summary itself, and names where the whole
- * text still lives.
+ * Guard against an unbounded job record, not a display cap. This was 8000 and
+ * cut a measured 26,937-char answer silently, mid-word. 256 KB is above
+ * anything grok's output budget reaches, and saying so beats cutting quietly.
  */
 export const MAX_SUMMARY_CHARS = 256_000;
 

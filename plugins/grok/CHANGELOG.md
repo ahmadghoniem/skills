@@ -40,23 +40,15 @@
   Reproduced before fixing. `--continue` and `resumeLatest` are gone; every resume names its
   session, and a bare `--resume` is refused rather than guessed at.
 
-- **Long write-ups were silently truncated at 8000 characters.** `summariseEvents` ended with a
-  bare `.slice(0, 8000)`, applied at persist time, so the job record itself never held more. A
-  measured run produced 26,937 characters and 8,000 were kept — 70% of a clean `end_turn` answer
-  destroyed mid-word, with no ellipsis, no flag on the record, and no warning line, while
-  `contract.md` promised the write-up was relayed as-is. The cut did not read as truncation; it
-  read as the model malfunctioning, and the reader re-prompted twice for brevity against a model
-  that had never been the problem. The discarded tail held grok's own question about the task, so
-  the loop ran two extra rounds rediscovering it. The ceiling is now 256 KB — above anything
-  grok's output budget can reach — and when it does fire it appends a post-flight note giving the
-  real length and naming the `.ndjson` log that still holds the whole text.
-- **The resume line was gated on a watchdog kill.** A kill is only one way to end with a live
-  session and no clean finish: a refused resume, a non-zero exit, and a stop reason short of
-  `end_turn` all leave one too, and all printed nothing. `/grok:result` had always gated on the
-  job's `status` instead, so the same job rendered live and rendered later disagreed about whether
-  it could be continued. Both gates now read `status`, and the line reads `did not finish cleanly`
-  rather than `ended early`. Clean runs stay silent — the job id is printed at dispatch and
-  `--resume=` takes it, so a ⚠ on a run that worked would be noise the contract does not allow.
+- **Long write-ups were silently truncated at 8000 characters.** A bare `.slice(0, 8000)` at
+  persist time, so the record never held more: a measured run kept 8,000 of 26,937 characters,
+  cut mid-word with nothing saying so, against a `contract.md` that promises the write-up as-is.
+  It read as a broken model, not as truncation. The ceiling is now 256 KB and announces itself,
+  naming the `.ndjson` log that holds the full text.
+- **The resume line was gated on a watchdog kill.** A kill is one of several ways to end with a
+  live session and no clean finish, and the others printed nothing. `/grok:result` had always
+  gated on `status`, so the same job rendered live and rendered later disagreed. Both now read
+  `status`, and the line says `did not finish cleanly`. Clean runs stay silent.
 
 - **`--help` billed a real run.** `help` was declared as a boolean flag and never read, so it
   fell through to a dispatch. It now prints usage and exits 0, checked ahead of the `--resume`

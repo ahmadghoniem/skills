@@ -154,10 +154,8 @@ describe('error events', () => {
   });
 });
 
-// The write-up used to be cut with a bare `.slice(0, 8000)` at persist time. A
-// measured run produced 26,937 characters and the record kept 8,000 — a clean
-// `end_turn` answer losing 70% of itself mid-word, with nothing saying so. It
-// did not read as truncation, it read as a broken model.
+// A clean `end_turn` answer used to lose 70% of itself to a silent
+// `.slice(0, 8000)`, which read as a broken model rather than truncation.
 describe('write-up length', () => {
   const long = (n) => [{ type: 'text', data: 'x'.repeat(n) }];
 

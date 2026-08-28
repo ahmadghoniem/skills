@@ -219,18 +219,10 @@ async function foreground(flags, prompt, jobId, root, resumeTarget) {
       // A fresh dispatch pre-assigns its id, so this can now only fire on a
       // resume — where `-s` is illegal and the id must still come from `end`.
       sessionLost: status === 'failed' && !summary.sessionId && !freshSessionId,
-      // The inverse: the run did not finish cleanly, but an id exists to attach
-      // to. A fresh dispatch pre-assigns one with `-s`, so this is the usual
-      // shape of a failed run and it is resumable rather than lost.
-      //
-      // Gated on `status`, not `killed`. A watchdog kill is only one way to end
-      // up with a live session and no clean finish — a refused resume, a
-      // non-zero exit, or a stop reason short of `end_turn` all leave one too,
-      // and those printed nothing. `/grok:result` has always used `status`
-      // here, so the same job rendered live and rendered later disagreed about
-      // whether it could be resumed. Clean runs stay quiet: the job id is
-      // printed at dispatch and `--resume=` takes it, so a ⚠ line on a run that
-      // worked would be noise the output contract does not allow.
+      // The inverse: no clean finish, but a session exists to attach to. Gated
+      // on `status`, not `killed` — a kill is one of several ways to get here,
+      // and `/grok:result` has always used `status`, so the two disagreed about
+      // the same job. Clean runs stay quiet; their job id is printed already.
       resumableJobId:
         status === 'failed' && (summary.sessionId ?? freshSessionId) ? jobId : undefined,
     }),

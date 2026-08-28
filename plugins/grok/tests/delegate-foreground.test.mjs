@@ -119,11 +119,8 @@ describe('/grok:delegate foreground run', () => {
     expect(out).not.toContain('cannot be resumed');
   });
 
-  // A watchdog kill is not the only way to end a run with a live session and no
-  // clean finish. This shape — grok exits non-zero having emitted nothing — is
-  // what a refused resume looks like, and it printed no resume line at all
-  // while `/grok:result` on the very same job did. Same job, two renderings,
-  // two different answers to "can I continue this?".
+  // A refused resume: exits non-zero having emitted nothing. It printed no
+  // resume line while `/grok:result` on the same job did.
   it('offers the resume on a run that failed without being killed', async () => {
     process.env.GROK_STUB_FAIL = '1';
     try {
