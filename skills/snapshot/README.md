@@ -2,10 +2,10 @@
 
 Carry one brief across `/clear` in Claude Code, then throw it away.
 
-`/compact` is lossy and it nests — the third compact is a summary of a summary of a summary. This is the alternative: write one short brief while the session is still sharp, wipe the conversation for real, and have the fresh session start with that brief already in context.
+`/compact` is lossy — the third compact is a summary of a summary of a summary. This is the alternative: while the session is still sharp, write one short brief, clear the conversation completely, and have the fresh session start with that brief already in context. The brief is ephemeral — injected once, then deleted.
 
 ```
-work  →  /compact (at most twice)  →  /snapshot  →  /clear  →  /recall
+work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /recall
 ```
 
 ## How it works
@@ -14,11 +14,11 @@ work  →  /compact (at most twice)  →  /snapshot  →  /clear  →  /recall
 
 2. **`/clear`** wipes the conversation. The temp file is the only thing that survives it.
 
-3. A **`SessionStart` hook with `matcher: clear`** fires right after the wipe. It injects the whole brief as `additionalContext` and deletes the file — read once, then gone, so a later `/clear` with no new snapshot gives you a real blank slate. `/clear` is a built-in and can't be overridden; this hook is the documented seam.
+3. A **`SessionStart` hook with `matcher: clear`** fires right after the wipe. It injects the whole brief as `additionalContext` and deletes the file, so a later `/clear` with no new snapshot gives you a real blank slate. A `SessionStart` hook is the one supported place to add text to a session as it starts, which is why the mechanism hangs off it.
 
 4. **`/recall`** tells the fresh session to start on **Next action**. Claude Code won't begin a turn without a user message, and a skill autocompletes where a typed word doesn't.
 
-Both skills are `disable-model-invocation: true` — user-invoked only, never sitting in the model's skill index. Nothing is snapshotted automatically, and the mailbox is named per project so two repos don't clobber each other.
+Both skills are user-invoked only: Claude can't fire them on its own, and they don't take up room in the skill list it reads every turn. Only you, through `/snapshot` and `/recall`. The file is named after the project folder, so two repos never overwrite each other's brief.
 
 ## Install
 
@@ -30,7 +30,13 @@ Copy into your home Claude directory so it works in every project:
 .claude/hooks/            →  ~/.claude/hooks/
 ```
 
-Then merge the block in `settings.snippet.json` into `~/.claude/settings.json`, **changing the `-File` path to your own home directory**. It must be an absolute path: `${CLAUDE_PROJECT_DIR}` resolves to whatever project is open, which is not where the hook lives.
+Then merge the `hooks` block from `settings.snippet.json` into `~/.claude/settings.json`, changing the `-File` path to your own home directory:
+
+```json
+"-File", "C:/Users/YOU/.claude/hooks/load-snapshot.ps1"
+```
+
+It has to be an absolute path — `${CLAUDE_PROJECT_DIR}` resolves to whatever project is currently open, not to where the hook actually lives.
 
 Windows / PowerShell.
 
