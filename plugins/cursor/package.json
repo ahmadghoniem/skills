@@ -1,0 +1,64 @@
+{
+  "name": "claude-cursor-delegate",
+  "version": "0.12.0",
+  "description": "Use Cursor CLI from Claude Code to delegate coding tasks to Composer and other Cursor models.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "contributors": [
+    {
+      "name": "Tomas Grasl",
+      "email": "tomas.grasl@metrifyr.cloud",
+      "url": "https://www.tomasgrasl.cz/"
+    }
+  ],
+  "homepage": "https://github.com/ahmadghoniem/claude-cursor-delegate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmadghoniem/claude-cursor-delegate.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "cursor",
+    "cursor-cli",
+    "cursor-agent",
+    "composer-2.5",
+    "ai-coding",
+    "agent-delegation"
+  ],
+  "engines": {
+    "node": ">=18.18"
+  },
+  "files": [
+    "plugin.json",
+    "scripts",
+    "commands",
+    "agents",
+    "skills"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "prettier --check . && eslint .",
+    "format": "prettier --write .",
+    "delegate": "node scripts/delegate.mjs",
+    "status": "node scripts/status.mjs",
+    "result": "node scripts/result.mjs",
+    "cancel": "node scripts/cancel.mjs",
+    "resume": "node scripts/resume.mjs",
+    "sessions": "node scripts/sessions.mjs",
+    "setup": "node scripts/setup.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.8"
+  }
+}
