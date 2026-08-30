@@ -26,7 +26,9 @@ to hold:
   objective, where the work actually stands, and any traps or fragile in-flight state.
 - **Decisions** — what was chosen, ruled out, or tried and failed, each with its why and
   a verbatim quote or file:line behind it. Cut what you cannot point at.
-- **Still open** — questions raised but not settled.
+- **Still open** — questions raised but not settled. Mark each as the user's call or yours;
+  an undecided design question and an unstarted chore read identically otherwise, and the
+  next session will act on both.
 - **Files** — paths only, no guesses about what the next session will need. Do not
   duplicate what other artifacts already capture (specs, plans, issues, commits) —
   reference those by path or URL.

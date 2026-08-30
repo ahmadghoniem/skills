@@ -57,11 +57,23 @@ claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
 claude plugin install ahmadghoniem-skills@ahmadghoniem   # and cursor@, grok@, agy@
 ```
 
-Installing copies each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so editing a file here does **not** take effect until you re-read the marketplace and update the plugin:
+Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
+
+So each cached version directory is replaced by a **Windows directory junction** back into this repo:
 
 ```
-claude plugin marketplace update ahmadghoniem
-claude plugin update ahmadghoniem-skills
+~/.claude/plugins/cache/ahmadghoniem/ahmadghoniem-skills/1.0.0  ->  <repo>
+~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0              ->  <repo>/plugins/cursor
+~/.claude/plugins/cache/ahmadghoniem/grok/0.4.0                 ->  <repo>/plugins/grok
+~/.claude/plugins/cache/ahmadghoniem/agy/0.1.0                  ->  <repo>/plugins/agy
+```
+
+Made with `New-Item -ItemType Junction -Path <cache dir> -Target <repo dir>` after deleting the copied directory. Now an edit here is live in the next session, with no update step.
+
+The caveat: a reinstall, or an update that actually finds a new version, writes a real directory over the junction and silently goes back to copying. If edits stop taking effect, check whether the junction survived:
+
+```
+Get-ChildItem ~/.claude/plugins/cache/ahmadghoniem -Recurse -Depth 1 | Where-Object { $_.LinkType }
 ```
 
 The five skills must not also exist under `~/.claude/skills/`, or each one loads twice.
