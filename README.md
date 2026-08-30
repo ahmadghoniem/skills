@@ -24,10 +24,17 @@ The delegation plugins are separate installs, because each needs its own CLI on 
 /plugin install agy@ahmadghoniem      # then /agy:setup
 ```
 
-To run from a checkout instead, so edits take effect without pushing, point the marketplace at the directory:
+To run from a checkout instead, point the marketplace at the directory:
 
 ```
 /plugin marketplace add C:/path/to/skills
+```
+
+Installing still copies the plugin into `~/.claude/plugins/cache/`, so an edit in the checkout is not live. Pick it up with:
+
+```
+claude plugin marketplace update ahmadghoniem
+claude plugin update ahmadghoniem-skills    # and cursor, grok, agy
 ```
 
 ## Skills

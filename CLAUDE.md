@@ -47,3 +47,21 @@ Do not add npm `workspaces` to the root `package.json`. It makes `npm ci` inside
 `prettier --check` fails on five files in `plugins/cursor`, and has since before this repo existed. That is known and deliberately left alone.
 
 The skills have no test suite. `skills/tailwind/evals/` holds a trigger eval, run by hand.
+
+## Local install on the author's machine
+
+The marketplace is registered from this directory, not from GitHub:
+
+```
+claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
+claude plugin install ahmadghoniem-skills@ahmadghoniem   # and cursor@, grok@, agy@
+```
+
+Installing copies each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so editing a file here does **not** take effect until you re-read the marketplace and update the plugin:
+
+```
+claude plugin marketplace update ahmadghoniem
+claude plugin update ahmadghoniem-skills
+```
+
+The five skills must not also exist under `~/.claude/skills/`, or each one loads twice.
