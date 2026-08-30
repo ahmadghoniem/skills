@@ -1,0 +1,13 @@
+{
+  "name": "ahmadghoniem-skills",
+  "version": "1.0.0",
+  "description": "Standalone Claude Code skills: grounded read-back before edits, a Tailwind v4 house style, opencode delegation, and a one-brief handoff across /clear.",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/skills",
+  "repository": "https://github.com/ahmadghoniem/skills",
+  "license": "MIT",
+  "keywords": ["skills", "claude-code", "tailwind", "context", "opencode"]
+}

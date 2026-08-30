@@ -1,0 +1,26 @@
+{
+  "name": "ahmadghoniem-skills",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ahmed Ghoniem's Claude Code skills and CLI delegation plugins.",
+  "license": "MIT",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmadghoniem/skills.git"
+  },
+  "homepage": "https://github.com/ahmadghoniem/skills",
+  "engines": { "node": ">=18.18" },
+  "scripts": {
+    "test": "npm run test:cursor && npm run test:grok && npm run test:agy",
+    "test:cursor": "npm --prefix plugins/cursor test",
+    "test:grok": "npm --prefix plugins/grok test",
+    "test:agy": "npm --prefix plugins/agy test",
+    "install:all": "npm --prefix plugins/cursor ci && npm --prefix plugins/grok ci && npm --prefix plugins/agy ci",
+    "validate": "claude plugin validate . --strict"
+  }
+}

@@ -1,0 +1,16 @@
+# `core.autocrlf=true` is set system-wide on Windows installs of Git, which
+# rewrites LF to CRLF on checkout. Vite's transform rejects CRLF in some .mjs
+# files at import time with `SyntaxError: Invalid or unexpected token`, while
+# `node --check` and bare `node` accept the same file — so a whole test suite
+# can silently stop running while the summary still reads green. That happened
+# in claude-grok-delegate (two suites, unnoticed). `text=auto eol=lf` overrides
+# autocrlf for this repo so a fresh clone cannot reintroduce it.
+* text=auto eol=lf
+
+# Binaries git must not touch.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

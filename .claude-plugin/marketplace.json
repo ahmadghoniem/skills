@@ -1,0 +1,41 @@
+{
+  "name": "ahmadghoniem",
+  "owner": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "description": "Ahmed Ghoniem's Claude Code skills and CLI delegation plugins, in one marketplace.",
+  "plugins": [
+    {
+      "name": "ahmadghoniem-skills",
+      "source": "./",
+      "description": "Standalone skills: align, tailwind, opencode, snapshot, recall.",
+      "category": "engineering",
+      "keywords": ["skills", "tailwind", "context", "opencode"]
+    },
+    {
+      "name": "cursor",
+      "source": "./plugins/cursor",
+      "description": "Delegate coding tasks from Claude Code to the Cursor CLI.",
+      "category": "engineering",
+      "keywords": ["cursor", "cursor-agent", "composer", "agent-delegation"],
+      "strict": false
+    },
+    {
+      "name": "grok",
+      "source": "./plugins/grok",
+      "description": "Delegate coding tasks from Claude Code to the Grok Build CLI.",
+      "category": "engineering",
+      "keywords": ["grok", "xai", "agent-delegation"],
+      "strict": false
+    },
+    {
+      "name": "agy",
+      "source": "./plugins/agy",
+      "description": "Delegate coding tasks from Claude Code to the Antigravity CLI.",
+      "category": "engineering",
+      "keywords": ["agy", "antigravity", "agent-delegation"],
+      "strict": false
+    }
+  ]
+}
