@@ -13,6 +13,10 @@ Everything in this file was derived from `cursor-agent --help`,
 `/docs/cli/reference/parameters.md`, and reading the plugin source — never from
 a live run.
 
+**Scope:** cursor is parked. The current round of work covers `agy` and
+`grok`; nothing in this file is being acted on until cursor comes back into
+scope. This is the single place cursor's outstanding work lives.
+
 **When a claim is settled, delete its section from this file** and record the
 outcome in `CHANGELOG.md`. A file of stale hypotheses is worse than no file.
 
@@ -210,10 +214,14 @@ Ordered by apparent value. None are bugs; all are unexplored.
 
 ---
 
-## Not in this file
+## Deferred — settled diagnosis, no live run needed
 
-These findings from the same review needed **no** live run and have been handled
-separately — they are not hypotheses:
+These came out of the same review and need **no** `cursor-agent` dispatch to
+confirm; each was read off `--help`, the docs, or the source. They are *not*
+hypotheses and they are *not* done — they are parked here so cursor's whole
+backlog lives in one file while the current round of work covers `agy` and
+`grok` only. Pick them up when cursor is back in scope; delete each line as it
+lands and record it in `CHANGELOG.md`.
 
 - `--cloud` is not a flag `cursor-agent` has (confirmed from `--help` alone).
 - The model-alias tables in `README.md` and `docs/reference.md` document aliases
@@ -229,3 +237,7 @@ separately — they are not hypotheses:
 - A post-`result` reap at `cursor.mjs:282-290` is benign by definition but sets
   `killed`, marking good runs `failed`.
 - `graphify-out/` is committed at repo root despite commit `d2ab549`.
+- `README.md` lists the ⚠ warnings in a different order than
+  `WARNING_IDS`/`contract.md` (`ran-as` first in the registry, third in the
+  README). Cosmetic — nothing tests README order and the order carries no
+  meaning. Recorded so it is not rediscovered as a bug.
