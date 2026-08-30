@@ -1,0 +1,12 @@
+{
+  "name": "agy",
+  "version": "0.1.0",
+  "description": "Hand off tasks from Claude Code to the Antigravity CLI (agy).",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/claude-agy-delegate",
+  "repository": "https://github.com/ahmadghoniem/claude-agy-delegate",
+  "license": "MIT"
+}

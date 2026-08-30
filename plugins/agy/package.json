@@ -1,0 +1,32 @@
+{
+  "name": "claude-agy-delegate",
+  "version": "0.1.0",
+  "description": "Use the Antigravity CLI from Claude Code to delegate coding tasks.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/claude-agy-delegate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmadghoniem/claude-agy-delegate.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "agy",
+    "antigravity",
+    "agent-delegation"
+  ],
+  "engines": { "node": ">=18.18" },
+  "os": ["win32"],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}
