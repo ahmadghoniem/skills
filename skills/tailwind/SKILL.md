@@ -23,15 +23,13 @@ Dark mode and colour are driven by **semantic CSS-variable tokens**, not raw col
 
 ## Colour values: OKLCH only
 
-Both upstreams already work this way — shadcn's default theme ships OKLCH, and Tailwind v4's own palette is authored in OKLCH. Match them.
-
 - **Every colour token is `oklch(L C H)` or `oklch(L C H / A)`.** No hex, `rgb()`, or `hsl()` in `:root`, `.dark`, or `@theme`. (L = perceived lightness 0–1, C = how vivid 0–~0.4, H = hue 0–360.)
-- **Store the complete colour function.** Never v3-style bare channels (`--background: 0 0% 100%`). v4 utilities emit `var(--background)` straight into `background-color`, so naked channels are invalid and the token does nothing at all — with or without a `/opacity` modifier. (A wrapped `hsl(var(--background))` is a *complete* colour and works fine; convert it for house style, not because it is broken.)
-- **Spaces, not commas; slash for alpha.** `oklch()` has no legacy comma form. Tailwind does **not** validate this — `oklch(0.7 0.1 250, 0.5)` passes through the build untouched and no warning appears; the *browser* drops the declaration at parse time. A green build is not evidence the colour works. Write `oklch(0.7 0.1 250 / 0.5)`, and omit the alpha when it is 1.
+- **Store the complete colour function.** Never v3-style bare channels (`--background: 0 0% 100%`) — the utility emits `var(--background)` straight into `background-color`, so the token dies entirely, with or without a `/opacity` modifier. A wrapped `hsl(var(--background))` is a *complete* colour and works; convert it for house style only.
+- **Spaces, not commas; slash for alpha.** `oklch(0.7 0.1 250, 0.5)` passes the build untouched with no warning; the browser drops the declaration at parse time. Write `oklch(0.7 0.1 250 / 0.5)`, and omit the alpha when it is 1.
 - **Keep theme tokens opaque.** Put transparency on the utility (`bg-primary/30`), not inside the token — otherwise the two compound into a double fade. The one standing exception is shadcn's dark-mode hairlines (`--border: oklch(1 0 0 / 10%)`, `--input: … / 15%`), where the alpha *is* the colour; leave those as shipped.
 - **Every fill token has a paired `-foreground`,** and the contrast between them is a **lightness gap**.
 - **Fix contrast by moving L.** Push L further from the background and leave C and H alone; then re-check the ratio. Never raise C to "add contrast" — on some hues it measurably *lowers* it.
-- **If a colour looks wrong or over-saturated, lower C and keep L and H.** Not every `oklch()` triple is displayable; browsers substitute something nearby, and most still clip naively rather than reducing chroma for you. **Ceilings vary enormously by hue** — at L 0.55 the maximum in-gamut chroma runs from ~0.09 (cyan) to ~0.27 (purple), so there is no single safe number to memorise. Treat C ≤ 0.04 as the grey band and C ≤ 0.12 as comfortable for most accents; above that, copy a known-good value rather than inventing one. Vivid intent roles legitimately go higher — shadcn's own `--destructive` is `oklch(0.577 0.245 27.325)`.
+- **If a colour looks wrong or over-saturated, lower C and keep L and H.** Ceilings vary enormously by hue — at L 0.55 the maximum in-gamut chroma runs from ~0.09 (cyan) to ~0.27 (purple). Treat C ≤ 0.04 as the grey band and C ≤ 0.12 as comfortable for most accents; above that, copy a known-good value rather than inventing one. Vivid intent roles legitimately go higher — `--destructive` is `oklch(0.577 0.245 27.325)`.
 - **Never compute OKLCH by hand.** This skill ships a converter — zero dependencies, `node` only:
 
   ```
@@ -45,22 +43,22 @@ Both upstreams already work this way — shadcn's default theme ships OKLCH, and
 ## Authoring rules
 
 - Reach for a **semantic token** before any raw colour — a surface token for surfaces, a muted-text token for secondary text, a border token for borders, an intent token for primary/destructive. Under shadcn's names: `bg-background`/`bg-card`, `text-muted-foreground`, `border-border`, `bg-primary`/`bg-destructive`.
-- Because tokens flip under the dark selector, `dark:` is rarely needed. A hand-rolled `bg-white dark:bg-gray-900` pair is a smell — use the surface token.
+- `dark:` is rarely needed — a hand-rolled `bg-white dark:bg-gray-900` pair is a smell; use the surface token.
 - **Read what consumes a token before editing it.** Names state intent, not binding: grep the `bg-*` / `text-*` / `border-*` on the component and change *that* token. Recolouring `--sidebar-primary` does nothing when the item paints with `data-active:bg-sidebar-accent`. And a token is a **role** — editing one restyles everything bound to it, so changing `--primary` for a button also repaints every default badge.
-- **Check the live docs before asserting a version-specific fact** — a utility's default value, a CLI flag, a plugin's rule or option name. Training data lags releases and the mistakes are silent.
+- **Check the live docs before asserting a version-specific fact** — a utility's default value, a CLI flag, a plugin's rule or option name.
 - Set radius via `rounded-md`/`rounded-lg` (bound to `--radius`), not arbitrary `rounded-[6px]`.
-- **Arbitrary values are the model's fallback, not a neutral choice.** An agent writes Tailwind syntax fluently but has no knowledge of the project's `@theme`, and faces thousands of equally-valid utilities with no signal which is "blessed" — so it emits the most literal value that hits the target (`p-[17px]`, `bg-[#3b82f6]`, even `padding:'16px'`). Unchecked, these become "a shadow scale nobody owns." Before writing a bracket, walk the ladder:
+- **Before writing a bracket, walk the ladder:**
   1. **Native scale step?** Use the token — spacing on the 4px grid (`p-1`=4px … `p-4`=16px; `p-px`=1px), `rounded-md`, `z-40`, `opacity-70`, `text-sm`. Never `p-[16px]` for `p-4`.
      **The spacing scale is unbounded** — every integer works, compiling to `calc(var(--spacing) * N)`. `p-18`, `mt-21`, `gap-13`, `w-101` are all real, as are open-ended `z-N` and `grid-cols-N`. Never reach for a bracket because a number "looks too big for the scale": divide by 4 and use the step. For the same reason, never add `--spacing-18: 4.5rem` to `@theme` — `p-18` already *is* 4.5rem. Named `--spacing-*` keys are for names (`--spacing-gutter`), not for filling holes in a scale that has none.
-  1b. **A width?** `max-w-*` / `min-w-*` read the **named container scale** first — `max-w-md` is 28rem, `max-w-4xl` is 56rem (896px). Prefer it for anything page- or card-sized: `max-w-4xl` says what it means where the equivalent `max-w-225` is arithmetic. A near-miss is a **design** call — offer the delta, never rewrite silently. `max-h-*` / `min-h-*` are spacing-only.
+  1b. **A width?** `max-w-*` / `min-w-*` read the **named container scale** first — `max-w-md` is 28rem, `max-w-4xl` is 56rem (896px). Prefer it for anything page- or card-sized. A near-miss is a **design** call — offer the delta, never rewrite silently. `max-h-*` / `min-h-*` are spacing-only.
   2. **A colour?** Walk the colour ladder:
      - **Has a role** (surface, text, border, primary/brand, destructive, muted, ring, a chart series that themes) → use the semantic `@theme` token (`bg-primary`, `text-muted-foreground`). Never re-invent these with `bg-white` / `text-gray-500` / `dark:` pairs.
      - **Decorative, categorical, or a true one-off** with no role → soft-allow the nearest stock palette shade (`bg-sky-600`, `text-amber-500`). Match token count to the variability of the visual language — don't add a `@theme` token for a colour with no fixed meaning.
      - **Promote to `@theme`** once the colour carries brand meaning, must flip under `.dark`, or repeats in more than one place/file.
      - **Never a raw arbitrary colour** (`bg-[#3b82f6]`, `text-[rgb(...)]`) — snap to the nearest stop or extend the theme once; never scatter hex *and* grow a parallel shadow palette.
-  3. **Value repeats (>1 place or file)?** Promote it to `@theme` and reference the generated token — Tailwind's own maintainer guidance.
-  4. **Genuine one-off** (a `calc()`, a `grid-cols-[200px_1fr]` template, a single magic offset)? An arbitrary value is correct — that's the escape hatch. `-px` utilities count as intentional, not arbitrary.
-- **Treat `-px` utilities as intentional, not an escape hatch.** Keep `p-px`, `mt-px`, `gap-px`, `w-px` as-is; rewrite the long form `p-[1px]` → `p-px`. Bracket values that land on the 4px step map to the scale (`p-[4px]` → `p-1`, `p-[8px]` → `p-2`, `p-[16px]` → `p-4`); off-scale values (`p-[7px]`, `p-[13px]`) nudge to the nearest step.
+  3. **Value repeats (>1 place or file)?** Promote it to `@theme` and reference the generated token.
+  4. **Genuine one-off** (a `calc()`, a `grid-cols-[200px_1fr]` template, a single magic offset)? An arbitrary value is correct — that's the escape hatch.
+- **`-px` utilities are intentional.** Keep `p-px`, `mt-px`, `gap-px`, `w-px` as-is; rewrite the long form `p-[1px]` → `p-px`.
 - **Get the two custom-CSS directives right — both have a v3/beta lookalike.**
   - A custom utility is `@utility name { … }`. `@layer utilities { .name { … } }` still emits the class, so it *looks* like it worked, but the utility is never registered and `hover:name` / `lg:name` won't exist.
   - **`@utility` is also how a reusable affordance is written** — but in a component framework a repeated class string is a missing **component** first. `@utility` is for markup no component can own. See `references/affordances.md`.
@@ -97,11 +95,9 @@ Fewer classes, same result:
 - **Never apply the v3→v4 rename table to v4 code.** `shadow`, `rounded`, `ring`, `outline-none` are all valid v4 classes; remapping them to `shadow-sm` / `rounded-sm` / `ring-3` / `outline-hidden` changes the render (v4 `ring` is 1px, so `ring-3` triples it) or is a pointless no-op rename.
 - **Never rewrite `shadow-sm` / `blur-sm` / `rounded-sm` / `drop-shadow-sm` / `backdrop-blur-sm` to `-xs`.** The rename moved *v3's* `shadow-sm` to `shadow-xs`; it did not delete `shadow-sm`, which is its own v4 utility with its own value. Doing this shrinks every shadow, blur and radius by one step. (v4's smallest shadow is `shadow-2xs`.)
 - **Don't convert viewport variants into container queries.** `md:`/`lg:` and `@md:`/`@lg:` are both first-class and mean different things. Viewport is the default for page chrome; reach for `@container` when authoring a component that will live in more than one slot width. See `references/gotchas.md`.
-- **Keep a stacked `data-active:hover:`** — it is how a selected state survives hover. A library variant wrapped in `:where()` (shadcn's are) contributes *zero* specificity, so `data-active:bg-accent` lands at (0,1,0) and plain `hover:bg-accent/50` at (0,2,0) repaints the active item every time; the stacked form restores it. Three classes, none redundant — see `references/cleanup.md`.
-- Keep `data-[foo=bar]:` and `aria-[selected]:` — an operator or a presence check is not the named `data-foo:` variant.
-- Keep `[figure>&]:` (`in-*` is descendant, not child), `has-[&>[data-x]]:`, multi-attribute selectors, `:where()` wrappers, and any selector with no named equivalent. Arbitrary variants are the escape hatch.
+- Leave anything that only *looks* non-canonical — a stacked `data-active:hover:`, `data-[foo=bar]:`, `[figure>&]:`, `:where()` wrappers. Arbitrary variants are the escape hatch; the full list is in `references/cleanup.md` under *Never touch*.
 
-Prose prevents; a linter catches the residue. Where the project has one configured, finish an editing pass with `npx eslint --fix` — see `references/editor.md`.
+Where the project has a linter configured, finish an editing pass with `npx eslint --fix` — see `references/editor.md`.
 
 ---
 

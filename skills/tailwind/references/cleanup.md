@@ -18,7 +18,7 @@ Read and follow this when the user asks to clean / audit / simplify Tailwind cla
 - Exact duplicate classes → keep one (same class twice, byte-identical).
 - No-op default values → remove (`opacity-100`, `scale-100`, `rotate-0`, `translate-x-0 translate-y-0`, `order-0`, `basis-auto`).
 - Decimal opacity → percentage (`bg-primary/[0.07]` → `bg-primary/7`).
-- Arbitrary px on the 4px scale → the scale step (`p-[4px]` → `p-1`, `p-[8px]` → `p-2`, `p-[16px]` → `p-4`); `p-[1px]` → `p-px`. Leave `-px` utilities untouched.
+- Arbitrary px on the 4px scale → the scale step (`p-[4px]` → `p-1`, `p-[8px]` → `p-2`, `p-[16px]` → `p-4`); `p-[1px]` → `p-px`.
 - **`rem` / `em` arbitraries map to the scale too.** `min-w-[3.25rem]` is `min-w-13`; `p-[1.5rem]` is `p-6`. Match the **bracket**, not `px`.
 - **A bracket around a bare number on an open-ended scale is always removable.** `z-[6]` → `z-6`, `z-[9998]` → `z-9998`, `grid-cols-[7]` → `grid-cols-7`, `order-[3]` → `order-3`.
 
@@ -80,13 +80,11 @@ Report these in the colour Before/After table with the rest.
 ## Never touch
 
 - Responsive (`sm: md: lg: xl: 2xl:`) and state (`hover: focus: active: group-* peer-*`) variants.
-- **`md:` ↔ `@md:` in either direction.** A viewport breakpoint and a container query are different queries against different boxes — swapping them is not a canonicalisation.
 - `dark:` in **vendored `components/ui/*`** — deliberate per-theme opacity (`bg-input/30` → `dark:/50`), leave it. In **app code**, a hand-rolled `dark:` color pair is instead a candidate → fold into a token (see token drift above).
-- Arbitrary values that are clearly intentional (including `-px` utilities).
-- **`[&:hover]:` — never "canonicalise" it to `hover:`.** The named variant also wraps `@media (hover: hover)`, so this changes the CSS.
-- **The v3→v4 rename table, on v4 code.** `shadow`, `rounded`, `ring`, `outline-none` are all valid v4 classes. Never remap them to `shadow-sm` / `rounded-sm` / `ring-3` / `outline-hidden` — `ring` is 1px in v4 and `ring-3` triples it; `rounded` is a hardcoded 0.25rem and `rounded-sm` is `var(--radius-sm)`, so the geometry changes.
-- **`shadow-sm`, `blur-sm`, `rounded-sm`, `drop-shadow-sm`, `backdrop-blur-sm` — never rewrite these to `-xs`.** The rename moved *v3's* `shadow-sm` to `shadow-xs`; it did not delete `shadow-sm`, which in v4 is its own utility with its own value. Rewriting shrinks every shadow, blur and radius by one step. (The smallest shadow in v4 is `shadow-2xs`.)
-- `data-[foo=bar]:` / `aria-[selected]:`, `[figure>&]:`, `has-[&>…]:`, multi-attribute selectors, `:where()` wrappers — no named equivalent, or a different selector.
+- Arbitrary values that are clearly intentional.
+- Everything under *Do not over-correct* in `SKILL.md`: `[&:hover]:`, the v3→v4 rename table on v4 code, `shadow-sm` / `blur-sm` / `rounded-sm` / `drop-shadow-sm` / `backdrop-blur-sm` → `-xs`, and `md:` ↔ `@md:`. Those are stated there because the model reaches for them unprompted; they bind here too.
+- **A stacked `data-active:hover:`** — never delete one as redundant. The specificity numbers are under *A state variant demoting a higher one* above.
+- `data-[foo=bar]:` / `aria-[selected]:` (an operator or a presence check is not the named `data-foo:` variant), `[figure>&]:` (`in-*` is descendant, not child), `has-[&>…]:`, multi-attribute selectors, `:where()` wrappers — no named equivalent, or a different selector.
 - Classes used for JS targeting (check for `id=` / `data-*` on the element first).
 - Anything inside a `class:list` or dynamic class binding — flag, don't edit.
 - Preserve the order of the retained classes; don't reorder.
