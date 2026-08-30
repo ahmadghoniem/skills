@@ -1,13 +1,31 @@
 ---
 name: recall
-description: Resume from the snapshot injected by the last /clear.
+description: Orient on the brief /snapshot wrote, injected by the last /clear.
 disable-model-invocation: true
 ---
 
-The prior session's brief was injected into this conversation at session start, as a block beginning `CONVERSATION SNAPSHOT`.
+A brief from the prior session is injected at session start by the `SessionStart` hook
+(matcher `clear`). If one is in context, this session began with a `/clear`.
 
-Begin executing **Next action** from that brief now.
+If there is none, reply with exactly:
 
-Do not summarise the brief back to the user. Do not re-run anything listed under Done, and do not re-invoke skills recorded there — that work is finished.
+    Nothing to recall — no brief was injected at session start: either this session didn't
+    begin with /clear, or no snapshot was taken. Run /snapshot in the session you're leaving,
+    then /clear, then /recall.
 
-If there is no `CONVERSATION SNAPSHOT` block in context, say so in one line and stop. Do not guess what the previous session was doing.
+and stop. Do not guess what the previous session was doing.
+
+Otherwise orient. Take no edit action on this turn:
+
+1. Read the whole brief.
+2. Read the relevant files, starting from the ones the brief names — not everything
+   changed in this repo belongs to this thread.
+
+Then either:
+
+- **The brief and those files are enough** — say what you would start on, in one line, and
+  wait for the go-ahead. If the brief and the files disagree anywhere, add one line saying
+  where; otherwise say nothing about it. Do not summarise the brief back.
+- **The brief leaves a genuine gap** — call AskUserQuestion. Ask only for what cannot be
+  found by reading. Never ask the user to confirm something the brief already says.
+
