@@ -10,7 +10,7 @@ work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /re
 
 ## How it works
 
-1. **`/snapshot [what the next session should do first]`** writes one brief to `%TEMP%\claude-snapshot-<project-folder>.md`. It leads with **Next action**, then Goal, Done, Still open, Files, Decisions, Suggested skills, Open questions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
+1. **`/snapshot [focus]`** writes one brief to `%TEMP%\claude-snapshot-<project-folder>.md`: State, Decisions, Still open, Files, and — only when one was actually agreed — Next step. Sections with nothing real in them are left out entirely, headings included, so the brief can't pad itself into inventing a plan nobody settled on. Pass a focus and it scopes the whole brief, the way `/compact` takes instructions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
 
 2. **`/clear`** wipes the conversation. The temp file is the only thing that survives it.
 

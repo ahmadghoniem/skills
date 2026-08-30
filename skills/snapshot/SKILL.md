@@ -1,18 +1,38 @@
 ---
 name: snapshot
-description: Write a one-shot conversation snapshot for the next /clear.
-argument-hint: "What should the next session do first?"
+description: Write a brief of this session for the next one to pick up after /clear.
+argument-hint: "[focus / scope instructions]"
 disable-model-invocation: true
 ---
 
-Write one snapshot of this conversation to the OS temp directory, then stop.
+Write one brief of this conversation to `%TEMP%\claude-snapshot-<this-folder>.md`
+(this-folder = the current project directory's name). Overwrite if it is already
+there. Do not write into the repo.
 
-Path: `%TEMP%\claude-snapshot-<this-folder>.md` (this-folder = the current project directory's name). Overwrite if it is already there. Do not write a second copy. Do not write into the repo.
+Before writing, ground yourself: inspect the repository and working tree to establish
+what actually changed versus what you recall. Re-read, don't recall — re-open every file
+you name, but do not re-run tests or commands just to fill a section. An honest gap beats
+confident fiction.
 
-Lead with **Next action** — one concrete instruction the next session should start on. Then: Goal, Done, Still open, Files (paths only), Decisions, Suggested skills, Open questions.
+Write these sections in order, omitting — heading included — any with nothing real
+to hold:
 
-Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
+- **State** — open with one line marking this as the prior session's brief, then the
+  objective, where the work actually stands, and any traps or fragile in-flight state.
+- **Decisions** — what was chosen, ruled out, or tried and failed, each with its why.
+  Chosen and ruled out count only if the user said or approved them; your own
+  suggestions are not decisions.
+- **Still open** — questions raised but not settled.
+- **Files** — paths only, no guesses about what the next session will need. Do not
+  duplicate what other artifacts already capture (specs, plans, issues, commits) —
+  reference those by path or URL.
 
-If the user passed arguments, treat them as the next session's focus and make that the Next action.
+A claim under Decisions needs a verbatim quote or a file:line behind it. If you cannot
+point to one, cut the claim.
 
-When the file is written, tell the user to run `/clear`, then `/recall`. The SessionStart hook reads that file into the new conversation and deletes it.
+Close with **Next step** only if one was explicitly agreed — quote the words that agreed
+it. If none was, leave the heading out; do not invent one.
+
+If the user passed arguments, scope the whole brief to them.
+
+When the file is written, tell the user to run `/clear`, then `/recall`.
