@@ -10,7 +10,7 @@ work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /re
 
 ## How it works
 
-1. **`/snapshot [focus]`** writes one brief to `%TEMP%\claude-snapshot-<project-folder>.md`: State, Decisions, Still open, Files, and — only when one was actually agreed — Next step. Sections with nothing real in them are left out entirely, headings included, so the brief can't pad itself into inventing a plan nobody settled on. Pass a focus and it scopes the whole brief, the way `/compact` takes instructions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
+1. **`/snapshot [focus]`** writes one brief to `%TEMP%\claude-snapshot-<project-folder>.md`: State, Decisions, Still open, Files. Sections with nothing real in them are left out entirely, headings included, so the brief can't pad itself into inventing work nobody settled on. Pass a focus and it scopes the whole brief, the way `/compact` takes instructions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
 
 2. **`/clear`** wipes the conversation. The temp file is the only thing that survives it.
 
@@ -18,7 +18,7 @@ work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /re
 
 4. **`/recall`** has the fresh session orient before touching anything: it reads the brief and the relevant files, then either proposes a starting point in one line and waits for your go-ahead, or asks about a genuine gap the brief left. No edits on that first turn. Claude Code won't begin a turn without a user message, and a skill autocompletes where a typed word doesn't.
 
-Both skills are user-invoked only: Claude can't fire them on its own, and they don't take up room in the skill list it reads every turn. Only you, through `/snapshot` and `/recall`. The file is named after the project folder, so two repos never overwrite each other's brief.
+Both skills are user-invoked only: Claude can't fire them on its own, and they don't take up room in the skill list it reads every turn. Only you, through `/snapshot` and `/recall`. The file is named after the project folder, so briefs from different projects stay separate.
 
 ## Install
 
