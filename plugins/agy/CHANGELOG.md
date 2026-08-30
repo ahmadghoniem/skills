@@ -45,8 +45,8 @@
 ## 0.1.0 — first cut
 
 Delegate coding tasks from Claude Code to the Antigravity CLI (`agy` 1.1.19). Sibling of
-[claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) and
-[claude-grok-delegate](https://github.com/ahmadghoniem/claude-grok-delegate); the CLI surface
+[cursor](../cursor/README.md) and
+[grok](../grok/README.md); the CLI surface
 is different enough that this plugin is written fresh against captured runs, not forked.
 
 ### Added

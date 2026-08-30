@@ -225,7 +225,7 @@ reload — `/plugin install` alone is not enough. Run `/reload-plugins` and the 
 
 Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every
 command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall:
-`/plugin marketplace remove claude-cursor-delegate && /plugin marketplace add ahmadghoniem/claude-cursor-delegate && /plugin install cursor@claude-cursor-delegate && /reload-plugins`.
+`/plugin marketplace remove ahmadghoniem && /plugin marketplace add ahmadghoniem/skills && /plugin install cursor@ahmadghoniem && /reload-plugins`.
 
 ### `Error: Cannot find module '.../dist/<cmd>.js'` or `'.../scripts/<cmd>.mjs'`
 

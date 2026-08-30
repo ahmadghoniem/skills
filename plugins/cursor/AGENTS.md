@@ -1,6 +1,6 @@
 # AGENTS.md — rules for any AI agent editing this repo
 
-This file is the contract any agent (Claude Code, Cursor, Codex, …) must follow before touching code in `claude-cursor-delegate`. If you are human, read it too.
+This file is the contract any agent (Claude Code, Cursor, Codex, …) must follow before touching code in `plugins/cursor`. If you are human, read it too.
 
 ## What this repo is
 
@@ -41,7 +41,7 @@ Plus a **Constraints** block that forbids: touching files outside the list, rena
 
 - Do not touch `package-lock.json` unless you are changing dependencies on purpose.
 - Do not modify `~/.ccd/jobs/**` — that is user state, never ours.
-- Do not rename the command namespace (`cursor:`) or the marketplace name (`claude-cursor-delegate`) without explicit user approval — both are referenced in user environments.
+- Do not rename the command namespace (`cursor:`) or the marketplace name (`ahmadghoniem`) without explicit user approval — both are referenced in user environments.
 - When adding a new slash command, follow the recipe in `CONTRIBUTING.md`.
 
 ## Where things live

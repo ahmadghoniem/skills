@@ -4,11 +4,11 @@
 
 If you find a security issue — credential leak, command injection, path traversal, anything that lets a malicious input do something the user did not intend — please **do not open a public issue**.
 
-Report privately via [GitHub Security Advisories](https://github.com/ahmadghoniem/claude-cursor-delegate/security/advisories/new). Expect a response within a week. Once a fix is merged we will publish an advisory with credit (unless you prefer anonymity).
+Report privately via [GitHub Security Advisories](https://github.com/ahmadghoniem/skills/security/advisories/new). Expect a response within a week. Once a fix is merged we will publish an advisory with credit (unless you prefer anonymity).
 
 ## Supported versions
 
-Only the latest tagged release on `main` is supported. Run `/cursor:setup --doctor` to see what you have; upgrade via `/plugin marketplace remove claude-cursor-delegate && /plugin marketplace add ahmadghoniem/claude-cursor-delegate && /plugin install cursor@claude-cursor-delegate && /reload-plugins`.
+Only the latest tagged release on `main` is supported. Run `/cursor:setup --doctor` to see what you have; upgrade via `/plugin marketplace remove ahmadghoniem && /plugin marketplace add ahmadghoniem/skills && /plugin install cursor@ahmadghoniem && /reload-plugins`.
 
 ## Known trade-offs the user should understand
 

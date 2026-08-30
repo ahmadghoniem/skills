@@ -233,7 +233,7 @@ fixed here, in a `killtree.mjs` that is byte-identical to the one in the sibling
 ### Upstream
 
 - All four of 0.1.1's fixes, plus this release's argv marker, were backported to
-  [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) 0.10.0, which
+  [cursor](../cursor/README.md) 0.10.0, which
   had inherited the same defects. The argv bug had shipped past that repo's 108-test suite,
   because its coverage only ever fed `collapseCommandArgv` single-string input — the one shape
   where the old code was correct.
@@ -250,7 +250,7 @@ Note: `claude-cursor-delegate` carries the same `collapseCommandArgv` and theref
 
 ## 0.1.0 — first cut
 
-Forked from [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) 0.9.0. The job registry, argument parser, background worker, and job-table renderer are backend-agnostic and carried over unchanged; everything that touches the CLI is new.
+Forked from [cursor](../cursor/README.md) 0.9.0. The job registry, argument parser, background worker, and job-table renderer are backend-agnostic and carried over unchanged; everything that touches the CLI is new.
 
 ### Added
 

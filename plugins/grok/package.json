@@ -8,10 +8,10 @@
     "name": "Ahmed Ghoniem",
     "url": "https://github.com/ahmadghoniem"
   },
-  "homepage": "https://github.com/ahmadghoniem/claude-grok-delegate",
+  "homepage": "https://github.com/ahmadghoniem/skills",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ahmadghoniem/claude-grok-delegate.git"
+    "url": "https://github.com/ahmadghoniem/skills.git"
   },
   "keywords": ["claude-code", "claude-code-plugin", "grok", "grok-cli", "xai", "agent-delegation"],
   "engines": { "node": ">=18.18" },

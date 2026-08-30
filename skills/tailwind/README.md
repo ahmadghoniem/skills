@@ -26,21 +26,14 @@ It also asks, rather than assumes, on the setup choices it can't infer: the them
 
 ## Install
 
-Markdown only — nothing to build, no dependencies, no npm install. Clone it into your Claude Code skills directory and drop the provenance tree, which is for auditing rather than for the agent:
+Markdown only: nothing to build, no dependencies, no npm install. Ships in the `ahmadghoniem-skills` plugin:
 
-```bash
-git clone https://github.com/ahmadghoniem/tailwind-skill.git ~/.claude/skills/tailwind
-rm -rf ~/.claude/skills/tailwind/research
+```
+/plugin marketplace add ahmadghoniem/skills
+/plugin install ahmadghoniem-skills@ahmadghoniem
 ```
 
-PowerShell:
-
-```powershell
-git clone https://github.com/ahmadghoniem/tailwind-skill.git "$HOME/.claude/skills/tailwind"
-Remove-Item -Recurse -Force "$HOME/.claude/skills/tailwind/research"
-```
-
-Keep `research/` if you want to check a claim offline — it is inert either way (see below). Restart Claude Code, or run `/skills`; `tailwind` should be listed. Per-project instead of globally: clone to `.claude/skills/tailwind` inside the project.
+Or copy this directory to `~/.claude/skills/tailwind` yourself and drop `research/`, which is provenance for auditing rather than anything the agent reads. Keep it if you want to check a claim offline; it is inert either way (see below). Per-project instead of globally: copy to `.claude/skills/tailwind` inside the project.
 
 ### What actually loads
 

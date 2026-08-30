@@ -1,16 +1,16 @@
-# claude-grok-delegate
+# grok
 
 Delegate coding tasks from Claude Code to the [Grok Build CLI](https://docs.x.ai/build/cli) (`grok`), then review the diff and land it yourself.
 
 Claude plans and reviews; grok does the typing in its own session. The plugin never commits — that stays with you.
 
-Sibling of [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate), which does the same for Cursor CLI. The two are independent: install either, or both.
+Sibling of [cursor](../cursor/README.md), which does the same for Cursor CLI, and [agy](../agy/README.md), which does it for the Antigravity CLI. All three are independent: install any combination.
 
 ## Install
 
 ```bash
-claude plugin marketplace add ahmadghoniem/claude-grok-delegate
-claude plugin install grok@claude-grok-delegate
+claude plugin marketplace add ahmadghoniem/skills
+claude plugin install grok@ahmadghoniem
 ```
 
 **Windows only.** Requires the Grok CLI on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), authenticated with `grok login`. Node 18.18+.

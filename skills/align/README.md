@@ -10,13 +10,14 @@ Vague asks — "move the button", "that panel", "make this more compact" — get
 
 ## Install
 
-Clone into your skills directory:
+Ships in the `ahmadghoniem-skills` plugin:
 
-```bash
-git clone https://github.com/ahmadghoniem/align ~/.claude/skills/align
+```
+/plugin marketplace add ahmadghoniem/skills
+/plugin install ahmadghoniem-skills@ahmadghoniem
 ```
 
-Or drop `SKILL.md` at `~/.claude/skills/align/SKILL.md` (user-wide) or `.claude/skills/align/SKILL.md` (one project).
+Or take the one file: drop [`SKILL.md`](./SKILL.md) at `~/.claude/skills/align/SKILL.md` (user-wide) or `.claude/skills/align/SKILL.md` (one project).
 
 ## Use
 

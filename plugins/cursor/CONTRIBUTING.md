@@ -1,4 +1,4 @@
-# Contributing to claude-cursor-delegate
+# Contributing to the cursor plugin
 
 Thanks for looking. This is a small plugin; contributions are welcome.
 
@@ -9,8 +9,8 @@ Read [`AGENTS.md`](./AGENTS.md) at the repo root — it spells out the hard rule
 ## Dev setup
 
 ```bash
-git clone https://github.com/ahmadghoniem/claude-cursor-delegate
-cd claude-cursor-delegate/plugins/cursor
+git clone https://github.com/ahmadghoniem/skills
+cd skills/plugins/cursor
 npm install    # installs only dev deps: vitest, eslint, prettier, @eslint/js
 npm test
 npm run lint

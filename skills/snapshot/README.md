@@ -22,21 +22,26 @@ Both skills are user-invoked only: Claude can't fire them on its own, and they d
 
 ## Install
 
-Copy into your home Claude directory so it works in every project:
+`snapshot` and `recall` ship in the `ahmadghoniem-skills` plugin:
 
 ```
-.claude/skills/snapshot/  →  ~/.claude/skills/snapshot/
-.claude/skills/recall/    →  ~/.claude/skills/recall/
-.claude/hooks/            →  ~/.claude/hooks/
+/plugin marketplace add ahmadghoniem/skills
+/plugin install ahmadghoniem-skills@ahmadghoniem
 ```
 
-Then merge the `hooks` block from `settings.snippet.json` into `~/.claude/settings.json`, changing the `-File` path to your own home directory:
+The hook is the one piece the plugin cannot wire for you, because a `SessionStart` hook needs an absolute path in your own settings. Copy the script out and point at it:
+
+```
+skills/snapshot/scripts/load-snapshot.ps1  ->  ~/.claude/hooks/load-snapshot.ps1
+```
+
+Then merge the `hooks` block from [`settings.snippet.json`](./settings.snippet.json) into `~/.claude/settings.json`, changing the `-File` path to your own home directory:
 
 ```json
 "-File", "C:/Users/YOU/.claude/hooks/load-snapshot.ps1"
 ```
 
-It has to be an absolute path — `${CLAUDE_PROJECT_DIR}` resolves to whatever project is currently open, not to where the hook actually lives.
+It has to be an absolute path. `${CLAUDE_PROJECT_DIR}` resolves to whatever project is currently open, not to where the hook actually lives.
 
 Windows / PowerShell.
 

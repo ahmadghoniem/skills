@@ -1,4 +1,4 @@
-# claude-agy-delegate
+# agy
 
 Delegate coding tasks, code sweeps, and research passes from Claude Code to the Antigravity CLI (`agy`), then review the diff and land it yourself.
 
@@ -6,13 +6,13 @@ Claude plans and reviews; agy does the typing in its own session. The plugin nev
 
 agy is the cheap, fast, high-volume worker in that split: code sweeps (find every call site of X, change it to Y), mini refactors, bulk reading across dozens of files, research, and scoped implementation. The tokens land in agy's context instead of yours.
 
-Third in the series after [claude-cursor-delegate](https://github.com/ahmadghoniem/claude-cursor-delegate) (`cursor-agent`) and [claude-grok-delegate](https://github.com/ahmadghoniem/claude-grok-delegate) (`grok`). The three are independent: install any combination.
+Third in the series after [cursor](../cursor/README.md) (`cursor-agent`) and [grok](../grok/README.md) (`grok`). The three are independent: install any combination.
 
 ## Install
 
 ```bash
-claude plugin marketplace add ahmadghoniem/claude-agy-delegate
-claude plugin install agy@claude-agy-delegate
+claude plugin marketplace add ahmadghoniem/skills
+claude plugin install agy@ahmadghoniem
 ```
 
 **Windows only.** Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.

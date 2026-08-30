@@ -1,9 +1,8 @@
-# claude-cursor-delegate
+# cursor
 
 > **Claude plans. Cursor writes. Claude reviews.**
 > A Claude Code plugin that delegates coding _execution_ to Cursor's Composer — without ever leaving the Claude Code TUI.
 
-[![CI](https://github.com/ahmadghoniem/claude-cursor-delegate/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmadghoniem/claude-cursor-delegate/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A5%2018.18-43853d.svg)](https://nodejs.org)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-7c3aed.svg)](https://claude.com/claude-code)
@@ -46,8 +45,8 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 **Preferred — from GitHub:**
 
 ```
-/plugin marketplace add ahmadghoniem/claude-cursor-delegate
-/plugin install cursor@claude-cursor-delegate
+/plugin marketplace add ahmadghoniem/skills
+/plugin install cursor@ahmadghoniem
 /reload-plugins
 /cursor:setup
 ```
@@ -55,8 +54,8 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 **Local, for hacking on the plugin from a checkout:**
 
 ```
-/plugin marketplace add C:/path/to/claude-cursor-delegate
-/plugin install cursor@claude-cursor-delegate
+/plugin marketplace add C:/path/to/skills
+/plugin install cursor@ahmadghoniem
 /reload-plugins
 /cursor:setup
 ```
