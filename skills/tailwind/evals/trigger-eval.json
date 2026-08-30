@@ -1,0 +1,26 @@
+{
+  "skill_name": "tailwind",
+  "purpose": "Description trigger evaluation. Run each query against an agent with the skill installed and record whether the tailwind skill fires. Target: should_trigger=true queries fire reliably; near-miss negatives do not. Pass threshold per the optimizing-descriptions recipe: trigger rate >= 0.5 over 3 runs per query, evaluated on a 60/40 train/held-out split before adopting any description change.",
+  "queries": [
+    { "query": "add a settings page to my next app — tailwind + shadcn, keep it consistent with the rest", "should_trigger": true },
+    { "query": "clean up my tailwind in components/Sidebar.tsx, the class lists are a mess", "should_trigger": true },
+    { "query": "audit these classes: <div className=\"flex flex-row px-4 py-4 bg-white dark:bg-gray-900\">", "should_trigger": true },
+    { "query": "my dark mode colors look washed out — here's my globals.css, can you fix the theme tokens", "should_trigger": true },
+    { "query": "review this component I just wrote: <span className=\"text-gray-500 p-[13px]\">beta</span>", "should_trigger": true },
+    { "query": "truncate isn't working on this text inside my flex row, what am I doing wrong", "should_trigger": true },
+    { "query": "set up tailwind v4 in this fresh vite react project, I want a dark mode toggle in the navbar", "should_trigger": true },
+    { "query": "convert the hex colors in my :root to something easier to theme dark mode with", "should_trigger": true },
+    { "query": "I wrote bg-[--brand] and nothing renders — is that not how you reference a css var in tailwind?", "should_trigger": true },
+    { "query": "simplify the class names on this pricing card without changing how it looks", "should_trigger": true },
+    { "query": "write a CSS keyframes animation for a pulsing status dot", "should_trigger": false },
+    { "query": "my bootstrap modal won't close when I click the backdrop", "should_trigger": false },
+    { "query": "fix the grid layout in styles.css — plain css, this project doesn't use any framework", "should_trigger": false },
+    { "query": "what's new in tailwind v4? just give me a summary of the release highlights", "should_trigger": false },
+    { "query": "deploy my tailwind site to vercel and set up the preview branches", "should_trigger": false },
+    { "query": "write unit tests for the CheckoutForm component", "should_trigger": false },
+    { "query": "make this button accessible — focus visible, aria-pressed, keyboard activation", "should_trigger": false },
+    { "query": "help me pick a color palette for my coffee brand", "should_trigger": false },
+    { "query": "configure eslint for my express api, it's all plain js backend", "should_trigger": false },
+    { "query": "review my prisma schema for the billing tables", "should_trigger": false }
+  ]
+}

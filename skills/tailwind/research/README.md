@@ -1,0 +1,132 @@
+> **Agents: stop here.** This directory is provenance for humans auditing the skill — it is not
+> instructions and nothing in it is part of the house style. `SKILL.md` never references it, so
+> it is never loaded; if you arrived by listing the skill folder, go back to `../SKILL.md`.
+> Recommended installs exclude this directory entirely.
+
+# Provenance for the `tailwind` skill
+
+Entry point for anyone auditing a claim in the skill. This directory ships **inside** the repo so the evidence travels with the rules, but nothing here is loaded by the skill — `SKILL.md` never references it, and only `SKILL.md`'s frontmatter is always-on. Treat it as read-only provenance: do not edit `../SKILL.md` or `../references/` from here.
+
+**Path convention:** reports cite the skill as `tailwind/SKILL.md:14` / `tailwind/references/gotchas.md`. Those paths predate this directory moving inside the repo and are relative to the *workspace*, not to here — from `research/` the same file is `../SKILL.md`. Left as written rather than rewritten across 100+ lines of prose.
+
+The skill was last compiled against **Tailwind 4.3.3**. If `npm view tailwindcss dist-tags` no longer says that, re-check version-specific rows in [CLAIMS.md](CLAIMS.md) first.
+
+## Read this first
+
+1. **[CLAIMS.md](CLAIMS.md)** — every load-bearing claim as the skill words it *now*, mapped to evidence. Start here for “why does it say `ring` is 1px?” or “where did emission-order come from?”
+2. Then the report that actually verified that row (usually `05-build-verification.md` or `02-claim-audit.md`).
+3. Pre-session notes live in [`archive/`](archive/README.md). Briefs that commissioned the work are in [`archive/briefs/`](archive/briefs/).
+
+**Do not fact-check this skill from docs prose alone.** Docs were wrong or ambiguous where the compiler was not. Reliable method:
+
+```bash
+npm i tailwindcss@4.3.3 @tailwindcss/cli@4.3.3
+npx @tailwindcss/cli -i in.css -o out.css --content in.html
+```
+
+Then read `out.css`. Emission order, whether a class generates at all, and `@supports` wrappers are observable. Several skill sentences exist because compiled output disagreed with the intuitive reading.
+
+The governing insight: an agent’s Tailwind failures are judgment failures (`p-[17px]`, `bg-white dark:bg-gray-900`, `[&>*]:`), not recall failures. A rule that teaches syntax the model already knows is dead weight.
+
+Folded here from the old root `EVALUATION-CONTEXT.md` (2026-08-18 audit index). That file is now a pointer at the repo root.
+
+---
+
+## Live reports (this session)
+
+| File | Question it answers | Status |
+| --- | --- | --- |
+| [CLAIMS.md](CLAIMS.md) | Why does the current skill say X, and what evidence is that? | **live** — the provenance table |
+| [05-build-verification.md](05-build-verification.md) | What does Tailwind **4.3.3** actually emit for the four claims docs could not settle, plus what is `shadcn/tailwind.css`? | **live** — only local compile log; appendix is the `shadcn@4.18.0` `dist/tailwind.css` dump (keep intact) |
+| [02-claim-audit.md](02-claim-audit.md) | Doc/changelog audit of 36 numbered claims plus extras | **live** for URL citations; several verdicts **superseded** by `05` and by later skill rewrites — do not copy old skill wording from here |
+| [03-container-queries.md](03-container-queries.md) | Should the house style lean into `@container`, and what is the decision rule? | **live** — folded into `tailwind/references/gotchas.md` and the SKILL.md “don’t convert `md:`” line |
+| [04-ui-collisions-salvage.md](04-ui-collisions-salvage.md) | Which UI-collisions log entries belong in this skill? | **live** for KEEP/DROP of C1–C8; C7 specificity write-up is **superseded** by the current `cleanup.md` `:where()` story, which itself has **no compile in this tree** (see CLAIMS.md) |
+| [01-skill-best-practices.md](01-skill-best-practices.md) | Deltas vs current Agent Skills / Claude Code authoring guidance | **live** for packaging; earlier full checklist is `archive/research-agent-skills-authoring.md` |
+| [06-state-specificity-compile.md](06-state-specificity-compile.md) | Does `hover:` really demote `data-active:`, and by what mechanism? | **live** — supersedes `04`'s C7; the `:where()` finding |
+| [07-missing-token-compile.md](07-missing-token-compile.md) | What actually happens when a bridged token is missing? | **live** — silent in markup, exit 1 under `@apply`; also `--radius-xl` |
+| [08-remaining-claims.md](08-remaining-claims.md) | The six claims docs could not settle, one method each | **live** — four verdicts changed the skill's wording |
+| [09-trigger-eval-run.md](09-trigger-eval-run.md) | Does the description actually fire the skill, and is a shorter one worse? | **live** — four rounds on a corrected harness; negatives 40/40, positives 0.3 in an empty dir; 199→154 chars with no change in behaviour |
+| [10-container-units-compile.md](10-container-units-compile.md) | Do `cqi`/`cqw`/`cqh` resolve, and does Tailwind warn? | **live** — evidence for the container-unit paragraph |
+| [11-crlf-frontmatter.md](11-crlf-frontmatter.md) | Why did the skill list its H1 instead of its description? | **live** — CRLF breaks frontmatter parsing; control clone + trigger test; fixed by `.gitattributes` |
+| [12-2026-08-25-revision-compile.md](12-2026-08-25-revision-compile.md) | Do the 2026-08-25 additions — affordances, the container scale, the radius and `--spacing` findings — hold on 4.3.3? | **live** — nine checks re-run on `latest`; all confirmed, and it closes the spacing-formula soft row |
+
+## Historical / rejected
+
+| File | Question it answers | Status |
+| --- | --- | --- |
+| [archive/after.md](archive/after.md) | What a 2026-08-19 authoring-spec audit changed in the skill | **historical** — process log, not evidence for Tailwind facts |
+| [archive/research-skill-structure.md](archive/research-skill-structure.md) | How comparable skills are laid out; why this one split into `references/` | **historical** — layout decisions; some size numbers predate later edits |
+| [archive/research-agent-skills-authoring.md](archive/research-agent-skills-authoring.md) | Checkable authoring-spec rules with URLs | **historical** — `01` is the delta against *this* skill |
+| [archive/research-canonical-classes.md](archive/research-canonical-classes.md) | What `canonicalizeCandidates` actually rewrites | **live** evidence behind the canonical table and editor.md ESLint options |
+| [archive/research-upgrade-codemods.md](archive/research-upgrade-codemods.md) | Why not `@tailwindcss/upgrade` as a formatter on already-v4 code | **live** evidence behind editor.md’s “never the upgrade CLI” |
+| [archive/research-cli-enforcement.md](archive/research-cli-enforcement.md) | Skills that shell out to a linter vs prose-only | **historical** — decision: no `scripts/`; use `eslint --fix` |
+| [archive/research-utility-directive.md](archive/research-utility-directive.md) | `@utility` vs `@layer utilities` | **live** for that distinction; extra `@utility` authoring depth was **deliberately not** folded in (risk: inventing a parallel utility vocabulary) |
+| [archive/research-color-rules.md](archive/research-color-rules.md) | Contrast-by-L, comma-`oklch()`, lower-C gamut advice | **live** evidence for the OKLCH house rules (with stated caveats) |
+| [archive/oklch-research-fyi.md](archive/oklch-research-fyi.md) | OKLCH literacy from oklch.fyi / CSS Color 4 | **historical** background; colour *rules* live in `research-color-rules.md` |
+| [archive/oklch-research-skill.md](archive/oklch-research-skill.md) | What to borrow from jakubkrehel/oklch-skill | **historical** — rejected palette-ramp / P3-fallback / invert-for-dark |
+| [archive/findings-cursor-copy.md](archive/findings-cursor-copy.md) | Fact-check of the 12-rules candidate skill | **historical** — produced several KEEP rules and the “never `shadow-sm`→`shadow-xs`” guard |
+| [archive/candidate-12rules.md](archive/candidate-12rules.md) | The 12-rules candidate | **stub** — text removed; Rule 9 kept because it would corrupt v4 code. Verdicts in `findings-cursor-copy.md` |
+| [archive/findings-cursor-index.md](archive/findings-cursor-index.md) | Fact-check of the hairyf docs-index candidate | **historical** — salvage was `@custom-variant` vs `@variant` and `@md:` ≠ `md:` |
+| [archive/candidate-hairyf-index.md](archive/candidate-hairyf-index.md) | The hairyf index candidate | **stub** — dump replaced by its URL; rejected (~3.8k always-on tokens pointing at a stale snapshot) |
+
+---
+
+## Bug ledger (calibration)
+
+This skill has shipped confidently-worded false claims. Treat that as the base rate. Current wording and evidence: [CLAIMS.md](CLAIMS.md) (rows marked **corrected**).
+
+| Claim that shipped | Reality | How it was caught |
+| --- | --- | --- |
+| "`@apply` loses variants in v4" | A **v1** limitation, fixed in v2 | User challenged it; release notes |
+| Skill shipped with no `.gitattributes` | Every Windows clone got CRLF, which drops the frontmatter description and costs firings | Noticed the listing showing the H1; control clone in `11` |
+| "`w-full w-32` → keep `w-32`" under auto-apply | `.w-32` emits before `.w-full`, so `w-full` wins | Compiled emission order (reconfirmed in `05`) |
+| "`hsl(var(--x))` means v3-shaped, every `/opacity` is dead" | Only **bare channels** are dead; wrapped HSL is a complete colour | Compiled both shapes |
+| "`padding: --spacing(6)`" as the zero-processing escape | Build-time function; hard-errors without a theme | CLI error in `05` |
+| chroma ceiling "≤ 0.22" | Own scaffold `--destructive` is C **0.245** | Cross-read SKILL.md vs setup.md |
+| "keep theme tokens opaque" with no exception | Scaffold ships `--border: oklch(1 0 0 / 10%)` | Same |
+| `group-[]:` → `in-[.group]:` | `group-[]:` generates nothing | Compiled |
+| "`@reference` OOMs at scale" | Fixed in 4.1.6, PR #17836 | Changelog (`02` claim 22) |
+| "`size-*` is native in v4" | Shipped in v3.4 | Release history |
+| v3 `@tailwind` trio "emits utilities, tokens just dead" | Exit 0, but only theme-independent utilities (`flex`); `p-4` / `bg-red-500` omitted entirely | `05` |
+| `hsl(var(--x))` is "shadcn's prescribed v4 shape" | Current shadcn stores complete `oklch()` | `02` |
+| Biome `"fix": "safe"` applies `useSortedClasses` | Fix is **unsafe** | `02` |
+| Canonical rule only conflicts with `enforce-shorthand-classes` | Also important-position + variable-syntax | `02` |
+| `rootFontSize` defaults to 16, so setting it restates a default | The **option's** default is `undefined`; the docs' "16px" describes the browser. Left out, the rule skips px rewrites entirely | Ran the rule with and without it |
+| `borderRadius: "2px"` → `rounded-[2px]` in the new inline-style rule | `--radius-xs` **is** `0.125rem` — exactly 2px. The rule broke the skill's own ladder in its first draft | Compiled the radius scale (`12` §6) |
+| `restrict: [{ pattern: "-\\[#" }]` written with one backslash | The plugin hands the string to `String.match` unescaped; ESLint dies with `Unterminated character class` on the first file. **Shipped twice** — once in the original draft, then again when the config was re-authored from the fixed version. Byte-check the config, don't eyeball it | Ran the config; second time caught with `od -c` |
+| A clean `eslint .` run means the tree is clean | `enforce-canonical-classes` silently stops reporting across more than one top-level directory: 26 findings per-directory vs 8 for `.` | Compared invocations on the same tree |
+| More prose about a trap makes the skill safer | The `--spacing` precondition shipped as a 19-line section plus two restatements, and was cut on review as bloat. Loaded context is a budget; a rule stated once is followed, a rule stated three times is skimmed | User review, 2026-08-26 |
+
+**Pattern:** four early bugs were self-contradictions between the skill’s own files. Cross-read SKILL.md against `references/setup.md` before checking either against the docs.
+
+## Decisions already made (don’t re-litigate without a reason)
+
+| Decision | Rationale |
+| --- | --- |
+| One skill, two modes — not a separate cleanup skill | Cleanup needs the same token system |
+| Authoring rules stay **in** SKILL.md | Pushing always-on rules to `references/` is how they silently stop applying |
+| OKLCH-only tokens; no 50–950 ramp; no invert-for-dark | Matches shadcn + Tailwind palettes; roles are re-set under `.dark` |
+| No `@supports` / P3 fallback ladder | `oklch()` is Baseline widely available since May 2023 |
+| One `script/` — `oklch.mjs` — and no more | **Reversed 2026-08-25.** The original rule (don’t wrap a tool that exists) still holds for linting, which is why there is no lint script. It did not hold for OKLCH conversion: `cleanup.md` said “use a converter” and named none, and nothing portable exists — `oklch.fyi` is a closed web app, and `culori` would add an install to every repo the skill lands in. The transform is ~40 lines of Ottosson, so the script implements it directly. Run, never read |
+| A repeated class string is a missing **component** before it is a missing class | Tailwind's own *Managing duplication* scopes the custom-CSS escape hatch to templating languages, not React/Vue/Svelte. `@utility` is for markup no component can own — the gate goes first in `affordances.md`, ahead of the pattern |
+| A custom `--spacing` gets one instruction, not a precondition | *Never override it* in `gotchas.md`, with the `eslint --fix` resize as the worked example. The cleanup pass does **not** gate its px→step rewrites on reading the entry point — that was tried and cut as too much work for the frequency. Accepted trade-off: on a project that overrides `--spacing` anyway, the auto-apply is wrong |
+| `enforce-canonical-classes` over `@tailwindcss/upgrade` | Upgrade CLI has no templates-only mode and skips `rem` so px rewrites don’t fire |
+| Duplicate-property pairs are **flagged, never auto-fixed** | Emission order decides; `cn()` / tailwind-merge changes the answer again |
+| No docs-index always-on catalogue | Evaluated `candidate-hairyf-index.md` and rejected it |
+| `cn()` implementation and `cursor-pointer` are **asked, never assumed** | Project-taste calls |
+| Container queries: decision rule, not a tutorial | `03` — viewport for page chrome, `@container` for slot-width components; do not restyle shadcn primitives |
+
+## Where to be sceptical
+
+1. Self-contradiction between skill files (highest yield).
+2. A claim marked **compiled** in the skill that has no matching dump in `05-build-verification.md`.
+3. Colour rules are simplifications: “fix contrast by moving L” is true at shadcn’s low chroma, not universally (`archive/research-color-rules.md`).
+4. Time-stamped pins: `cnfast` v0.1.0; `next-themes` 0.4.6; shadcn 4.18.0; Tailwind 4.3.3.
+5. Anything the trigger eval touches — `09` is one to two runs per variant where the spec asks for three, and its first pass was void to a stdin bug in the runner. Read the method section before citing a number.
+
+## Known open
+
+- The **no-evidence list is closed** — all ten rows settled, see the bottom of [CLAIMS.md](CLAIMS.md). One claim remains *soft* (`group`/`peer` marker classes); the `--spacing()` integer formula was closed by `12` §9.
+- **Trigger rate.** `09` measures 0.3 positives / 40-of-40 negatives in an **empty directory**, and shows wording is not the lever — seven query shapes never fire under any variant. Nobody has run the eval inside a **real Tailwind project**, where the model has files and a `CLAUDE.md` to go on; that is the next measurement. A hook on Tailwind file edits is the untested way to raise it.
+- **Settled 2026-08-25:** how much `@utility` authoring to teach. `references/affordances.md` is the answer — a gate (most repeated class strings are missing components), one pattern, and guard rails. The risk `archive/research-utility-directive.md` flagged, inventing a parallel utility vocabulary, is held off by the gate rather than by saying nothing.
+- **Anchor rot.** Rows written before 2026-08-25 cite `file:line` and drift on every edit; rows added since cite a section heading. The old ones have not been converted.
