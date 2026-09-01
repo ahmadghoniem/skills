@@ -54,7 +54,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install ahmadghoniem-skills@ahmadghoniem   # and cursor@, grok@, agy@
+claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
@@ -62,10 +62,10 @@ Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<na
 So each cached version directory is replaced by a **Windows directory junction** back into this repo:
 
 ```
-~/.claude/plugins/cache/ahmadghoniem/ahmadghoniem-skills/1.0.0  ->  <repo>
-~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0              ->  <repo>/plugins/cursor
-~/.claude/plugins/cache/ahmadghoniem/grok/0.4.0                 ->  <repo>/plugins/grok
-~/.claude/plugins/cache/ahmadghoniem/agy/0.1.0                  ->  <repo>/plugins/agy
+~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
+~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0  ->  <repo>/plugins/cursor
+~/.claude/plugins/cache/ahmadghoniem/grok/0.4.0     ->  <repo>/plugins/grok
+~/.claude/plugins/cache/ahmadghoniem/agy/0.1.0      ->  <repo>/plugins/agy
 ```
 
 Made with `New-Item -ItemType Junction -Path <cache dir> -Target <repo dir>` after deleting the copied directory. Now an edit here is live in the next session, with no update step.

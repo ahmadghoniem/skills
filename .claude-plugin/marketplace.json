@@ -7,7 +7,7 @@
   "description": "Ahmed Ghoniem's Claude Code skills and CLI delegation plugins, in one marketplace.",
   "plugins": [
     {
-      "name": "ahmadghoniem-skills",
+      "name": "kit",
       "source": "./",
       "description": "Standalone skills: align, tailwind, opencode, snapshot, recall.",
       "category": "engineering",

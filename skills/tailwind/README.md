@@ -26,11 +26,11 @@ It also asks, rather than assumes, on the setup choices it can't infer: the them
 
 ## Install
 
-Markdown only: nothing to build, no dependencies, no npm install. Ships in the `ahmadghoniem-skills` plugin:
+Markdown only: nothing to build, no dependencies, no npm install. Ships in the `kit` plugin:
 
 ```
 /plugin marketplace add ahmadghoniem/skills
-/plugin install ahmadghoniem-skills@ahmadghoniem
+/plugin install kit@ahmadghoniem
 ```
 
 Or copy this directory to `~/.claude/skills/tailwind` yourself and drop `research/`, which is provenance for auditing rather than anything the agent reads. Keep it if you want to check a claim offline; it is inert either way (see below). Per-project instead of globally: copy to `.claude/skills/tailwind` inside the project.

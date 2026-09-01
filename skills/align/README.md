@@ -10,11 +10,11 @@ Vague asks — "move the button", "that panel", "make this more compact" — get
 
 ## Install
 
-Ships in the `ahmadghoniem-skills` plugin:
+Ships in the `kit` plugin:
 
 ```
 /plugin marketplace add ahmadghoniem/skills
-/plugin install ahmadghoniem-skills@ahmadghoniem
+/plugin install kit@ahmadghoniem
 ```
 
 Or take the one file: drop [`SKILL.md`](./SKILL.md) at `~/.claude/skills/align/SKILL.md` (user-wide) or `.claude/skills/align/SKILL.md` (one project).

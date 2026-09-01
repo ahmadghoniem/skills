@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Five standalone skills ship as the `ahmadghoniem-skills` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
+Five standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -12,7 +12,7 @@ Add the marketplace once, then install what you want:
 
 ```
 /plugin marketplace add ahmadghoniem/skills
-/plugin install ahmadghoniem-skills@ahmadghoniem
+/plugin install kit@ahmadghoniem
 /reload-plugins
 ```
 
@@ -34,7 +34,7 @@ Installing still copies the plugin into `~/.claude/plugins/cache/`, so an edit i
 
 ```
 claude plugin marketplace update ahmadghoniem
-claude plugin update ahmadghoniem-skills    # and cursor, grok, agy
+claude plugin update kit    # and cursor, grok, agy
 ```
 
 ## Skills

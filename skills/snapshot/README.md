@@ -22,11 +22,11 @@ Both skills are user-invoked only: Claude can't fire them on its own, and they d
 
 ## Install
 
-`snapshot` and `recall` ship in the `ahmadghoniem-skills` plugin:
+`snapshot` and `recall` ship in the `kit` plugin:
 
 ```
 /plugin marketplace add ahmadghoniem/skills
-/plugin install ahmadghoniem-skills@ahmadghoniem
+/plugin install kit@ahmadghoniem
 ```
 
 The hook is the one piece the plugin cannot wire for you, because a `SessionStart` hook needs an absolute path in your own settings. Copy the script out and point at it:
