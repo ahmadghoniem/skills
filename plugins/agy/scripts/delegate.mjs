@@ -10,8 +10,8 @@ import {
   resolveDefaultModel,
   runHeadless,
 } from './lib/agy.mjs';
-import { collapseCommandArgv, invokedAsScript, parseArgv, parseTimeout } from './lib/args.mjs';
-import { isDirty, isRepo, porcelain, porcelainDelta, repoRoot, snapshotFiles } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
+import { isDirty, isRepo, porcelain, porcelainDelta, repoRoot } from './lib/git.mjs';
 import {
   agyLogPath,
   createJob,
@@ -24,7 +24,7 @@ import {
 } from './lib/jobs.mjs';
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { anomalies, renderResult, viewFromJob } from './lib/render.mjs';
+import { anomalies, renderResult } from './lib/render.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
@@ -37,7 +37,7 @@ const USAGE =
   'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>\n';
 
 function parseFlags(argv) {
-  const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
+  const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
   const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
   const conversation =
     typeof flags['conversation'] === 'string' && flags['conversation'].trim()
@@ -87,7 +87,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     effort,
     promptPath: absPrompt,
     gitRepo: git,
-    gitBefore: snapshotFiles(before),
+    gitBefore: before,
     sandbox: flags.sandbox || undefined,
   });
 
@@ -127,14 +127,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   });
 
   const summary = summariseEvents(result.events);
-  let gitFiles = [];
-  let gitRepo = git;
-  if (git) {
-    const after = (await porcelain(root)) ?? [];
-    gitFiles = porcelainDelta(before, after);
-  } else {
-    gitRepo = false;
-  }
+  const gitFiles = git ? porcelainDelta(before, (await porcelain(root)) ?? []) : [];
 
   // Mark failed if killed or exited non-zero without emitting a result event.
   // Native exit code and agy status can disagree on completed runs.
@@ -150,8 +143,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
     durationSeconds: summary.durationSeconds,
     conversationId: summary.conversationId,
     model: summary.model ?? flags.model ?? '',
-    gitRepo,
-    gitFiles: snapshotFiles(gitFiles),
+    gitRepo: git,
+    gitFiles,
     claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
     // Persisted so `/agy:result <id>` matches foreground output; omitted when
@@ -164,7 +157,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   // dynamically on read without writing duplicate entries.
   const finalJob = readJob(root, jobId);
   if (finalJob) {
-    recordDetected(anomalies(viewFromJob(finalJob)), {
+    recordDetected(anomalies(finalJob), {
       toolVersion: cachedToolVersion() ?? undefined,
       pluginVersion,
       model: summary.model ?? flags.model ?? undefined,
@@ -172,7 +165,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
       jobId,
       conversationId: summary.conversationId,
       toolCalls: summary.toolCalls,
-      filesChanged: gitRepo ? gitFiles.length : undefined,
+      filesChanged: git ? gitFiles.length : undefined,
       agyStatus: summary.status,
       exitCode: result.exitCode,
       writeTargets: summary.writeTargets,
@@ -181,8 +174,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
       stderrTail: result.stderr,
     });
   }
-
-  return { result, summary, gitFiles, gitRepo };
 }
 
 /**
@@ -196,7 +187,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
  */
 async function runOrMarkFailed(flags, prompt, jobId, root) {
   try {
-    return await runAndRecord(flags, prompt, jobId, root);
+    await runAndRecord(flags, prompt, jobId, root);
   } catch (err) {
     updateJob(root, jobId, {
       status: 'failed',
@@ -213,7 +204,7 @@ async function runOrMarkFailed(flags, prompt, jobId, root) {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const flags = parseFlags(collapseCommandArgv(rawArgv));
+  const flags = parseFlags(rawArgv);
 
   if (flags.help) {
     process.stdout.write(USAGE);
@@ -236,12 +227,8 @@ export async function main(rawArgv) {
   const root = await repoRoot(process.cwd());
   pruneOlderThanDays(root, 30);
 
-  if (await isRepo(root)) {
-    if (await isDirty(root)) {
-      process.stderr.write(
-        'Warning: working tree is dirty. agy will see the uncommitted changes.\n',
-      );
-    }
+  if (await isDirty(root)) {
+    process.stderr.write('Warning: working tree is dirty. agy will see the uncommitted changes.\n');
   }
 
   // Resolve default model from cache. Omitted on resume because
@@ -251,21 +238,15 @@ export async function main(rawArgv) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }
 
-  const taskText = prompt || 'continue';
-  const jobId = uniqueJobName(root, taskText);
-  const model = flags.model ?? '';
+  const jobId = uniqueJobName(root, prompt || 'continue');
+  const task = prompt || 'Continue from where you left off.';
 
-  createJob({
-    id: jobId,
-    repoPath: root,
-    prompt: prompt || 'Continue from where you left off.',
-    model,
-  });
+  createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
   process.stdout.write(`agy \`${jobId}\`\n\n`);
 
-  await runOrMarkFailed(flags, prompt || 'Continue from where you left off.', jobId, root);
+  await runOrMarkFailed(flags, task, jobId, root);
   const finished = readJob(root, jobId);
-  if (finished) process.stdout.write(renderResult(viewFromJob(finished)));
+  if (finished) process.stdout.write(renderResult(finished));
   return 0;
 }
 

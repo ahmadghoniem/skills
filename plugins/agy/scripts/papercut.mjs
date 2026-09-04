@@ -7,7 +7,7 @@
 //
 // Both record observations rather than diagnoses; `/agy:kaizen` clusters and analyzes them.
 import { readFileSync } from 'node:fs';
-import { collapseCommandArgv, invokedAsScript, parseArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { appendPapercut, pluginVersion } from './lib/papercuts.mjs';
 import { cachedToolVersion } from './lib/agy.mjs';
@@ -28,9 +28,7 @@ const USAGE = `Usage: /agy:papercut --source <narrated|orchestrator> --text "<wh
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { flags } = parseArgv(collapseCommandArgv(rawArgv), ['help'], {
-    honorDoubleDash: false,
-  });
+  const { flags } = parseCommandArgv(rawArgv, ['help']);
 
   if (flags.help) {
     process.stdout.write(USAGE);
@@ -84,7 +82,6 @@ export async function main(rawArgv) {
     repo: root,
     jobId: job ? job.id : undefined,
     conversationId: typeof job?.conversationId === 'string' ? job.conversationId : undefined,
-    toolCalls: undefined,
     filesChanged: Array.isArray(job?.gitFiles) ? job.gitFiles.length : undefined,
     text,
     fix: typeof flags.fix === 'string' && flags.fix.trim() ? flags.fix.trim() : undefined,

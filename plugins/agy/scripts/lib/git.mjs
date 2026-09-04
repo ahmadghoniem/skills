@@ -103,13 +103,3 @@ export function porcelainDelta(before, after) {
   const prior = new Set((before ?? []).map((f) => `${f.status}\0${f.path}`));
   return (after ?? []).filter((f) => !prior.has(`${f.status}\0${f.path}`));
 }
-
-/**
- * Serialise a porcelain snapshot onto a job record.
- *
- * @param {GitFile[]} files
- * @returns {Array<{status: string, path: string}>}
- */
-export function snapshotFiles(files) {
-  return (files ?? []).map((f) => ({ status: f.status, path: f.path }));
-}

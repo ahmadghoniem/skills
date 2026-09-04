@@ -3,7 +3,7 @@
 //
 // This script only reads and groups. It proposes nothing and changes nothing —
 // the reading is a conversation, in `/agy:kaizen`, with a human in it.
-import { collapseCommandArgv, invokedAsScript, parseArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { appendPapercut, pluginVersion, readPapercuts } from './lib/papercuts.mjs';
 import { papercutsPath } from './lib/paths.mjs';
 
@@ -75,9 +75,7 @@ function line(cut) {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const { flags } = parseArgv(collapseCommandArgv(rawArgv), ['all', 'help'], {
-    honorDoubleDash: false,
-  });
+  const { flags } = parseCommandArgv(rawArgv, ['all', 'help']);
   if (flags.help) {
     process.stdout.write(USAGE);
     return 0;

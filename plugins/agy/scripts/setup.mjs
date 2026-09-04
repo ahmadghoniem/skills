@@ -112,7 +112,7 @@ async function baseCheck() {
  */
 export async function main(rawArgv) {
   const { flags } = parseCommandArgv(rawArgv, ['print-models']);
-  if (flags['print-models'] || flags['printModels']) return printModels();
+  if (flags['print-models']) return printModels();
   return baseCheck();
 }
 

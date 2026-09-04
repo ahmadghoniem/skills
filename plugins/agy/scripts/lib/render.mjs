@@ -22,7 +22,7 @@ function firstLine(message) {
   return String(message ?? '').split('\n')[0].trim();
 }
 
-const WANDER_WARNING =
+export const WANDER_WARNING =
   'agy reported file changes but the working tree is unchanged — the writes\n' +
   '  probably landed in ~/.gemini/antigravity-cli/scratch instead of the repo.';
 
@@ -48,30 +48,6 @@ const WANDER_WARNING =
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
-
-/**
- * Shared projection from a job record to a ResultView for `renderResult`.
- *
- * @param {Record<string, unknown>} job
- * @returns {ResultView}
- */
-export function viewFromJob(job) {
-  return {
-    id: job.id,
-    agyStatus: job.agyStatus,
-    exitCode: job.exitCode,
-    gitRepo: job.gitRepo,
-    gitFiles: job.gitFiles,
-    error: job.error,
-    durationSeconds: job.durationSeconds,
-    conversationId: job.conversationId,
-    summary: job.summary,
-    claimedFileChanges: job.claimedFileChanges,
-    killed: job.killed,
-    stderrTail: job.stderrTail,
-    toolErrors: job.toolErrors,
-  };
-}
 
 /**
  * Every warning kind this module can emit, in the order they are printed.
@@ -238,5 +214,3 @@ export function renderResult(job) {
 
   return `${lines.join('\n')}\n`;
 }
-
-export { WANDER_WARNING };

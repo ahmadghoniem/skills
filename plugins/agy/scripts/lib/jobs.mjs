@@ -8,11 +8,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { isPidGone, killTree } from './killtree.mjs';
+import { killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, pluginHome } from './paths.mjs';
 import { jobName } from './slug.mjs';
-
-export { isPidGone };
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
@@ -143,6 +141,45 @@ export function createJob(init) {
 }
 
 /**
+ * Every per-repository job directory under the plugin home.
+ *
+ * @returns {string[]}
+ */
+function repoJobDirs() {
+  const jobsRoot = join(pluginHome(), 'jobs');
+  let entries;
+  try {
+    entries = readdirSync(jobsRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries.filter((e) => e.isDirectory()).map((e) => join(jobsRoot, e.name));
+}
+
+/**
+ * Every job record in one directory, skipping in-flight temp files.
+ *
+ * @param {string} dir
+ * @returns {JobRecord[]}
+ */
+function readJobsIn(dir) {
+  let files;
+  try {
+    files = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  /** @type {JobRecord[]} */
+  const records = [];
+  for (const f of files) {
+    if (!f.endsWith('.json') || f.includes('.tmp-')) continue;
+    const parsed = readJobFile(join(dir, f));
+    if (parsed) records.push(parsed);
+  }
+  return records;
+}
+
+/**
  * Locate a job's JSON file on disk.
  *
  * Falls back to scanning every repository's job directory under the plugin home
@@ -155,17 +192,8 @@ export function createJob(init) {
 function locateJobFile(repoPath, id) {
   const direct = jobFilePath(repoPath, id);
   if (existsSync(direct)) return direct;
-  const jobsRoot = join(pluginHome(), 'jobs');
-  if (!existsSync(jobsRoot)) return null;
-  let entries;
-  try {
-    entries = readdirSync(jobsRoot, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const candidate = join(jobsRoot, entry.name, `${id}.json`);
+  for (const dir of repoJobDirs()) {
+    const candidate = join(dir, `${id}.json`);
     if (existsSync(candidate)) return candidate;
   }
   return null;
@@ -211,33 +239,10 @@ export function readJob(repoPath, id) {
  * @returns {JobRecord[]}
  */
 function allJobs() {
-  const jobsRoot = join(pluginHome(), 'jobs');
-  if (!existsSync(jobsRoot)) return [];
-  let entries;
-  try {
-    entries = readdirSync(jobsRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  /** @type {JobRecord[]} */
-  const records = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = join(jobsRoot, entry.name);
-    let files;
-    try {
-      files = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const f of files) {
-      if (!f.endsWith('.json') || f.includes('.tmp-')) continue;
-      const parsed = readJobFile(join(dir, f));
-      if (parsed) records.push(parsed);
-    }
-  }
-  return records;
+  return repoJobDirs().flatMap(readJobsIn);
 }
+
+const NONE = Object.freeze({ job: null, error: null });
 
 /**
  * Resolve a job by full name, unique prefix, or 4-char suffix.
@@ -248,18 +253,14 @@ function allJobs() {
  */
 export function resolveJob(repoPath, query) {
   const q = String(query ?? '').trim();
-  if (!q) return { job: null, error: null };
+  if (!q) return NONE;
 
   const exact = readJob(repoPath, q);
   if (exact) return { job: exact, error: null };
 
-  const local = listJobs(repoPath);
-  const localHit = matchQuery(local, q);
+  const localHit = matchQuery(listJobs(repoPath), q);
   if (localHit.job || localHit.error) return localHit;
-
-  const globalHit = matchQuery(allJobs(), q);
-  if (globalHit.job || globalHit.error) return globalHit;
-  return { job: null, error: null };
+  return matchQuery(allJobs(), q);
 }
 
 /**
@@ -268,23 +269,16 @@ export function resolveJob(repoPath, query) {
  * @returns {{job: JobRecord|null, error: string|null}}
  */
 function matchQuery(pool, q) {
-  const prefixHits = pool.filter((j) => j.id.startsWith(q));
-  if (prefixHits.length === 1) return { job: prefixHits[0] ?? null, error: null };
-  if (prefixHits.length > 1) {
-    return {
-      job: null,
-      error: `Ambiguous job id '${q}': ${prefixHits.map((j) => j.id).join(', ')}`,
-    };
+  for (const [label, hits] of [
+    ['id', pool.filter((j) => j.id.startsWith(q))],
+    ['suffix', pool.filter((j) => j.id.endsWith(`-${q}`))],
+  ]) {
+    if (hits.length === 1) return { job: hits[0], error: null };
+    if (hits.length > 1) {
+      return { job: null, error: `Ambiguous job ${label} '${q}': ${hits.map((j) => j.id).join(', ')}` };
+    }
   }
-  const suffixHits = pool.filter((j) => j.id.endsWith(`-${q}`));
-  if (suffixHits.length === 1) return { job: suffixHits[0] ?? null, error: null };
-  if (suffixHits.length > 1) {
-    return {
-      job: null,
-      error: `Ambiguous job suffix '${q}': ${suffixHits.map((j) => j.id).join(', ')}`,
-    };
-  }
-  return { job: null, error: null };
+  return NONE;
 }
 
 /**
@@ -296,12 +290,8 @@ function matchQuery(pool, q) {
 export function updateJob(repoPath, id, patch) {
   const file = locateJobFile(repoPath, id);
   if (!file) return null;
-  let existing;
-  try {
-    existing = JSON.parse(readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
+  const existing = readJobFile(file);
+  if (!existing) return null;
   const merged = { ...existing, ...patch };
   // Guard against a completed run overwriting a terminal cancellation.
   if (existing.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
@@ -330,15 +320,7 @@ export function updateJob(repoPath, id, patch) {
  * @returns {JobRecord[]}
  */
 export function listJobs(repoPath, opts = {}) {
-  const dir = jobsDir(repoPath);
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.includes('.tmp-'));
-  /** @type {JobRecord[]} */
-  const records = [];
-  for (const f of files) {
-    const parsed = readJobFile(join(dir, f));
-    if (parsed) records.push(parsed);
-  }
+  const records = readJobsIn(jobsDir(repoPath));
   records.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   const filtered = opts.status ? records.filter((r) => r.status === opts.status) : records;
   return typeof opts.limit === 'number' ? filtered.slice(0, opts.limit) : filtered;
@@ -397,7 +379,7 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
  * @returns {JobRecord[]}
  */
 export function findRunningJobs(repoPath) {
-  return listJobs(repoPath).filter((j) => j.status === 'running');
+  return listJobs(repoPath, { status: 'running' });
 }
 
 /**
@@ -405,8 +387,7 @@ export function findRunningJobs(repoPath) {
  * @returns {JobRecord|null}
  */
 export function mostRecentFinishedJob(repoPath) {
-  const jobs = listJobs(repoPath).filter((j) => j.status !== 'running');
-  return jobs[0] ?? null;
+  return listJobs(repoPath).find((j) => j.status !== 'running') ?? null;
 }
 
 /**
@@ -414,6 +395,5 @@ export function mostRecentFinishedJob(repoPath) {
  * @returns {JobRecord|null}
  */
 export function mostRecentJob(repoPath) {
-  const jobs = listJobs(repoPath);
-  return jobs[0] ?? null;
+  return listJobs(repoPath)[0] ?? null;
 }

@@ -488,17 +488,3 @@ export async function runHeadless(opts) {
   });
   return { exitCode, events, killed, stderr };
 }
-
-/**
- * @returns {Promise<{ok: boolean, detail: string, bin?: string}>}
- */
-export async function versionInfo() {
-  try {
-    const bin = await resolveBin();
-    const res = await run(bin, ['--version'], { timeoutMs: 5_000 });
-    const text = `${res.stdout}${res.stderr}`.trim();
-    return { ok: res.exitCode === 0, detail: text || '(no output)', bin };
-  } catch (err) {
-    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
-  }
-}

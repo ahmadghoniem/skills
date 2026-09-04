@@ -20,52 +20,36 @@ const UUID_RE =
 export async function main(rawArgv) {
   const { positional, flags } = parseCommandArgv(rawArgv, ['sandbox', 'continue']);
 
-  const argv = rawArgv.slice();
-  const hasConversation = argv.some((a) => a === '--conversation' || a.startsWith('--conversation='));
-  const hasContinue = argv.some((a) => a === '--continue');
+  const explicit = rawArgv.some(
+    (a) => a === '--conversation' || a.startsWith('--conversation=') || a === '--continue',
+  );
+  if (explicit) return delegateMain(rawArgv);
 
-  if (!hasConversation && !hasContinue) {
-    const first = positional[0];
-    if (first && UUID_RE.test(first)) {
-      argv.push('--conversation', first);
-      // Pass the uuid via `--conversation` and forward remaining positional tokens.
-      return dispatchWithConversation(first, positional.slice(1), flags, argv);
+  const root = await repoRoot(process.cwd());
+  const first = positional[0];
+  if (first) {
+    if (UUID_RE.test(first)) return dispatchWithConversation(first, positional.slice(1), flags);
+    const resolved = resolveJob(root, first);
+    if (resolved.error) {
+      process.stderr.write(`${resolved.error}\n`);
+      return 2;
     }
-    if (first) {
-      const root = await repoRoot(process.cwd());
-      const resolved = resolveJob(root, first);
-      if (resolved.error) {
-        process.stderr.write(`${resolved.error}\n`);
-        return 2;
-      }
-      if (resolved.job?.conversationId) {
-        return dispatchWithConversation(
-          resolved.job.conversationId,
-          positional.slice(1),
-          flags,
-          argv,
-        );
-      }
-      // First token is not a job id; treat all tokens as follow-up.
+    if (resolved.job?.conversationId) {
+      return dispatchWithConversation(resolved.job.conversationId, positional.slice(1), flags);
     }
-    const root = await repoRoot(process.cwd());
-    const recent = mostRecentJob(root);
-    if (recent?.conversationId) {
-      argv.unshift('--conversation', recent.conversationId);
-    } else {
-      argv.unshift('--continue');
-    }
+    // First token is not a job id; treat all tokens as follow-up.
   }
-  return delegateMain(argv);
+  const recent = mostRecentJob(root);
+  const resume = recent?.conversationId ? ['--conversation', recent.conversationId] : ['--continue'];
+  return delegateMain([...resume, ...rawArgv]);
 }
 
 /**
  * @param {string} conversationId
  * @param {string[]} rest
  * @param {Record<string, unknown>} flags
- * @param {string[]} originalArgv
  */
-async function dispatchWithConversation(conversationId, rest, flags, originalArgv) {
+async function dispatchWithConversation(conversationId, rest, flags) {
   /** @type {string[]} */
   const rebuilt = ['--conversation', conversationId];
   if (flags.sandbox) rebuilt.push('--sandbox');
@@ -76,7 +60,6 @@ async function dispatchWithConversation(conversationId, rest, flags, originalArg
     rebuilt.push('--no-git-check');
   }
   rebuilt.push(...rest);
-  void originalArgv;
   return delegateMain(rebuilt);
 }
 

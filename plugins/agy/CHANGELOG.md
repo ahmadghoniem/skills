@@ -17,6 +17,12 @@
   pre-judged on a mechanical-vs-reasoning axis that misses per-site judgement, and it displaced
   the delegating model's own read of the task. The instruction that remains is the mechanism:
   omit `--model`, pass `--effort` per task.
+- **Dead and pass-through code.** `versionInfo`, `collapseArguments`, `id()`, the `isPidGone`
+  re-export from `jobs.mjs`, and the identity projections `viewFromJob` and `snapshotFiles`
+  (the job record already has the shape the renderer reads). The three copies of the
+  "scan the job directories" loop in `jobs.mjs` are now one; the scripts share
+  `parseCommandArgv` instead of each spelling out `parseArgv(collapseCommandArgv(...))`.
+  Behaviour is unchanged.
 
 ### Added
 

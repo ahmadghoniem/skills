@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  collapseArguments,
   collapseCommandArgv,
   parseArgv,
   parseCommandArgv,
@@ -203,21 +202,6 @@ describe('acceptance: --arg-string round-trip', () => {
     expect(r.flags.sandbox).toBe(true);
     expect(r.flags.model).toBe('gemini-3.1-pro-high');
     expect(r.positional.join(' ')).toBe('do the thing');
-  });
-});
-
-describe('collapseArguments', () => {
-  it('returns empty for empty input', () => {
-    expect(collapseArguments('')).toEqual([]);
-    expect(collapseArguments(undefined)).toEqual([]);
-  });
-
-  it('tokenises with quoting', () => {
-    expect(collapseArguments('--model gemini-3.1-pro-high "hello world"')).toEqual([
-      '--model',
-      'gemini-3.1-pro-high',
-      'hello world',
-    ]);
   });
 });
 

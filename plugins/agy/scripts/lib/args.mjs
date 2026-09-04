@@ -66,15 +66,6 @@ export function splitArgString(arg) {
 }
 
 /**
- * @param {string|undefined} raw
- * @returns {string[]}
- */
-export function collapseArguments(raw) {
-  if (!raw || raw.trim().length === 0) return [];
-  return splitArgString(raw.trim());
-}
-
-/**
  * @typedef {Object} ParsedArgs
  * @property {string[]} positional
  * @property {Record<string, unknown>} flags

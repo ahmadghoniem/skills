@@ -5,7 +5,6 @@ import {
   cancelJob,
   createJob,
   findRunningJobs,
-  isPidGone,
   jobDonePath,
   jobFilePath,
   listJobs,
@@ -16,6 +15,7 @@ import {
   uniqueJobName,
   updateJob,
 } from '../scripts/lib/jobs.mjs';
+import { isPidGone } from '../scripts/lib/killtree.mjs';
 import { jobsDir, repoHash } from '../scripts/lib/paths.mjs';
 import { makeTempHome } from './helpers.mjs';
 

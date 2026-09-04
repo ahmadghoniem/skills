@@ -2,11 +2,7 @@
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
-import { renderResult, viewFromJob } from './lib/render.mjs';
-
-function render(job) {
-  return renderResult(viewFromJob(job));
-}
+import { renderResult } from './lib/render.mjs';
 
 function renderList(jobs) {
   if (jobs.length === 0) return 'No agy jobs tracked for this repository yet.\n';
@@ -47,7 +43,7 @@ export async function main(rawArgv) {
       );
       return 0;
     }
-    process.stdout.write(render(resolved.job));
+    process.stdout.write(renderResult(resolved.job));
     return 0;
   }
   const job = mostRecentFinishedJob(root);
@@ -55,7 +51,7 @@ export async function main(rawArgv) {
     process.stderr.write('No finished agy jobs tracked for this repository yet.\n');
     return 1;
   }
-  process.stdout.write(render(job));
+  process.stdout.write(renderResult(job));
   return 0;
 }
 

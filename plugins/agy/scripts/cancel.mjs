@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
-import { cancelJob, findRunningJobs, isPidGone, readJob, resolveJob } from './lib/jobs.mjs';
+import { cancelJob, findRunningJobs, resolveJob } from './lib/jobs.mjs';
+import { isPidGone } from './lib/killtree.mjs';
 
 /**
  * Check liveness of the agy CLI and wrapper PIDs before killing the tree.
@@ -53,22 +54,18 @@ export async function main(rawArgv) {
     }
     if (running.length > 1) {
       process.stderr.write(
-        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/agy:cancel ${running[0]?.id}\`.\n`,
+        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/agy:cancel ${running[0].id}\`.\n`,
       );
       return 2;
     }
-    id = running[0]?.id;
-  }
-  if (!id) {
-    process.stderr.write('No job id resolved.\n');
-    return 2;
+    id = running[0].id;
   }
   const resolved = resolveJob(root, id);
   if (resolved.error) {
     process.stderr.write(`${resolved.error}\n`);
     return 2;
   }
-  const before = resolved.job ?? readJob(root, id);
+  const before = resolved.job;
   if (!before) {
     process.stderr.write(`No job matching '${id}' for this repository.\n`);
     return 1;
