@@ -20,8 +20,13 @@
     "antigravity",
     "agent-delegation"
   ],
-  "engines": { "node": ">=18.18" },
-  "os": ["win32"],
+  "engines": {
+    "node": ">=18.18",
+    "agy": ">=1.1.24"
+  },
+  "os": [
+    "win32"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"

@@ -242,8 +242,6 @@ function allJobs() {
   return repoJobDirs().flatMap(readJobsIn);
 }
 
-const NONE = Object.freeze({ job: null, error: null });
-
 /**
  * Resolve a job by full name, unique prefix, or 4-char suffix.
  *
@@ -253,7 +251,7 @@ const NONE = Object.freeze({ job: null, error: null });
  */
 export function resolveJob(repoPath, query) {
   const q = String(query ?? '').trim();
-  if (!q) return NONE;
+  if (!q) return { job: null, error: null };
 
   const exact = readJob(repoPath, q);
   if (exact) return { job: exact, error: null };
@@ -278,7 +276,7 @@ function matchQuery(pool, q) {
       return { job: null, error: `Ambiguous job ${label} '${q}': ${hits.map((j) => j.id).join(', ')}` };
     }
   }
-  return NONE;
+  return { job: null, error: null };
 }
 
 /**
