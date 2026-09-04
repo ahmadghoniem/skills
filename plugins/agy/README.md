@@ -61,7 +61,7 @@ Prints agy's report. `--list` shows the last 10 tracked jobs (`--all` for every 
 
 On a clean run, the output is agy's report alone. Status tables, file lists, durations, and token counts are omitted because repository state is directly inspectable via `git status` and `git diff`.
 
-The plugin surfaces warnings when an execution encounters errors:
+The warnings below fire on runs agy reports as finished. Each is its own line, and any can fire alone:
 
 | Line | Means |
 | --- | --- |
@@ -99,8 +99,8 @@ because `pruneOlderThanDays` deletes job directory files older than 30 days
 ## Design notes
 
 - **`--add-dir <absolute repo path>` is always passed on fresh dispatch and is the only workspace flag sent.** Without it, agy ignores the working directory and defaults to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS`. `--new-project` also binds the working directory but creates a throwaway project on every run. `--project` binds neither absolute paths nor project names, falling back to scratch.
-- **The brief is written to a sidecar file.** Stored at `<job>.prompt.md`, then dispatched via `--print=Read the file at <abs> in full and carry out that task exactly.` Attaching the argument directly to `--print=` prevents argument consumption errors.
-- **Permission bypass is always on.** Shell commands otherwise terminate interactive runs without prompts. Planning remains the orchestrator's responsibility.
+- **The brief is written to a sidecar file.** Stored at `~/.cad/<repo-hash>/<job>.prompt.md` — outside the directory passed to `--add-dir`, which agy reads anyway — then dispatched via `--print=Read the file at <abs> in full and carry out that task exactly.` Attaching the brief directly to `--print=` stops a bare `-p` swallowing the next flag.
+- **Permission bypass is always on.** Without it the first shell command kills the run outright, so an opt-out would break runs rather than make them safer. Planning remains the orchestrator's responsibility.
 - **Dynamic model discovery without hardcoded lists.** `agy models` is parsed at runtime. The default selects the newest flash model matching the requested effort. Because agy encodes effort directly in the model id (e.g. `gemini-3.7-flash-low`), `--effort` selects the appropriate model id. The display label in `~/.gemini/antigravity-cli/settings.json` serves as fallback when no flash model is listed.
 - **Non-blocking execution without detached workers.** The job runs in the foreground of its process under a backgrounded Bash call, allowing the harness to report exit events directly without polling.
 - **agy.exe is a native Go binary.** Spawned directly, no shell, stdin ignored.

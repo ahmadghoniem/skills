@@ -84,6 +84,20 @@ is different enough that this plugin is written fresh against captured runs, not
 
 ### Notes on the implementation
 
-Derived from six captured runs of agy 1.1.19 and published docs: `--add-dir` is required to prevent agy from defaulting to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS` (`--project` binds cwd in neither form); `--print=<brief>` must be attached and positioned last; `--model` slugs encoding effort cannot be combined with `--effort`; `status` and exit codes can disagree.
+Derived from six captured runs of agy 1.1.19 and the published docs; where the two disagree the
+captured behaviour wins. `--add-dir` is required to stop agy defaulting to
+`~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS` (`--project` binds the cwd
+in neither form); `--print=<brief>` must be attached and positioned last; `--model` slugs
+encoding effort cannot be combined with `--effort`; `status` and the exit code disagree in both
+directions.
 
-Captured run `permission-denied.ndjson` ran under `permission_mode: request-review` and failed with `user denied permission to run command`, showing that hard denial terminates the run with `status: ERROR` and an empty response. Because soft-denial would leave requested work unperformed, `--dangerously-skip-permissions` remains unconditional.
+The docs say a tool needing an approval it **cannot obtain** is soft-denied: the run continues,
+exits `0`, and writes a notice to stderr. That is untested here. The one captured run,
+`permission-denied.ndjson`, ran under `permission_mode: request-review` and failed with `user
+denied permission to run command` — an approval requested and refused, which is a different
+state. It shows hard denial ends the run with `status: ERROR` and an empty response; it says
+nothing about soft denial, and NDJSON carries no exit code, so the `exits 0` half was never
+tested.
+
+`--dangerously-skip-permissions` stays unconditional either way: soft-denied means the work
+silently does not happen.
