@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { repoRoot } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
+import { repoRoot } from './lib/util/git.mjs';
 import { cancelJob, findRunningJobs, resolveJob } from './lib/jobs.mjs';
-import { isPidGone } from './lib/killtree.mjs';
+import { isPidGone } from './lib/util/killtree.mjs';
 
 /**
  * Check liveness of the agy CLI and wrapper PIDs before killing the tree.

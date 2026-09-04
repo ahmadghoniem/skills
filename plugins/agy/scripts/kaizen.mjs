@@ -3,7 +3,7 @@
 //
 // This script only reads and groups. It proposes nothing and changes nothing —
 // the reading is a conversation, in `/agy:kaizen`, with a human in it.
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
 import { appendPapercut, pluginVersion, readPapercuts } from './lib/papercuts.mjs';
 import { papercutsPath } from './lib/paths.mjs';
 

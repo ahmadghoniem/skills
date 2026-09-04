@@ -10,8 +10,8 @@ import {
   resolveDefaultModel,
   runHeadless,
 } from './lib/agy.mjs';
-import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
-import { porcelain, porcelainDelta, repoRoot } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/util/args.mjs';
+import { porcelain, porcelainDelta, repoRoot } from './lib/util/git.mjs';
 import {
   agyLogPath,
   createJob,

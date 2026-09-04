@@ -5,7 +5,7 @@ import {
   parseCommandArgv,
   parseTimeout,
   splitArgString,
-} from '../scripts/lib/args.mjs';
+} from '../scripts/lib/util/args.mjs';
 
 describe('splitArgString', () => {
   it('splits on whitespace', () => {

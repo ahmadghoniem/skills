@@ -8,9 +8,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { killTree } from './killtree.mjs';
+import { killTree } from './util/killtree.mjs';
 import { ensureDir, jobsDir, pluginHome } from './paths.mjs';
-import { jobName } from './slug.mjs';
+import { jobName } from './util/slug.mjs';
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
