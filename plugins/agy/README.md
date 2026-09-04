@@ -49,7 +49,7 @@ The plugin automatically selects the newest `flash` model from `agy models` at t
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
 | `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. |
-| `--continue` | Resume the most recent conversation for this directory. |
+| `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 
 Job names look like `add-retry-to-fetchuser-a7f3` and resolve by full name, unique prefix, or the 4-char suffix alone.
 
@@ -61,7 +61,7 @@ Prints agy's report. `--list` shows the last 10 tracked jobs (`--all` for every 
 
 On a clean run, the output is agy's report alone. Status tables, file lists, durations, and token counts are omitted because repository state is directly inspectable via `git status` and `git diff`.
 
-The warnings below fire on runs agy reports as finished. Each is its own line, and any can fire alone:
+The warnings below fire on runs agy reports as finished:
 
 | Line | Means |
 | --- | --- |

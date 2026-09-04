@@ -8,8 +8,11 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Resume a specific conversation or the most recent one for this working
- * directory by delegating with `--conversation <uuid>` or `--continue`.
+ * Resume a conversation by delegating with `--conversation <uuid>` or
+ * `--continue`. A job id or uuid resolves to that conversation; otherwise this
+ * repo's most recent tracked job supplies one. `--continue` is the last resort
+ * and resumes agy's most recent conversation machine-wide, which may belong to
+ * another repository.
  *
  * @param {string[]} rawArgv
  * @returns {Promise<number>}

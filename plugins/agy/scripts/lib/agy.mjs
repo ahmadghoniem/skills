@@ -16,7 +16,7 @@ const SIDECAR_INSTRUCTION =
 
 /**
  * True when the model id already encodes an effort level. Sending `--effort`
- * alongside such an id fails immediately (F4).
+ * alongside such an id fails immediately.
  *
  * @param {string|undefined} modelId
  * @returns {boolean}
@@ -63,8 +63,9 @@ export function sidecarPrint(absPromptPath) {
  * @property {string=} model
  * @property {string=} effort
  * @property {boolean=} sandbox
- * @property {string=} conversationId      Resume a specific conversation (F7).
- * @property {boolean=} continueLatest     Resume most recent for the cwd (F7).
+ * @property {string=} conversationId      Resume a specific conversation.
+ * @property {boolean=} continueLatest     Resume agy's most recent conversation,
+ *                                         which is machine-wide, not per-repo.
  */
 
 /**
@@ -224,7 +225,7 @@ export function resetBinCache() {
 
 /**
  * Resolve the agy binary path. Precedence: `AGY_BIN`, PATH, then the default
- * installer location under `%LOCALAPPDATA%\agy\bin\agy.exe` (F9).
+ * installer location under `%LOCALAPPDATA%\agy\bin\agy.exe`.
  *
  * @returns {Promise<string>}
  */

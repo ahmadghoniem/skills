@@ -6,7 +6,7 @@ allowed-tools: Bash(node:*)
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/resume.mjs" -- --arg-string "$ARGUMENTS"`
 
-Treat the output identically to `/agy:delegate`. A job id looks up that job's `conversation_id`; a UUID passes through as `--conversation`; with neither, the command continues the most recent conversation for this directory.
+Treat the output identically to `/agy:delegate`. A job id looks up that job's `conversation_id`; a UUID passes through as `--conversation`; with neither, the command resumes this repository's most recent tracked job. Only when the repository has no tracked conversation does it fall back to `--continue`, which resumes agy's most recent conversation machine-wide.
 
 Run with the Bash tool's `run_in_background: true`.
 

@@ -87,7 +87,7 @@ describe('summariseEvents — captured runs', () => {
     expect(s.response).toContain('Created');
   });
 
-  it('permission denied: ERROR, empty response, tool state ERROR (F3)', () => {
+  it('permission denied: ERROR, empty response, tool state ERROR', () => {
     const s = summariseEvents(load(PERMISSION_DENIED));
     expect(s.status).toBe('ERROR');
     expect(s.response).toBe('');
@@ -110,7 +110,7 @@ describe('summariseEvents — captured runs', () => {
     );
   });
 
-  it('scratch wander in a git repo: tools target antigravity-cli/scratch (F1)', () => {
+  it('scratch wander in a git repo: tools target antigravity-cli/scratch', () => {
     const s = summariseEvents(load(SCRATCH_WANDER_IN_GIT));
     expect(s.scratchPaths.length).toBeGreaterThan(0);
     expect(s.scratchPaths.every((p) => /antigravity-cli[\\/]+scratch/i.test(p))).toBe(true);
@@ -137,7 +137,7 @@ describe('summariseEvents — captured runs', () => {
     expect(cmd?.step_update?.tool_info?.exit_code).toBeUndefined();
   });
 
-  it('json format: status ERROR plus a real success in the response (F5)', () => {
+  it('json format: status ERROR plus a real success in the response', () => {
     const s = summariseEvents(load(ERROR_BUT_SUCCEEDED));
     expect(s.status).toBe('ERROR');
     expect(s.conversationId).toBe('b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4');

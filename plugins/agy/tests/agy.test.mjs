@@ -66,7 +66,7 @@ describe('buildArgs', () => {
     expect(args.some((a) => a === '--effort' || a.startsWith('--effort='))).toBe(false);
   });
 
-  it('never sends --effort when the model id encodes it (F4)', () => {
+  it('never sends --effort when the model id encodes it', () => {
     const args = buildArgs({
       ...fresh,
       model: 'gemini-3.7-flash-low',

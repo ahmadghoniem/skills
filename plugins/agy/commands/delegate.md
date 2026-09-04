@@ -64,7 +64,7 @@ has already tokenised argv, drop `--arg-string` and pass argv after a leading
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
 | `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
-| `--continue` | Resume the most recent conversation for this directory. |
+| `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 
 ## Reading the output
 

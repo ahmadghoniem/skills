@@ -57,7 +57,7 @@ One `/agy:delegate` call per coherent slice — the bigger the slice, the harder
 #### Fresh or continue
 
 - **Fresh** (default): a new conversation. Use it when the new task has nothing to do with the previous one, or the previous run went off the rails.
-- **`/agy:resume`**: continue the most recent agy conversation for this directory, or a named job / conversation id. Use it when **iterating on the same task** — "also cover the 429 path", "rename the helper you just added". Send only the delta, never the whole brief again.
+- **`/agy:resume`**: continue this repository's most recent agy conversation, or a named job / conversation id. Use it when **iterating on the same task** — "also cover the 429 path", "rename the helper you just added". Send only the delta, never the whole brief again.
 
 ### 2. Pick the reasoning effort
 
