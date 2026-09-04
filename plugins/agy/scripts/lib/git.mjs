@@ -33,9 +33,7 @@ export async function repoRoot(cwd = process.cwd()) {
 
 /**
  * Parse `git status --porcelain` into a list of touched files.
- *
- * Untracked (`??`) is reported as `A` so the result block reads like a
- * short-status add rather than a git-internal code.
+ * Untracked files (`??`) are mapped to `A`.
  *
  * @param {string} text
  * @returns {GitFile[]}

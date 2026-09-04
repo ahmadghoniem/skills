@@ -8,20 +8,18 @@ allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 
 ## What agy is for
 
-agy is the cheap, fast, high-volume worker: work that is well-specified but
-tedious, and work that would burn context you would rather spend on judgement.
-
-The point of delegating is that the tokens land in agy's context, not yours. So
-send the task and let it read; do not pre-read the whole tree and paste it in.
+Use agy for well-specified, high-volume work that would otherwise consume
+context better spent on judgement. Tokens land in agy's context, so send the
+task and let agy inspect files rather than pre-reading the tree and pasting it in.
 
 ## The job name
 
 This command prints one (`add-retry-to-fetchuser-a7f3`). `/agy:result` takes it.
 
-## Effort: your call. Model: not your call.
+## Model and effort selection
 
-Send no `--model`. The plugin resolves the newest **flash** id from the live
-`agy models` list at whatever `--effort` you pass, because agy encodes effort in
+Omit `--model`. The plugin resolves the newest **flash** id from the live
+`agy models` list at the requested `--effort`, because agy encodes effort in
 the id itself.
 
 Set `--effort` per task.
@@ -45,10 +43,8 @@ did not already pass `--effort`, ask a second question for effort. If it is
 
 ## Run it — always backgrounded
 
-Invoke with the **Bash tool's `run_in_background: true`**. The command itself runs
-agy in the foreground of its own process, so the harness sees the exit and tells
-you when it lands. The user keeps chatting with you the whole time, and you never
-poll for completion.
+Invoke with the **Bash tool's `run_in_background: true`**. The command runs
+agy in its own process; the harness reports the exit when finished without polling.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --arg-string "$ARGUMENTS"

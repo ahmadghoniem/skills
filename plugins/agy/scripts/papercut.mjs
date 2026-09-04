@@ -1,14 +1,11 @@
 #!/usr/bin/env node
-// Write one papercut by hand — the two rows only a reader can supply.
-// `delegate.mjs` writes the `detected` rows on its own.
+// Records manually authored papercuts (`narrated` or `orchestrator`).
+// `delegate.mjs` logs `detected` anomalies automatically.
 //
-//   narrated      what agy said blocked it, quoted by the runner agent from
-//                 agy's closing report.
-//   orchestrator  a failure the brief caused, recorded by whoever wrote it:
-//                 expected, got, and the failing clause.
+//   narrated      Quotes agy's closing report on blocking issues.
+//   orchestrator  Records brief defects: expected outcome, actual outcome, failing clause.
 //
-// Both record what happened and never why. `/agy:kaizen` does the reading,
-// later, with fresh context.
+// Both record observations rather than diagnoses; `/agy:kaizen` clusters and analyzes them.
 import { readFileSync } from 'node:fs';
 import { collapseCommandArgv, invokedAsScript, parseArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
@@ -54,8 +51,7 @@ export async function main(rawArgv) {
     return 2;
   }
 
-  // A job id fills in the run's identity — model, conversation, effort — so the
-  // caller does not have to retype facts the plugin already recorded.
+  // Populate run identity (model, conversation, changed files) from the existing job record.
   const root = await repoRoot(process.cwd());
   const jobId = typeof flags.job === 'string' ? flags.job.trim() : '';
   const job = jobId ? readJob(root, jobId) : null;

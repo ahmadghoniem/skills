@@ -70,7 +70,7 @@ and offer real ids via **AskUserQuestion**. Never hardcode one.
 
 ### 3. Invoke `/agy:delegate` via a single `Bash` call
 
-The plugin writes the brief to a sidecar file itself — pass the brief as the task argument, never on a made-up file flag.
+Pass the brief as the task argument; the plugin writes it to a sidecar file.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- "<brief>"
@@ -78,19 +78,13 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- "<brief>"
 
 Flags go **before** the brief, and the brief is one quoted argument. For a long or quote-heavy brief, pass `--arg-string` with the flags and the brief together.
 
-Set the Bash tool's `run_in_background: true`. agy then runs in the foreground of
-its own process, the harness reports the exit, and nothing polls.
+Set the Bash tool's `run_in_background: true`. agy runs in its own process and the harness reports the exit.
 
 ### 4. Return agy's output verbatim
 
-Do not paraphrase the report and do not add a status table, file list, or timing
-of your own. On a clean run agy's report is the entire output, and that is
-deliberate.
+Do not paraphrase the report or add status tables, file lists, or timing. On a clean run, agy's report is the entire output.
 
-Keep every line starting `⚠`, and keep them separate. The `agy:output-contract`
-skill is preloaded into your context and is the authority on what each one means
-and why none of them may be folded together — follow it rather than paraphrasing
-from memory.
+Keep every line starting `⚠` separate. Follow the preloaded `agy:output-contract` skill on what each means rather than paraphrasing from memory.
 
 ### 5. Log friction agy named itself
 
@@ -104,10 +98,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- \
   --text "<what happened>" --quote "<agy's own words>"
 ```
 
-Quote agy rather than summarising it, and do not add your theory of why. The
-warnings the plugin can see for itself are already logged; this is only for what
-agy said out loud and nothing else can observe. Skip it on a clean run — an
-empty log is the normal state.
+Quote agy rather than summarising it, and do not add a diagnosis. The warnings the plugin detects itself are already logged; this records what agy stated in its closing report. Skip this on a clean run.
 
 ## What you must NOT do
 

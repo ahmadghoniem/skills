@@ -1,6 +1,4 @@
-// Zero-dep replacement for the subset of `yargs-parser` we use.
-//
-// Handles:
+// Argument parser:
 //   - `--foo`                  → flags.foo = true      (if declared boolean)
 //   - `--foo value`            → flags.foo = 'value'   (unless declared boolean)
 //   - `--foo=value`            → flags.foo = 'value'
@@ -9,8 +7,7 @@
 //   - both kebab + camelCase   → flags['git-check'] AND flags.gitCheck populated
 //   - positionals              → everything else, in order
 //
-// `--` is treated as an explicit delimiter: tokens after it are ALL positional
-// (no further flag parsing), matching the conventional Unix meaning.
+// `--` delimits flags from positional tokens.
 
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -36,8 +33,7 @@ export function splitArgString(arg) {
       escape = false;
       continue;
     }
-    // Inside single quotes everything is literal: a backslash is NOT an
-    // escape character there.
+    // Backslashes inside single quotes are literal characters.
     if (ch === '\\' && quote !== "'") {
       escape = true;
       continue;
@@ -63,7 +59,7 @@ export function splitArgString(arg) {
     }
     cur += ch;
   }
-  // A trailing lone backslash is a literal backslash, not a dropped escape.
+  // Trailing lone backslashes are preserved literally.
   if (escape) cur += '\\';
   if (cur.length > 0) out.push(cur);
   return out;
@@ -92,8 +88,7 @@ function autoCast(value) {
   if (value === '') return value;
   if (/^-?\d+(\.\d+)?$/.test(value)) {
     const n = Number(value);
-    // Only cast when the number round-trips exactly — otherwise a large id
-    // like 12345678901234567890 would lose precision and stop matching.
+    // Cast only when the number round-trips without loss of precision.
     if (Number.isFinite(n) && String(n) === value) return n;
   }
   return value;
@@ -105,10 +100,8 @@ function autoCast(value) {
  * @param {string[]} argv
  * @param {string[]} [booleans]   Flag names that NEVER consume the next token.
  * @param {{honorDoubleDash?: boolean}} [opts]
- *   `honorDoubleDash: false` treats `--` as ordinary text instead of an
- *   end-of-flags delimiter. Slash commands use this: their one real delimiter
- *   was already removed by `collapseCommandArgv`, so any `--` still present is
- *   part of the user's task text and must not stop flag parsing.
+ *   `honorDoubleDash: false` treats `--` as positional text rather than an
+ *   end-of-flags delimiter, preserving double dashes in task prompts.
  * @returns {ParsedArgs}
  */
 export function parseArgv(argv, booleans = [], opts = {}) {
@@ -157,8 +150,7 @@ export function parseArgv(argv, booleans = [], opts = {}) {
       inlineValue = rest.slice(eq + 1);
       rest = rest.slice(0, eq);
     }
-    // --no-foo → negation, but only the bare form: `--no-foo=value` keeps its
-    // explicit value rather than being silently discarded.
+    // Bare `--no-foo` negates the flag; `--no-foo=value` preserves its value.
     let negated = false;
     let name = rest;
     if (name.startsWith('no-') && inlineValue === undefined) {
@@ -179,8 +171,7 @@ export function parseArgv(argv, booleans = [], opts = {}) {
       setFlag(name, true);
       continue;
     }
-    // Consume next token as value unless it looks like another flag or there
-    // is no next token.
+    // Consume the next token as value unless missing or another flag.
     const next = argv[i + 1];
     if (next === undefined || next.startsWith('--')) {
       setFlag(name, true);
@@ -195,12 +186,9 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 /**
  * Apply the shared slash-command argv prologue.
  *
- * A leading `--` delimiter is stripped (tokens before it are kept verbatim).
- * `--arg-string <blob>` marks `<blob>` as one unsplit string that never passed
- * through a shell — Claude Code's `"$ARGUMENTS"` arrives this way — and is
- * replaced in place by `splitArgString(blob)`. With the marker absent, argv
- * is returned untouched: inferring "needs a split" from token count flattened
- * newlines and collapsed whitespace on a bare one-token prompt.
+ * Strips the leading `--` delimiter and expands `--arg-string <blob>` via
+ * `splitArgString(blob)` to handle unsplit slash-command arguments. Without
+ * `--arg-string`, argv is returned unchanged.
  *
  * @param {string[]} rawArgv
  * @returns {string[]}
@@ -230,10 +218,8 @@ export function parseCommandArgv(rawArgv, booleans = []) {
 }
 
 /**
- * Normalise a `--timeout` flag value (which may be a number, a numeric string,
- * or junk) into a positive integer number of seconds, falling back to
- * `fallback` for anything non-finite or ≤ 0. Prevents `--timeout abc` → `NaN`
- * silently disabling the watchdog (`NaN > 0` is false, so no timer arms).
+ * Normalise a `--timeout` flag value to a positive number of seconds, falling
+ * back to `fallback` when non-finite or <= 0.
  *
  * @param {unknown} raw
  * @param {number} [fallback]
@@ -245,8 +231,8 @@ export function parseTimeout(raw, fallback = 900) {
 }
 
 /**
- * `process.argv[1] === fileURLToPath(import.meta.url)` breaks under symlinks,
- * Windows junctions, and 8.3 short names. Compare real paths instead.
+ * Determine whether this module is the process entrypoint, resolving symlinks,
+ * junctions, and short paths via realpath.
  *
  * @param {string} moduleUrl    Pass `import.meta.url` from the calling script.
  * @returns {boolean}

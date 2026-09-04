@@ -4,8 +4,7 @@ import { repoRoot } from './lib/git.mjs';
 import { cancelJob, findRunningJobs, isPidGone, readJob, resolveJob } from './lib/jobs.mjs';
 
 /**
- * Snapshot liveness of the agy CLI pid and the wrapper pid *before* we
- * tree-kill, so the user-facing line can say which ones were already gone.
+ * Check liveness of the agy CLI and wrapper PIDs before killing the tree.
  *
  * @param {import('./lib/jobs.mjs').JobRecord} job
  * @returns {string[]}

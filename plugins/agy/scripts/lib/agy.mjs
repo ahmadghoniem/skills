@@ -41,8 +41,7 @@ export function formatPrintTimeout(seconds) {
 }
 
 /**
- * The `--print=` payload. The brief itself never goes on argv; agy is told
- * to read the sidecar file (which it can, even outside `--add-dir` — F8).
+ * Generates the `--print=` payload directing agy to read the sidecar file.
  *
  * @param {string} absPromptPath
  * @returns {string}
@@ -67,22 +66,13 @@ export function sidecarPrint(absPromptPath) {
 /**
  * Build agy's argv.
  *
- * Fresh dispatch always includes `--add-dir` (absolute). That single flag is
- * what roots the session at the target directory: without it agy falls back to
- * the persistent default CLI project, whose root is
- * `~/.gemini/antigravity-cli/scratch` — it then writes there, leaves the repo
- * untouched, and still reports `status: SUCCESS`. `--new-project` binds the cwd
- * too, but it does the same job while creating a throwaway project on every
- * dispatch, so only `--add-dir` is sent.
+ * Fresh dispatch requires `--add-dir` (absolute) to root the session at the target
+ * directory instead of defaulting to `~/.gemini/antigravity-cli/scratch` with
+ * `status: SUCCESS`. (`--new-project` also binds the directory but creates throwaway
+ * projects; `--project` binds neither paths nor IDs).
  *
- * `--add-dir` and `--new-project` are the only flags that bind the cwd.
- * `--project` binds nothing and reports no error, given either an absolute path
- * or a real conversation id. `--continue` resumes the globally most recent
- * conversation rather than one matched to the directory, so it lands in scratch
- * unless the run it resumes was itself bound.
- *
- * Resume omits `--add-dir` and adds `--conversation <uuid>` or `--continue`.
- * `--print=<text>` is last.
+ * Resume omits `--add-dir` and specifies `--conversation <uuid>` or `--continue`.
+ * `--print=<text>` is attached last.
  *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
@@ -165,19 +155,12 @@ function versionOf(id) {
 }
 
 /**
- * The model to use when the caller did not pin one.
+ * Picks the newest flash model matching the requested effort from `models`.
+ * Because agy encodes effort in the model ID (e.g. `gemini-3.7-flash-low`),
+ * selecting the ID applies the effort level. When the newest version lacks the
+ * requested effort, its highest-effort ID is selected.
  *
- * Flash is the point of this plugin — cheap, fast, high volume — so the pick is
- * the newest flash id agy currently offers, resolved from the live `agy models`
- * list rather than hardcoded (the ids change).
- *
- * Effort is the caller's, not this function's. agy encodes it in the id
- * (`gemini-3.7-flash-low`), so choosing the model and choosing the effort are
- * the same act; picking `-high` here would make `--effort` unreachable on every
- * run that does not also pin `--model`. When the newest version does not offer
- * the requested level, its highest-ranked id stands in.
- *
- * Falls back to the account default, then the first model, then nothing.
+ * Falls back to the account default label, then the first model, or null if empty.
  *
  * @param {ModelInfo[]} models
  * @param {string|null=} accountDefaultLabel
@@ -235,9 +218,8 @@ export function resetBinCache() {
 }
 
 /**
- * Resolve the agy binary. `AGY_BIN` wins; then PATH; then the installer
- * location on the persistent user PATH, which a session started before
- * install will not have picked up (F9).
+ * Resolve the agy binary path. Precedence: `AGY_BIN`, PATH, then the default
+ * installer location under `%LOCALAPPDATA%\agy\bin\agy.exe` (F9).
  *
  * @returns {Promise<string>}
  */
@@ -266,11 +248,10 @@ export async function resolveBin() {
 }
 
 /**
- * Live model list from `agy models`. Never hardcoded.
+ * Live model list from `agy models`.
  *
- * This is a network round-trip — `agy models` prints "Fetching available
- * models…" and takes ~2s. Nothing on the dispatch path may call it; use
- * `cachedModels()` there instead.
+ * Makes a network request (~2s). The dispatch path must not call this; use
+ * `cachedModels()` instead.
  *
  * @returns {Promise<ModelInfo[]>}
  */
@@ -281,8 +262,8 @@ export async function listModels() {
 }
 
 /**
- * The `agy --version` string as of the last `/agy:setup`, which is its only
- * writer. Null when the cache predates this field or setup has never run.
+ * `agy --version` string saved during the last `/agy:setup` run (the sole writer).
+ * Null when the cache predates this field or setup has not run.
  *
  * @returns {string|null}
  */
@@ -296,13 +277,10 @@ export function cachedToolVersion() {
 }
 
 /**
- * Read the cached model list. Returns null when there is no cache yet.
+ * Read the cached model list. Returns null when no cache file exists.
  *
- * The cache never expires on its own, deliberately. A time-based refresh means
- * some unlucky dispatch pays the ~2s fetch, and which one is unpredictable —
- * exactly the friction this plugin exists to avoid. The list only changes when
- * Google ships a model, which is an event you know about, so refreshing is an
- * explicit act: `/agy:setup` rewrites this file.
+ * The cache does not auto-expire to avoid 2s network latency on dispatch.
+ * Run `/agy:setup` to refresh the cached models.
  *
  * @returns {ModelInfo[]|null}
  */
@@ -335,18 +313,15 @@ export function writeModelCache(models, accountDefaultLabel, toolVersion) {
       'utf8',
     );
   } catch {
-    // A cache that cannot be written is not a reason to fail the command that
-    // was actually asked for. The next dispatch just falls back to agy's own
-    // default, which is the same behaviour as before any cache existed.
+    // Non-fatal: write failure leaves the next dispatch to fall back to agy's built-in default.
   }
 }
 
 /**
- * Resolve the model for a dispatch that did not pin one, from cache only.
+ * Resolve the model for an unpinned dispatch using only local cache.
  *
- * Never throws and never touches the network — a model list that cannot be read
- * is not a reason to refuse the job. Returning null means "pass no `--model`",
- * and agy then picks the account default on its own.
+ * Does not throw or make network calls. Returns null to omit `--model` and
+ * use agy's account default.
  *
  * @param {'low'|'medium'|'high'=} effort
  * @returns {string|null}
@@ -378,19 +353,14 @@ export function resolveDefaultModel(effort = 'medium') {
  * @property {boolean} killed
  * @property {string[]} stderr   Last STDERR_TAIL_LINES lines agy wrote to stderr.
  */
-
-/**
- * How much stderr to keep. Enough for a stack-free error and its context; not so
- * much that a chatty run can push a job record to an unreasonable size.
- */
+/** Number of trailing stderr lines retained in the job record. */
 export const STDERR_TAIL_LINES = 20;
 
 /**
- * Escalate to SIGKILL when the child has not actually exited.
+ * Escalate to SIGKILL if the child process has not exited.
  *
- * Node sets `child.killed` when a signal is *sent*, not when the process
- * exits, so gating on `!child.killed` after `child.kill('SIGTERM')` makes
- * the escalation dead. The production predicate is exit/signal codes.
+ * Checks `exitCode` and `signalCode` because Node sets `child.killed`
+ * when the signal is sent, not when the process terminates.
  *
  * @param {import('node:child_process').ChildProcess} child
  */
@@ -405,8 +375,8 @@ export function escalateSigkill(child) {
 }
 
 /**
- * Spawn agy headless. stdin is ignored (a left-open stdin pipe historically
- * hung `agy -p`). Every stdout line is appended to `logPath` and parsed.
+ * Spawn agy in headless mode. Closes stdin to prevent `agy -p` hangs.
+ * Appends stdout lines to `logPath` and parses JSON events.
  *
  * @param {DelegateOpts} opts
  * @returns {Promise<DelegateResult>}
@@ -443,10 +413,8 @@ export async function runHeadless(opts) {
   /** @type {Record<string, unknown>[]} */
   const events = [];
   /**
-   * Rolling tail of agy's stderr. This is where the whole "agy never got
-   * started" class lives — not authenticated, unknown `--model`, bad flag — and
-   * every one of those produces no `result` event, so without keeping the text
-   * the caller has nothing but a bare exit code to explain itself with.
+   * Rolling tail of agy's stderr for early failures (bad flags, unauthenticated,
+   * unknown model) that exit without emitting a `result` event.
    * @type {string[]}
    */
   const stderr = [];
@@ -492,10 +460,7 @@ export async function runHeadless(opts) {
     child.on('error', (err) => {
       const message = err instanceof Error ? err.message : String(err);
       logSafe(`# spawn error: ${message}\n`);
-      // Spawn failed, so agy never ran and never wrote to stderr. Put the reason
-      // where the caller looks for it, or the run reports a bare exit code that
-      // names nothing: 127 is not one of agy's own codes (0/1/2), so it cannot
-      // be looked up anywhere.
+      // Record spawn failure message in stderr so callers have context for synthetic exit code 127 (not an agy 0/1/2 code).
       stderr.push(`spawn failed: ${message}`);
       done(127);
     });

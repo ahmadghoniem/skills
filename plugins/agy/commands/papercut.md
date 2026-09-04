@@ -6,8 +6,8 @@ allowed-tools: Bash(node:*)
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- --arg-string "$ARGUMENTS"`
 
-Warnings the plugin can see for itself are already logged automatically when a
-run finishes. This command is for the two kinds it cannot see.
+The plugin automatically logs warnings it detects at the end of a run. Use this
+command to record two external sources:
 
 **`--source narrated`** — what agy said blocked it. Take it from agy's closing
 report and quote it in `--quote`; do not paraphrase it into a diagnosis.
@@ -18,8 +18,8 @@ have prevented the problem. Record what you asked for (`--expected`), what came
 back (`--got`), and the specific clause that failed (`--brief-excerpt`). Quote
 the clause, not the whole brief.
 
-Record what happened; do not work out why. `/agy:kaizen` does the reading,
-later, with the whole cluster in view and none of this context.
+Record observations without diagnosing causes; `/agy:kaizen` evaluates
+clusters later.
 
 Pass `--job <id>` and the run's model, conversation and file count are filled in
 from the record instead of being retyped.

@@ -15,9 +15,7 @@ export function pluginHome() {
  * @returns {string}
  */
 export function repoHash(repoRoot) {
-  // Always canonicalise the same way so a repo maps to ONE hash regardless of
-  // whether the path currently exists or contains a symlinked component.
-  // `realpathSync` throws when the path is gone, so fall back to a plain resolve.
+  // Canonicalise path via realpathSync; fall back to resolve if the path no longer exists.
   let canonical;
   try {
     canonical = realpathSync(repoRoot);
@@ -32,8 +30,7 @@ export function jobsDir(repoRoot) {
 }
 
 /**
- * Where the model list is cached. Machine-wide, not per-repo — the answer does
- * not depend on which repo you are dispatching from.
+ * Machine-wide model list cache path.
  *
  * @returns {string}
  */

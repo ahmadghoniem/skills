@@ -1,9 +1,7 @@
-// Thin Promise wrapper around child_process.spawn with:
-//   - no throw on non-zero exit (resolve with exitCode)
+// Promise wrapper around child_process.spawn:
+//   - resolves non-zero exits with exitCode
 //   - optional timeout (tree-kill the child, 5 s grace)
-//   - stdout/stderr captured as strings
-//
-// Replaces the subset of `execa` that this plugin actually uses.
+//   - captures stdout and stderr as strings
 
 import { spawn } from 'node:child_process';
 import { killTree } from './killtree.mjs';
@@ -24,9 +22,8 @@ import { killTree } from './killtree.mjs';
  */
 
 /**
- * Spawn a process. If `cmd` is a Node script (test stub), run it with
- * `process.execPath` so Windows can execute a `.mjs` without a shim.
- * Production `agy.exe` is a native Go binary and is spawned directly.
+ * Spawn a process. Runs Node scripts via `process.execPath` for Windows `.mjs`
+ * compatibility, or executes native binaries directly.
  *
  * @param {string} cmd
  * @param {string[]} args

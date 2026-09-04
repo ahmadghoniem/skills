@@ -26,13 +26,10 @@ import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
 import { anomalies, renderResult, viewFromJob } from './lib/render.mjs';
 
-// This always runs in the foreground of its own process. The orchestrator
-// invokes it under a backgrounded Bash call, which keeps the user's session
-// free *and* lets the harness announce the exit — a detached worker would sever
-// that notification and leave polling as the only way to find out.
-// agy encodes effort in the model id (`gemini-3.7-flash-low`), so picking the
-// default model and picking the default effort are the same act. Medium is the
-// everyday setting; the caller raises or lowers it per task with `--effort`.
+// Runs in the foreground of its child process; the orchestrator invokes it
+// under a backgrounded bash call to receive exit notifications without detaching.
+// agy models encode effort (e.g. `gemini-3.7-flash-low`); medium is default
+// unless overridden by `--effort`.
 const DEFAULT_EFFORT = 'medium';
 
 const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
@@ -139,12 +136,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
     gitRepo = false;
   }
 
-  // `done` used to mean "not killed", so a spawn failure that produced no
-  // result at all was still recorded as done and listed that way by
-  // `/agy:result --list`. A non-zero exit alone is not enough to call it failed
-  // — agy's status and exit code are documented to disagree in both directions,
-  // and a good report with a stray non-zero exit is still a good report. But a
-  // non-zero exit with no `result` event at all means agy never got started.
+  // Mark failed if killed or exited non-zero without emitting a result event.
+  // Native exit code and agy status can disagree on completed runs.
   const neverStarted = summary.status == null && result.exitCode !== 0;
   const pluginStatus = result.killed || neverStarted ? 'failed' : 'done';
   updateJob(root, jobId, {
@@ -161,15 +154,13 @@ async function runAndRecord(flags, prompt, jobId, root) {
     gitFiles: snapshotFiles(gitFiles),
     claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
-    // Persisted so `/agy:result <id>` renders exactly what the foreground run
-    // did. Both stay undefined when empty, keeping a clean job record clean.
+    // Persisted so `/agy:result <id>` matches foreground output; omitted when empty.
     stderrTail: result.stderr?.length ? result.stderr : undefined,
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
   });
 
-  // The only write site: `/agy:result` re-renders these warnings on every fetch,
-  // so logging there too would add a cut per read. `anomalies` is the renderer's
-  // own call, so the log records the ⚠ lines the user saw.
+  // Sole write site for detected papercuts. `/agy:result` evaluates anomalies
+  // dynamically on read without writing duplicate entries.
   const finalJob = readJob(root, jobId);
   if (finalJob) {
     recordDetected(anomalies(viewFromJob(finalJob)), {
@@ -194,16 +185,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
 }
 
 /**
- * `runAndRecord`, but a throw still moves the record off `running`.
- *
- * `createJob` writes `status: 'running'` and the only thing that writes a
- * terminal status is `runAndRecord`'s own final `updateJob`. Anything that
- * throws before that — `resolveBin()` when agy is not installed is the likely
- * one, and it is not pre-empted by model resolution, which swallows errors —
- * used to strand the record at `running` forever. `/agy:result` then answers
- * "still running, re-run once it finishes" for a run that never started.
- *
- * The error is rethrown: the caller still fails, it just fails legibly.
+ * Runs `runAndRecord`, updating the job record to failed if an error throws
+ * before completion (such as binary resolution failure), then rethrows.
  *
  * @param {ReturnType<typeof parseFlags>} flags
  * @param {string} prompt
@@ -260,14 +243,8 @@ export async function main(rawArgv) {
     }
   }
 
-  // Cache read, not a network call — see `cachedModels`. A cold cache yields
-  // null, which means "send no `--model`" and lets agy pick its own default;
-  // `/agy:setup` is what fills the cache.
-  //
-  // Skipped entirely on a resume: `--conversation` already carries the model the
-  // conversation was started with, and pinning the auto-picked flash id here
-  // would silently downgrade a follow-up to a run the user deliberately started
-  // on a pro model.
+  // Resolve default model from cache. Omitted on resume because `--conversation`
+  // preserves the initial model (e.g. pro), avoiding unintended downgrades.
   if (!flags.model && !isResume(flags)) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }

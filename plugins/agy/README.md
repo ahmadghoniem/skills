@@ -2,11 +2,11 @@
 
 Delegate coding tasks, code sweeps, and research passes from Claude Code to the Antigravity CLI (`agy`), then review the diff and land it yourself.
 
-Claude plans and reviews; agy does the typing in its own session. The plugin never commits — that stays with you.
+Claude plans and reviews; agy writes code in its own session. The plugin never commits; review and commit changes directly.
 
-agy is the cheap, fast, high-volume worker in that split: code sweeps (find every call site of X, change it to Y), mini refactors, bulk reading across dozens of files, research, and scoped implementation. The tokens land in agy's context instead of yours.
+agy handles high-volume tasks: code sweeps, refactors, bulk file reading, research, and scoped implementations. Tokens land in agy's context instead of yours.
 
-Third in the series after [cursor](../cursor/README.md) (`cursor-agent`) and [grok](../grok/README.md) (`grok`). The three are independent: install any combination.
+Third in the series after [cursor](../cursor/README.md) (`cursor-agent`) and [grok](../grok/README.md) (`grok`). Each plugin is independent.
 
 ## Install
 
@@ -17,13 +17,13 @@ claude plugin install agy@ahmadghoniem
 
 **Windows only.** Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.
 
-If a Claude Code session was already open when you installed agy, its `PATH` will not have picked up the installer's change — the plugin checks `%LOCALAPPDATA%\agy\bin\agy.exe` directly for exactly that reason, and `AGY_BIN` overrides both.
+If Claude Code was opened before installing agy, `PATH` may lack the binary; the plugin falls back to `%LOCALAPPDATA%\agy\bin\agy.exe`, and `AGY_BIN` overrides both.
 
 ## Commands
 
-- **`/agy:delegate <task>`** — hand a task to agy. Claude runs it under a backgrounded Bash call, so you keep chatting while agy works and the harness announces the result — no polling.
+- **`/agy:delegate <task>`** — run a task via agy. Claude runs it under a backgrounded Bash call and announces completion without polling.
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/agy:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree). Also reaps a record left stuck at `running` because its parent process died.
+- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). Also reaps job records left at `running` if the parent process died.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
 - **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also the only writer of the model cache and the recorded `agy --version`.
 - **`/agy:papercut`** — record one friction point by hand, for `/agy:kaizen` to read later.
@@ -39,7 +39,7 @@ Plus an **`agy-runner`** agent that shapes a task into a self-contained brief an
 /agy:delegate --model gemini-3.7-pro-high --timeout 1800 "the hard one"
 ```
 
-**No model question.** The plugin picks the newest `flash` id from the live `agy models` list, at whatever `--effort` Claude chose for the task (`medium` by default). Claude only asks when your own message shows you want a say — you name a model, ask what is available, or ask for something cheaper/faster/stronger.
+The plugin automatically selects the newest `flash` model from `agy models` at the chosen `--effort` (`medium` by default). Claude prompts for a model only when requested in the prompt.
 
 | Flag | Effect |
 | --- | --- |
@@ -59,56 +59,50 @@ Prints agy's report. `--list` shows the last 10 tracked jobs (`--all` for every 
 
 ## What the output looks like
 
-On a clean run: agy's report, and nothing else. No status table, no file list, no duration, no token or cost figures. `git status` and `git diff` are one call away and are the actual ground truth; a formatted summary of them is just something else to read.
+On a clean run, the output is agy's report alone. Status tables, file lists, durations, and token counts are omitted because repository state is directly inspectable via `git status` and `git diff`.
 
-What does get surfaced is the set of ways a run can be wrong while agy still calls it done. Each is its own warning line, and any can fire alone:
+The plugin surfaces warnings when an execution encounters errors:
 
 | Line | Means |
 | --- | --- |
 | `⚠ agy status: ERROR` | agy's own verdict. Fires routinely on runs whose files landed correctly. |
 | `⚠ exit 1` | The process exit code. Independent of the above — they disagree in both directions. |
-| `⚠ agy produced no result. Its stderr:` | agy never got started — not authenticated, unknown `--model`, rejected flag, spawn failure. Only fires when there is no write-up *and* no status, because stderr is then the only explanation there is. The tail tells you which fix applies. |
-| `⚠ N tool calls failed during the run` | Tools that failed while the run continued. Reported, never judged — the case that matters is a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
+| `⚠ agy produced no result. Its stderr:` | agy never started (unauthenticated, unknown `--model`, rejected flag, spawn failure). Fires only when there is no write-up and no status. The tail indicates the cause. |
+| `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
 | `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
 | `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
 
-The same table, in the form the orchestrator actually reads, is `plugins/agy/skills/output-contract/contract.md` — preloaded into `agy-runner` and pulled into `/agy:delegate` and `/agy:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
+`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, preloaded into `agy-runner` and included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
 
 ## The friction log
 
-Every run that ends with a `⚠` line worth acting on appends a row to
-`~/.cad/papercuts.jsonl` (`CAD_HOME` moves it). `agy-status`, `exit` and `resume`
-fire on runs that worked, so filing them would bury the rows that matter.
+Every run ending in an actionable `⚠` warning appends a row to
+`~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, and `resume`
+are excluded because they fire on successful runs.
 
-Two more sources are written by hand through `/agy:papercut`. `narrated` is what
-agy said blocked it, quoted from its report. `orchestrator` is a failure the
-brief caused, recorded by whoever wrote the brief after reading the result back —
-what was asked for, what came back, and the clause that failed.
+Two additional sources are recorded manually via `/agy:papercut`: `narrated`
+quotes agy's report when blocked, and `orchestrator` records brief failures
+(expected outcome, actual result, and the failing clause).
 
-None of the three records *why*. A model that has just written a failing brief
-will construct a plausible story, and a tidy wrong story is harder to correct
-later than a bare fact, so the diagnosing is left to `/agy:kaizen` — later, in
-fresh context, with the whole cluster in view.
+All entries record what occurred without diagnosing why. Analysis is deferred
+to `/agy:kaizen` across aggregated clusters in a separate session.
 
-Rows are never rewritten. `/agy:kaizen --resolve <id> --note "…"` appends a
-resolution, so a problem that comes back after a fix shows up as a cluster with
-new rows dated after its own fix. That recurrence is the only feedback this loop
-has, which is why nothing is ever deduplicated or edited in place.
+Rows are append-only and never edited or deduplicated. Resolving via
+`/agy:kaizen --resolve <id> --note "…"` appends a resolution, allowing
+subsequent recurrences to be detected.
 
-Each row copies the evidence it needs rather than pointing at the job record,
-because `pruneOlderThanDays` runs on every dispatch and permanently deletes every
-file in the job directory older than 30 days — including the raw event stream,
-since unlike the job lister it does not filter by extension. A row has to be
-judgeable on its own three weeks later.
+Each row copies necessary evidence rather than linking to the job record,
+because `pruneOlderThanDays` deletes job directory files older than 30 days
+(including raw event streams) on every dispatch.
 
 ## Design notes
 
-- **`--add-dir <absolute repo path>` is always passed on a fresh dispatch, and it is the only workspace flag sent.** Without it agy does not use the spawn cwd at all: it reuses the persistent default CLI project, whose root is `~/.gemini/antigravity-cli/scratch`, writes there, leaves the repo untouched, and still reports `status: SUCCESS`. `--new-project` binds the cwd too, but it does the same job while creating a throwaway project on every dispatch. `--project` binds nothing — neither an absolute path nor a project name stops the fallback to scratch.
-- **The brief is always a sidecar file.** Written to `<job>.prompt.md` (outside the workspace is fine; agy can still read it), then dispatched with `--print=Read the file at <abs> in full and carry out that task exactly.` Last on the command line, attached to the flag, so a bare `-p` cannot swallow the next flag.
-- **Permission bypass is always on.** The first shell command otherwise hard-kills the run, which makes an opt-out a foot-gun rather than a safety feature. There is no `--safe` and no plan mode: this plugin dispatches implementors and researchers, and planning is the orchestrator's job.
-- **No hardcoded model list, and no model prompt.** `agy models` is parsed at runtime (TSV of id then label); the default is the newest flash version in it, at the requested effort. agy encodes effort in the id (`gemini-3.7-flash-low`), so choosing the model and choosing the effort are one act — which is why `--effort` steers the pick instead of being a separate flag. The account default is the display label in `~/.gemini/antigravity-cli/settings.json`, used only as a fallback when nothing in the list is flash.
-- **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. There is no detached-worker mode: it would sever that notification and leave polling as the only option.
+- **`--add-dir <absolute repo path>` is always passed on fresh dispatch and is the only workspace flag sent.** Without it, agy ignores the working directory and defaults to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS`. `--new-project` also binds the working directory but creates a throwaway project on every run. `--project` binds neither absolute paths nor project names, falling back to scratch.
+- **The brief is written to a sidecar file.** Stored at `<job>.prompt.md`, then dispatched via `--print=Read the file at <abs> in full and carry out that task exactly.` Attaching the argument directly to `--print=` prevents argument consumption errors.
+- **Permission bypass is always on.** Shell commands otherwise terminate interactive runs without prompts. Planning remains the orchestrator's responsibility.
+- **Dynamic model discovery without hardcoded lists.** `agy models` is parsed at runtime. The default selects the newest flash model matching the requested effort. Because agy encodes effort directly in the model id (e.g. `gemini-3.7-flash-low`), `--effort` selects the appropriate model id. The display label in `~/.gemini/antigravity-cli/settings.json` serves as fallback when no flash model is listed.
+- **Non-blocking execution without detached workers.** The job runs in the foreground of its process under a backgrounded Bash call, allowing the harness to report exit events directly without polling.
 - **agy.exe is a native Go binary.** Spawned directly, no shell, stdin ignored.
 - **The plugin never commits.** You read the diff.
 

@@ -10,8 +10,8 @@ disable-model-invocation: true
 The output above is the friction log, grouped. Each cluster is one recurring
 problem; the count is how many times it has happened.
 
-This is a conversation, not a job. Propose, do not apply. The user picks which
-fixes go in — go back and forth until you both agree.
+Propose fixes rather than applying them; the user selects which fixes to
+apply.
 
 ## How to read it
 
@@ -24,9 +24,8 @@ proposing anything:
 - Read the cluster's evidence rows. They exist so you can judge a cut without
   re-running the delegation — a re-run costs quota and often does not reproduce.
 - Check `toolCalls` against `filesChanged`. A run that took forty tool calls to
-  change one file went wrong somewhere even if agy reported SUCCESS, and a
-  cluster where every cut has that shape is usually a brief problem, not a tool
-  problem: the delegatee could not tell what "done" meant, so it kept looking.
+  change one file indicates an unclear brief where the delegatee could not
+  determine when the task was complete.
 - Check the `toolVersion` spread. A cluster that only appears at one version is
   a tool regression to work around. One spread across versions is ours.
 - Read any "Recurred after a recorded fix" section first. Those are fixes that
@@ -35,9 +34,8 @@ proposing anything:
 
 ## How to propose a fix
 
-Do not pile on extra notes at the end. Look at the file as a whole and make
-redrafts, not additions. Do not shy away from removing guidance that is out of
-date or that something later in the file has already overruled.
+Make redrafts rather than appending notes. Remove outdated or superseded
+guidance.
 
 Read the whole file before deciding where the fix goes. Appending near the
 symptom is the reflex; the cause is often an existing sentence that is vague or
@@ -55,6 +53,5 @@ Once the user has applied a change, record it:
 /agy:kaizen --resolve <id> --note "what changed"
 ```
 
-That appends a row; it never edits the log. If the same cluster comes back
-afterwards the log will say so on the next run, which is the only way this loop
-finds out that a fix did not work.
+This appends a row without editing the log. If the cluster recurs, subsequent runs
+report the recurrence.

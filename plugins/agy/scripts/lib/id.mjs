@@ -1,14 +1,9 @@
-// Tiny replacement for `nanoid` — URL-safe random id of the requested length.
+// URL-safe random id generator of specified length.
 import { randomBytes } from 'node:crypto';
 
 /**
  * Generate a URL-safe random id (base64url alphabet) of exactly `length`
- * characters. Defaults to 10, matching the previous nanoid(10) usage.
- *
- * base64url chars (`A-Za-z0-9-_`) are all filesystem-safe, so we keep them
- * verbatim — no stripping or zero-padding, which previously shortened ids and
- * biased the final character toward `0`. We over-provision the byte count so
- * the unpadded encoding always yields at least `length` chars before slicing.
+ * characters (default 10).
  *
  * @param {number} [length]
  * @returns {string}
@@ -22,9 +17,7 @@ export function id(length = 10) {
 const ALPHANUM = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 /**
- * Lowercase alphanumeric suffix used in job names (`a7f3`). Distinct from
- * `id()`: that helper is base64url and mixed-case, which is wrong for the
- * 4-char job suffix the resolver matches on.
+ * Lowercase alphanumeric suffix for job names (`a7f3`).
  *
  * @param {number} [length]
  * @returns {string}

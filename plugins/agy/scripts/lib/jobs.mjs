@@ -145,9 +145,8 @@ export function createJob(init) {
 /**
  * Locate a job's JSON file on disk.
  *
- * When the direct `<repoPath's jobsDir>/<id>.json` guess misses (cwd drifted
- * between dispatch and a later result/cancel), fall back to scanning every
- * repo's job dir under the plugin home for a file named `<id>.json`.
+ * Falls back to scanning every repository's job directory under the plugin home
+ * when `<jobsDir>/<id>.json` is missing.
  *
  * @param {string} repoPath
  * @param {string} id
@@ -304,9 +303,7 @@ export function updateJob(repoPath, id, patch) {
     return null;
   }
   const merged = { ...existing, ...patch };
-  // Read-modify-write is last-writer-wins; the one race we actively guard is a
-  // run finishing (status → done/failed) AFTER the user cancelled
-  // the job. A cancellation is terminal and must not be silently overwritten.
+  // Guard against a completed run overwriting a terminal cancellation.
   if (existing.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
     merged.status = 'cancelled';
   }

@@ -41,8 +41,7 @@ async function printModels() {
     return 1;
   }
   const defaultLabel = readAccountDefaultLabel();
-  // `--print-models` has just paid for a live fetch, so it refreshes the cache
-  // too. It never runs `--version`, so the stored version is carried across.
+  // Refreshes the cache after the live fetch, preserving the cached toolVersion.
   writeModelCache(models, defaultLabel, cachedToolVersion());
   for (const m of models) {
     const effort = modelEncodesEffort(m.id) ? 'effort-in-id' : 'effort-flag';
@@ -92,8 +91,7 @@ async function baseCheck() {
     return 1;
   }
   const defaultLabel = readAccountDefaultLabel();
-  // The only writer. Dispatch reads this cache and never fetches, so running
-  // `/agy:setup` is how a newly released model becomes available to auto-pick.
+  // Sole writer of the model cache. Dispatch reads this cache without fetching.
   writeModelCache(models, defaultLabel, versionText);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
   lines.push('- models:');

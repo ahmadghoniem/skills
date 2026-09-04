@@ -6,10 +6,8 @@ allowed-tools: Bash(node:*)
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/resume.mjs" -- --arg-string "$ARGUMENTS"`
 
-Treat the output identically to `/agy:delegate` — it is the same pipeline. A job id looks up that job's `conversation_id`; a UUID is passed through as `--conversation`; with neither, the most recent conversation for this directory is continued.
+Treat the output identically to `/agy:delegate`. A job id looks up that job's `conversation_id`; a UUID passes through as `--conversation`; with neither, the command continues the most recent conversation for this directory.
 
-Run it with the Bash tool's `run_in_background: true`, exactly like
-`/agy:delegate` — same pipeline, same reason.
+Run with the Bash tool's `run_in_background: true`.
 
-Do not add `--add-dir` on this path; a resume is bound to the conversation it
-continues, and the script already omits it.
+Do not add `--add-dir`; resume is bound to the existing conversation, and the script omits it.

@@ -2,11 +2,8 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 
 /**
- * True when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
- * Other errors — notably `EPERM` — mean the pid still names a live process this
- * account cannot signal. Treating any throw as "dead" is a Windows footgun:
- * probing a pid you do not own commonly raises `EPERM`, and reading that as
- * "already dead" marks a live billed job cancelled without killing it.
+ * Returns true when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
+ * `EPERM` indicates a live process that cannot be signaled by this user.
  *
  * @param {number} pid
  * @returns {boolean}
@@ -21,14 +18,10 @@ export function isPidGone(pid) {
 }
 
 /**
- * Kill a process and its descendants.
- *
- * Windows: `taskkill.exe /T /F` via `execFile` with `shell: false`. Spawning
- * `taskkill` through a shell on Git-Bash-for-Windows makes MSYS rewrite `/PID`
- * into `C:/Program Files/Git/PID` and the kill silently does nothing. Do not
- * SIGTERM the root first: if it exits before `taskkill /T` runs, Windows can
- * no longer enumerate descendants and grandchildren leak. Exit code 128 is
- * "process not found" (`already-gone`); do not parse stderr (it is localised).
+ * Kill a process and its descendants on Windows using `taskkill.exe /T /F`
+ * via `execFile` (`shell: false` avoids MSYS `/PID` path rewriting).
+ * Root is not signaled first to prevent descendant leakage during enumeration.
+ * Exit code 128 indicates process not found; stderr is localized.
  *
  * @param {number} pid
  * @param {{ graceMs?: number }} [opts]
@@ -49,7 +42,7 @@ function killWindows(pid, graceMs) {
   const taskkillPath = join(process.env.WINDIR || 'C:\\Windows', 'System32', 'taskkill.exe');
   const args = ['/PID', String(pid), '/T', '/F'];
   const options = {
-    // Mandatory: a shelled spawn lets Git-Bash MSYS rewrite `/PID`.
+    // Un-shelled spawn prevents MSYS from rewriting `/PID`.
     shell: false,
     windowsHide: true,
     env: { ...process.env, MSYS_NO_PATHCONV: '1' },

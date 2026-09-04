@@ -72,10 +72,8 @@ export function parseEvents(text) {
 const SCRATCH_RE = /antigravity-cli[\\/]+scratch/i;
 
 /**
- * True when agy's `result.response` claims it created or modified files.
- * Used only to catch the F1 wander (response says it wrote, working tree
- * did not change). Conservative: a `file://` link, or a create/write/modify
- * verb next to something that looks like a filename.
+ * Detect whether agy's response claims file creation or modification
+ * (matched by file:// links or modification verbs near filenames).
  *
  * @param {string} response
  * @returns {boolean}
@@ -131,10 +129,7 @@ export function toolParamPaths(params) {
 
 /**
  * Fold a whole run's event stream into the record a job needs.
- *
- * Does not invent a pass/fail verdict (F5): `status` is agy's own string
- * (or null if no `result` event arrived). Does not invent a per-command
- * exit code — `run_command` never reports one.
+ * Preserves agy's raw status string without inferring pass/fail verdicts.
  *
  * @param {AgyEvent[]} events
  * @returns {RunSummary}
@@ -199,14 +194,8 @@ export function summariseEvents(events) {
           writeTargets.push(params.TargetFile);
         }
 
-        // A tool that failed mid-run. agy recovers from most of these and still
-        // reports SUCCESS, which is usually right — but it is also how a failed
-        // verification step disappears: you asked for the tests to pass, the
-        // test command exited non-zero, agy wrote "fixed it", status SUCCESS.
-        // Recording them is what lets the caller decide whether the write-up can
-        // be trusted without re-doing the work, which is the entire reason to
-        // delegate. Note `state: "ERROR"` is not in the documented enum
-        // (`ACTIVE | DONE`); the binary emits it, so the binary wins.
+        // Record tool failures, including undocumented binary `state: "ERROR"`,
+        // to surface failed verification steps during runs marked SUCCESS.
         const err = info != null && typeof info === 'object' ? info.error : undefined;
         if (su.state === 'ERROR' || (err != null && typeof err === 'object')) {
           const message =

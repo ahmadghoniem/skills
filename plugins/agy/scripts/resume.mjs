@@ -8,9 +8,8 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Resume a specific conversation, or the most recent one for this cwd.
- * Injects `--conversation <uuid>` or `--continue` and hands off to delegate
- * so there is one run path and one job-recording path.
+ * Resume a specific conversation or the most recent one for this working
+ * directory by delegating with `--conversation <uuid>` or `--continue`.
  *
  * @param {string[]} rawArgv
  * @returns {Promise<number>}
@@ -26,9 +25,7 @@ export async function main(rawArgv) {
     const first = positional[0];
     if (first && UUID_RE.test(first)) {
       argv.push('--conversation', first);
-      // Drop the uuid from the follow-up text by rewriting via flags later —
-      // strip it from positional by injecting conversation and leaving the
-      // rest of the task. Easier: rebuild.
+      // Pass the uuid via `--conversation` and forward remaining positional tokens.
       return dispatchWithConversation(first, positional.slice(1), flags, argv);
     }
     if (first) {
@@ -46,8 +43,7 @@ export async function main(rawArgv) {
           argv,
         );
       }
-      // First token was not a job id either — treat everything as follow-up
-      // and resume the most recent conversation for this cwd.
+      // First token is not a job id; treat all tokens as follow-up.
     }
     const root = await repoRoot(process.cwd());
     const recent = mostRecentJob(root);

@@ -4,18 +4,15 @@
 
 ### Removed
 
-- **`--background`, `--wait`, and the `--worker` re-entry point.** One run path now: the
-  foreground of this process, under the orchestrator's backgrounded Bash call. `--background`
-  detached a worker and severed the harness notification, so every doc already told the caller
-  not to pass it — a flag whose documentation is "don't", that raises no error when passed, and
-  whose failure mode is silence. `--wait` was accepted and ignored outright. Gone with them:
+- **`--background`, `--wait`, and the `--worker` re-entry point.** One execution path: foreground
+  execution under a backgrounded Bash call. `--background` detached workers and severed harness
+  notifications without failing or raising errors; `--wait` was accepted and ignored. Removed
   `spawnBackground`, `forwardFlags`, the `CAD_WORKER`/`CAD_REPO_ROOT` handoff, the `background`
   field on the job record, and `--background` forwarding in `/agy:resume`.
-- **Windows-only: every non-`win32` code path.** `killPosix` and the platform test in
+- **Windows-only: every non-`win32` code path.** Removed `killPosix` and the platform check in
   `killTree`, the `which`-vs-`where` locator, the `detached: true` ternary on the CLI spawn, and
-  the POSIX/macOS asides in `args.mjs` and `paths.mjs`. `"os": ["win32"]` is now declared in
-  `package.json`. Every comment recording verified CLI behaviour stays — that is the expensive
-  knowledge here.
+  POSIX/macOS handling in `args.mjs` and `paths.mjs`. `"os": ["win32"]` is declared in
+  `package.json`. Comments recording verified CLI behaviour are preserved.
 - **The low/medium/high effort rubric in `agy-runner.md` and `commands/delegate.md`.** It
   pre-judged on a mechanical-vs-reasoning axis that misses per-site judgement, and it displaced
   the delegating model's own read of the task. The instruction that remains is the mechanism:
@@ -48,7 +45,7 @@
 - **`anomalies()` returns tagged objects rather than strings.** Each warning is now
   `{id, line, detail}` instead of a prose line, so the papercut writer can record which warning
   fired without a second copy of the detection rules to drift from the first. The rendered
-  output is byte-identical; `WARNING_IDS` is now load-bearing rather than documentation-only,
+  output is byte-identical; `WARNING_IDS` is now relied-on in code rather than documentation-only,
   since its ids are values on the code path.
 - **`⚠ agy status: ERROR` now carries the facts next to it** — whether a write-up came back and
   how many files changed, both read from the run itself (the `result` event, and two
@@ -87,23 +84,6 @@ is different enough that this plugin is written fresh against captured runs, not
 
 ### Notes on the implementation
 
-Written against six captured runs of agy 1.1.19, alongside the published docs. Where the two
-disagree the captured behaviour wins, but the docs are the starting point and are mostly right.
-In particular: `--add-dir` is mandatory or agy reuses the persistent default CLI project rooted
-at `~/.gemini/antigravity-cli/scratch`, writes there, and still reports `status: SUCCESS`
-(`--project` binds the cwd in neither of its forms); `--print=<brief>` must be attached and
-last; `--model` slugs that encode effort cannot be combined with `--effort`; `status` and the
-process exit code disagree in both directions.
+Derived from six captured runs of agy 1.1.19 and published docs: `--add-dir` is required to prevent agy from defaulting to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS` (`--project` binds cwd in neither form); `--print=<brief>` must be attached and positioned last; `--model` slugs encoding effort cannot be combined with `--effort`; `status` and exit codes can disagree.
 
-On permissions the docs say a tool requiring approval **it cannot obtain** is soft-denied — the
-run continues, exits `0`, and writes a notice to stderr. This plugin does not rely on that, but
-it has not been shown false either, and an earlier draft of these notes said it had been. The
-one captured run (`permission-denied.ndjson`) ran under `permission_mode: request-review` and
-failed with `user denied permission to run command` — an approval that was *requested and
-refused*, which is a different state from one that cannot be obtained. That run does show the
-hard-denial path ends the run outright with `status: ERROR` and an empty response; it says
-nothing about soft-deny, and NDJSON carries no exit code, so the `exits 0` half was never tested
-at all.
-
-Either way `--dangerously-skip-permissions` stays unconditional: soft-denied means the work
-silently does not happen, which is no better than denied.
+Captured run `permission-denied.ndjson` ran under `permission_mode: request-review` and failed with `user denied permission to run command`, showing that hard denial terminates the run with `status: ERROR` and an empty response. Because soft-denial would leave requested work unperformed, `--dangerously-skip-permissions` remains unconditional.

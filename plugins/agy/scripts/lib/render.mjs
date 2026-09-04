@@ -1,16 +1,9 @@
 // Presentation shared by the foreground dispatch and `/agy:result`, so the
 // write-up you see when a job finishes and the one you fetch later cannot drift.
 //
-// The default output is agy's own report and nothing else. Everything the old
-// status table printed — status, exit code, duration, conversation id, the
-// working-tree listing — was either already visible to the orchestrator (`git
-// status` is one call away) or noise on the overwhelming majority of runs that
-// simply worked. What survives is the part that is *not* recoverable by looking:
-// the four ways a run can be wrong while agy still calls it done.
-//
-// agy's `status`, the process exit code, and the git working tree remain three
-// separate facts (F5). They are never collapsed into a single pass/fail — they
-// are each allowed to raise their own line, and any of them may fire alone.
+// Default output is agy's own report. Status, exit code, and working tree
+// modifications remain separate facts that can raise individual warning lines
+// rather than being collapsed into a single pass/fail verdict.
 
 /** Beyond this many distinct tool failures the list stops being readable. */
 const TOOL_ERROR_LIMIT = 3;
@@ -57,11 +50,7 @@ const WANDER_WARNING =
  */
 
 /**
- * Project a job record onto the view `renderResult` reads.
- *
- * The single mapping. Both callers — the foreground dispatch and `/agy:result`
- * — go through this, because two hand-written copies of the same field list is
- * exactly the drift this module exists to prevent.
+ * Shared projection from a job record to a ResultView for `renderResult`.
  *
  * @param {Record<string, unknown>} job
  * @returns {ResultView}
@@ -87,11 +76,8 @@ export function viewFromJob(job) {
 /**
  * Every warning kind this module can emit, in the order they are printed.
  *
- * This is the machine-readable half of `skills/output-contract/contract.md`; that
- * file explains each id in prose. `tests/contract.test.mjs` asserts the two
- * agree in both directions and that neither has grown an entry the other lacks,
- * so a new warning cannot ship undocumented — which is exactly how the contract
- * drifted before this registry existed.
+ * Machine-readable list of warning ids in print order, documented in
+ * `skills/output-contract/contract.md` and verified by `tests/contract.test.mjs`.
  *
  * @type {readonly string[]}
  */
@@ -107,18 +93,9 @@ export const WARNING_IDS = Object.freeze([
 ]);
 
 /**
- * The two facts that separate an `ERROR` you can ignore from one you cannot.
- *
- * agy reports `ERROR` for a provider stream that blipped in the last second of
- * an otherwise complete run *and* for a run that died having written nothing,
- * and the bare status line reads identically either way. Both facts here are
- * machine-derived — a non-empty write-up, and the count from two
- * `git status --porcelain` snapshots taken either side of the run — so this
- * stays a report, not a verdict: it says what is on disk and leaves the reading
- * of it to a human.
- *
- * The file count is omitted outside a repo, where there is no tree to compare
- * against and `0 files changed` would be a lie rather than a measurement.
+ * Reports whether a write-up exists and the git status file delta count
+ * to disambiguate non-SUCCESS statuses without judging the run.
+ * File count is omitted outside a git repository.
  *
  * @param {ResultView} job
  * @returns {string}
@@ -162,16 +139,9 @@ export function anomalies(job) {
     out.push({ id: 'exit', line: `exit ${job.exitCode}` });
   }
 
-  // agy said nothing at all: no write-up and no terminal `result` event. That is
-  // the shape of "agy never got started" — not authenticated, unknown --model,
-  // rejected flag, spawn failure — and every one of them leaves its reason on
-  // stderr and nowhere else. Without this the entire class renders as a bare
-  // `exit 1`, which does not distinguish between "log in again" (one command),
-  // "that model was retired" (re-run /agy:setup), and "rate limited" (wait).
-  //
-  // Gated hard on BOTH conditions. A run that produced a report keeps its report
-  // as the output, however it ended — stderr noise from a working run is exactly
-  // what the quiet-by-default contract exists to suppress.
+  // When agy produces neither a write-up nor a status event, display stderr
+  // to surface initialization failures (e.g. auth, unknown flags, spawn errors).
+  // Runs with a write-up suppress stderr to avoid noisy warnings.
   const saidNothing = (job.summary == null || String(job.summary).trim() === '') && !status;
   const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
   if (saidNothing && stderrTail.length > 0) {
@@ -182,11 +152,8 @@ export function anomalies(job) {
     });
   }
 
-  // Tools that failed while the run continued. agy recovers from most of these
-  // and is right to; the case that matters is a failed verification step under a
-  // SUCCESS status. Reported, never judged — same stance as grok's failed-command
-  // block, which caught exactly this on its first real run. Deduped because a
-  // retried tool reports the same failure every attempt.
+  // Tools that failed during the run, deduped across repeated attempts.
+  // Highlights failed verification commands that might otherwise be masked by SUCCESS.
   const toolErrors = Array.isArray(job.toolErrors) ? job.toolErrors : [];
   if (toolErrors.length > 0) {
     const seen = new Set();
@@ -212,9 +179,7 @@ export function anomalies(job) {
 
   if (job.error != null && String(job.error).length > 0) {
     const errLines = String(job.error).split('\n');
-    // agy's errors can carry a long tail. An unknown `--model` appends the whole
-    // catalogue — sixteen lines of menu behind one line of fact. The first line
-    // names the problem; keep a little context and say how much was dropped.
+    // Error messages can be long; display the first line and truncate details.
     const extras = errLines.slice(1);
     const detail = extras.slice(0, ERROR_TAIL_LIMIT);
     if (extras.length > ERROR_TAIL_LIMIT) {
@@ -230,12 +195,7 @@ export function anomalies(job) {
     });
   }
 
-  // A killed run is the one case where the work really is half-finished, and
-  // agy's conversation survives it: `conversation_id` arrives on the `init`
-  // event, long before the kill, so it is already on the record. Without this
-  // line the id is on disk and nothing says so, and the reflex is to re-dispatch
-  // the whole brief. Fires only alongside the watchdog line — a run that
-  // finished has nothing to resume.
+  // Offer resume command when a watchdog-killed run captured a conversation id.
   if (job.killed && job.conversationId) {
     out.push({
       id: 'resume',
@@ -243,8 +203,7 @@ export function anomalies(job) {
     });
   }
 
-  // Only meaningful inside a repo: outside one there is no tree to compare
-  // against, so silence is the honest answer rather than a false alarm.
+  // Checked only inside a git repository.
   const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
   if (noGitChanges && job.claimedFileChanges) {
     out.push({ id: 'wander', line: WANDER_WARNING });
