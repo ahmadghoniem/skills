@@ -16,6 +16,11 @@
   evidence branch; the two scratch-wander fixtures. A resumed run omits `--add-dir` on the
   assumption that `--conversation <uuid>` restores the original session's workspace; no
   fixture covers that path.
+- **The non-repository paths.** Delegation happens in a repository. Removed the `isRepo` guard,
+  `--no-git-check`, `isDirty` and the dirty-tree warning, the `gitRepo` field on the job
+  record, and the branches in the dispatcher and renderer that depended on them. `repoRoot`
+  stays: the job registry is keyed on a hash of it, so dispatching from a subdirectory and
+  from the root land in the same job directory.
 
 ## 0.2.0
 

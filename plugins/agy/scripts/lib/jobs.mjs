@@ -39,7 +39,6 @@ import { jobName } from './slug.mjs';
  * @property {{tool: string, message: string}[]=} toolErrors
  * @property {string|null=} error
  * @property {number=} durationSeconds
- * @property {boolean=} gitRepo
  * @property {Array<{status: string, path: string}>=} gitBefore
  * @property {Array<{status: string, path: string}>=} gitFiles
  * @property {boolean=} killed

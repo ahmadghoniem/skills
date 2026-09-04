@@ -33,7 +33,6 @@ function firstLine(message) {
  * @property {string} id
  * @property {string|null|undefined} agyStatus
  * @property {number|null|undefined} exitCode
- * @property {boolean} [gitRepo]
  * @property {GitFile[]} [gitFiles]
  * @property {string|null|undefined} error
  * @property {number|undefined} durationSeconds
@@ -65,20 +64,14 @@ export const WARNING_IDS = Object.freeze([
 /**
  * Report whether a write-up exists and the git status file delta count
  * to disambiguate non-SUCCESS statuses without judging the run.
- * File count is omitted outside a git repository.
  *
  * @param {ResultView} job
  * @returns {string}
  */
 function statusContext(job) {
-  const bits = [];
   const hasReport = job.summary != null && String(job.summary).trim() !== '';
-  bits.push(hasReport ? 'write-up present' : 'no write-up');
-  if (job.gitRepo !== false) {
-    const n = job.gitFiles?.length ?? 0;
-    bits.push(`${n} file${n === 1 ? '' : 's'} changed`);
-  }
-  return ` (${bits.join(', ')})`;
+  const n = job.gitFiles?.length ?? 0;
+  return ` (${hasReport ? 'write-up present' : 'no write-up'}, ${n} file${n === 1 ? '' : 's'} changed)`;
 }
 
 /**

@@ -47,7 +47,6 @@ The plugin automatically selects the newest `flash` model from `agy models` at t
 | `--effort <level>` | Sent only when the model id does not already end in `-low` / `-medium` / `-high`. |
 | `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 900 (15m); watchdog is that plus 60s. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. |
 | `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 

@@ -2,18 +2,6 @@ import { run } from './run.mjs';
 
 /**
  * @param {string} [cwd]
- * @returns {Promise<boolean>}
- */
-export async function isRepo(cwd = process.cwd()) {
-  const res = await run('git', ['rev-parse', '--is-inside-work-tree'], {
-    cwd,
-    timeoutMs: 3_000,
-  });
-  return res.exitCode === 0 && res.stdout.trim() === 'true';
-}
-
-/**
- * @param {string} [cwd]
  * @returns {Promise<string>}
  */
 export async function repoRoot(cwd = process.cwd()) {
@@ -81,15 +69,6 @@ export async function porcelain(cwd = process.cwd()) {
   });
   if (res.exitCode !== 0) return null;
   return parsePorcelain(res.stdout);
-}
-
-/**
- * @param {string} [cwd]
- * @returns {Promise<boolean>}
- */
-export async function isDirty(cwd = process.cwd()) {
-  const files = await porcelain(cwd);
-  return Array.isArray(files) && files.length > 0;
 }
 
 /**

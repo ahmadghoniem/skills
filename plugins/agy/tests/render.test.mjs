@@ -6,7 +6,6 @@ describe('renderResult', () => {
     id: 'add-retry-to-fetchuser-a7f3',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
     gitFiles: [
       { status: 'M', path: 'src/api/user.ts' },
       { status: 'A', path: 'src/api/user.test.ts' },
@@ -53,15 +52,10 @@ describe('renderResult', () => {
     ).toContain('\u26a0 agy status: ERROR (no write-up, 0 files changed)');
   });
 
-  it('singularises one file and omits the count outside a repo', () => {
+  it('singularises one file', () => {
     expect(
       renderResult({ ...base, agyStatus: 'ERROR', gitFiles: [{ status: 'M', path: 'a.ts' }] }),
     ).toContain('(write-up present, 1 file changed)');
-    // Outside a repo there is no tree to compare against, so `0 files changed`
-    // would be a claim rather than a measurement.
-    expect(
-      renderResult({ ...base, agyStatus: 'ERROR', gitRepo: false, gitFiles: [] }),
-    ).toContain('\u26a0 agy status: ERROR (write-up present)');
   });
 
   it('raises a non-zero exit independently of agy status', () => {
@@ -132,7 +126,6 @@ describe('anomalies', () => {
         id: 'x',
         agyStatus: 'SUCCESS',
         exitCode: 0,
-        gitRepo: true,
         gitFiles: [{ status: 'M', path: 'a.ts' }],
         summary: 'done',
       }),
@@ -140,7 +133,7 @@ describe('anomalies', () => {
   });
 
   it('treats a missing status as unremarkable rather than a failure', () => {
-    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0, gitRepo: false })).toEqual([]);
+    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0 })).toEqual([]);
   });
 });
 
@@ -149,7 +142,6 @@ describe('tool failures during a run', () => {
     id: 'x-1111',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
     gitFiles: [{ status: 'M', path: 'src/a.ts' }],
     summary: 'Fixed the failing test.\n',
   };

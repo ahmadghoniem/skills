@@ -11,7 +11,7 @@ import {
   runHeadless,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
-import { isDirty, isRepo, porcelain, porcelainDelta, repoRoot } from './lib/git.mjs';
+import { porcelain, porcelainDelta, repoRoot } from './lib/git.mjs';
 import {
   agyLogPath,
   createJob,
@@ -34,11 +34,10 @@ const DEFAULT_EFFORT = 'medium';
 
 const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>\n';
 
 function parseFlags(argv) {
   const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
-  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
   const conversation =
     typeof flags['conversation'] === 'string' && flags['conversation'].trim()
       ? String(flags['conversation']).trim()
@@ -49,7 +48,6 @@ function parseFlags(argv) {
     model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
     timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
-    noGitCheck,
     sandbox: flags['sandbox'] === true,
     help: flags['help'] === true,
     conversation,
@@ -71,12 +69,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const absPrompt = resolvePath(promptPath(root, jobId));
   writeFileSync(absPrompt, prompt, 'utf8');
 
-  const git = await isRepo(root);
-  /** @type {import('./lib/git.mjs').GitFile[]} */
-  let before = [];
-  if (git) {
-    before = (await porcelain(root)) ?? [];
-  }
+  const before = (await porcelain(root)) ?? [];
 
   const effort =
     flags.effort && !modelEncodesEffort(flags.model) ? flags.effort : undefined;
@@ -86,7 +79,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
     model: flags.model ?? '',
     effort,
     promptPath: absPrompt,
-    gitRepo: git,
     gitBefore: before,
     sandbox: flags.sandbox || undefined,
   });
@@ -127,7 +119,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   });
 
   const summary = summariseEvents(result.events);
-  const gitFiles = git ? porcelainDelta(before, (await porcelain(root)) ?? []) : [];
+  const gitFiles = porcelainDelta(before, (await porcelain(root)) ?? []);
 
   // Mark failed if killed or exited non-zero without emitting a result event.
   // Native exit code and agy status can disagree on completed runs.
@@ -143,7 +135,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
     durationSeconds: summary.durationSeconds,
     conversationId: summary.conversationId,
     model: summary.model ?? flags.model ?? '',
-    gitRepo: git,
     gitFiles,
     killed: result.killed || undefined,
     // Persisted so `/agy:result <id>` matches foreground output; omitted when
@@ -164,7 +155,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
       jobId,
       conversationId: summary.conversationId,
       toolCalls: summary.toolCalls,
-      filesChanged: git ? gitFiles.length : undefined,
+      filesChanged: gitFiles.length,
       agyStatus: summary.status,
       exitCode: result.exitCode,
       toolErrors: summary.toolErrors,
@@ -215,18 +206,8 @@ export async function main(rawArgv) {
     return 2;
   }
 
-  if (!(await isRepo(process.cwd())) && !flags.noGitCheck) {
-    process.stderr.write(
-      'Error: current directory is not a git repository. Pass --no-git-check to override.\n',
-    );
-    return 2;
-  }
   const root = await repoRoot(process.cwd());
   pruneOlderThanDays(root, 30);
-
-  if (await isDirty(root)) {
-    process.stderr.write('Warning: working tree is dirty. agy will see the uncommitted changes.\n');
-  }
 
   // Resolve default model from cache. Omitted on resume because
   // `--conversation` preserves the initial model (e.g. pro), avoiding
