@@ -60,40 +60,11 @@ Prints agy's report. `--list` shows the last 10 tracked jobs (`--all` for every 
 
 On a clean run, the output is agy's report alone. Status tables, file lists, durations, and token counts are omitted because repository state is directly inspectable via `git status` and `git diff`.
 
-The warnings below fire on runs agy reports as finished:
-
-| Line | Means |
-| --- | --- |
-| `⚠ agy status: ERROR` | agy's own verdict. Fires routinely on runs whose files landed correctly. |
-| `⚠ exit 1` | The process exit code. Independent of the above — they disagree in both directions. |
-| `⚠ agy produced no result. Its stderr:` | agy never started (unauthenticated, unknown `--model`, rejected flag, spawn failure). Fires only when there is no write-up and no status. The tail indicates the cause. |
-| `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
-| `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
-| `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
-| `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
-
-`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, preloaded into `agy-runner` and included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
+Lines beginning `⚠` are the exceptions: facts about the run rather than a pass/fail verdict, each allowed to fire alone. [`skills/output-contract/contract.md`](skills/output-contract/contract.md) lists every one, and `tests/contract.test.mjs` holds that list to `WARNING_IDS` in `scripts/lib/render.mjs`.
 
 ## The friction log
 
-Every run ending in an actionable `⚠` warning appends a row to
-`~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, and `resume`
-are excluded because they fire on successful runs.
-
-Two additional sources are recorded manually via `/agy:papercut`: `narrated`
-quotes agy's report when blocked, and `orchestrator` records brief failures
-(expected outcome, actual result, and the failing clause).
-
-All entries record what occurred without diagnosing why. Analysis is deferred
-to `/agy:kaizen` across aggregated clusters in a separate session.
-
-Rows are append-only and never edited or deduplicated. Resolving via
-`/agy:kaizen --resolve <id> --note "…"` appends a resolution, allowing
-subsequent recurrences to be detected.
-
-Each row copies necessary evidence rather than linking to the job record,
-because `pruneOlderThanDays` deletes job directory files older than 30 days
-(including raw event streams) on every dispatch.
+Every run ending in an actionable `⚠` warning appends a row to `~/.cad/papercuts.jsonl` (or `CAD_HOME`); `/agy:papercut` appends the rows the plugin cannot observe itself. `/agy:kaizen` reads the log and prints it clustered.
 
 ## Design notes
 

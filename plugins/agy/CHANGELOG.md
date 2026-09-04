@@ -22,6 +22,13 @@
   stays: the job registry is keyed on a hash of it, so dispatching from a subdirectory and
   from the root land in the same job directory.
 
+### Changed
+
+- **`scripts/lib/util/`** holds the helpers that know nothing about agy: `args`, `git`, `id`,
+  `killtree`, `run`, `slug`. Import paths only.
+- **README** no longer carries its own copy of the ⚠ table or the friction log's design
+  rationale; the contract file and `papercuts.mjs` are the single sources for each.
+
 ## 0.2.0
 
 ### Removed
