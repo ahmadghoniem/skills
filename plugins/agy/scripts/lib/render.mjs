@@ -12,8 +12,9 @@ const TOOL_ERROR_LIMIT = 3;
 const ERROR_TAIL_LIMIT = 4;
 
 /**
- * agy's tool errors are frequently multi-line (a permission refusal repeats the
- * whole command). The first line carries the fact; the rest is restatement.
+ * Take a tool error's first line. agy's tool errors are often multi-line — a
+ * permission refusal repeats the whole command — and the first line carries the
+ * fact.
  *
  * @param {unknown} message
  * @returns {string}
@@ -93,7 +94,7 @@ export const WARNING_IDS = Object.freeze([
 ]);
 
 /**
- * Reports whether a write-up exists and the git status file delta count
+ * Report whether a write-up exists and the git status file delta count
  * to disambiguate non-SUCCESS statuses without judging the run.
  * File count is omitted outside a git repository.
  *
@@ -140,7 +141,7 @@ export function anomalies(job) {
   }
 
   // When agy produces neither a write-up nor a status event, display stderr
-  // to surface initialization failures (e.g. auth, unknown flags, spawn errors).
+  // to surface initialisation failures (e.g. auth, unknown flags, spawn errors).
   // Runs with a write-up suppress stderr to avoid noisy warnings.
   const saidNothing = (job.summary == null || String(job.summary).trim() === '') && !status;
   const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
@@ -153,7 +154,8 @@ export function anomalies(job) {
   }
 
   // Tools that failed during the run, deduped across repeated attempts.
-  // Highlights failed verification commands that might otherwise be masked by SUCCESS.
+  // Highlights failed verification commands that might otherwise be masked
+  // by SUCCESS.
   const toolErrors = Array.isArray(job.toolErrors) ? job.toolErrors : [];
   if (toolErrors.length > 0) {
     const seen = new Set();

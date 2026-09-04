@@ -1,7 +1,7 @@
 // NDJSON parser for `agy --output-format stream-json`.
 //
 // Envelope shape is `{ event: "<name>", "<name>": { ... } }` — the payload
-// key repeats the event name. This is not the Claude `{type: ...}` shape.
+// key repeats the event name.
 //
 // Closed set of event names observed on agy 1.1.19: `init`, `step_update`,
 // `result`. Unknown events are kept but ignored by the summariser.
@@ -129,7 +129,10 @@ export function toolParamPaths(params) {
 
 /**
  * Fold a whole run's event stream into the record a job needs.
+ *
  * Preserves agy's raw status string without inferring pass/fail verdicts.
+ * `run_command` never reports a per-command exit code, so the summary does
+ * not invent one.
  *
  * @param {AgyEvent[]} events
  * @returns {RunSummary}
@@ -148,9 +151,7 @@ export function summariseEvents(events) {
   let durationSeconds;
   /** @type {unknown} */
   let usage;
-  // Every tool step the run took, successful or not. Read against the file
-  // count it says how hard agy worked: forty calls to change one file went
-  // wrong somewhere, whatever the status says.
+  // Total tool steps during the run, successful or failed.
   let toolCalls = 0;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];

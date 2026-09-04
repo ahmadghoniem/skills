@@ -2,8 +2,8 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 
 /**
- * Returns true when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
- * `EPERM` indicates a live process that cannot be signaled by this user.
+ * True when `pid` refers to no process (`process.kill(pid, 0)` throws `ESRCH`).
+ * `EPERM` indicates a live process that cannot be signalled by this user.
  *
  * @param {number} pid
  * @returns {boolean}
@@ -20,8 +20,8 @@ export function isPidGone(pid) {
 /**
  * Kill a process and its descendants on Windows using `taskkill.exe /T /F`
  * via `execFile` (`shell: false` avoids MSYS `/PID` path rewriting).
- * Root is not signaled first to prevent descendant leakage during enumeration.
- * Exit code 128 indicates process not found; stderr is localized.
+ * Root is not signalled first to prevent descendant leakage during enumeration.
+ * Exit code 128 indicates process not found; stderr is localised.
  *
  * @param {number} pid
  * @param {{ graceMs?: number }} [opts]

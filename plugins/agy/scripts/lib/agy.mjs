@@ -41,7 +41,11 @@ export function formatPrintTimeout(seconds) {
 }
 
 /**
- * Generates the `--print=` payload directing agy to read the sidecar file.
+ * Generate the `--print=` payload directing agy to read the sidecar file.
+ *
+ * The sidecar file is written to `~/.cad/jobs/<repo-hash>/<job>.prompt.md`,
+ * which is outside the directory passed to `--add-dir`, and agy reads it
+ * anyway.
  *
  * @param {string} absPromptPath
  * @returns {string}
@@ -155,12 +159,13 @@ function versionOf(id) {
 }
 
 /**
- * Picks the newest flash model matching the requested effort from `models`.
+ * Pick the newest flash model matching the requested effort from `models`.
  * Because agy encodes effort in the model ID (e.g. `gemini-3.7-flash-low`),
  * selecting the ID applies the effort level. When the newest version lacks the
  * requested effort, its highest-effort ID is selected.
  *
- * Falls back to the account default label, then the first model, or null if empty.
+ * Falls back to the account default label, then the first model, or null if
+ * empty.
  *
  * @param {ModelInfo[]} models
  * @param {string|null=} accountDefaultLabel
@@ -313,7 +318,8 @@ export function writeModelCache(models, accountDefaultLabel, toolVersion) {
       'utf8',
     );
   } catch {
-    // Non-fatal: write failure leaves the next dispatch to fall back to agy's built-in default.
+    // Non-fatal: write failure leaves the next dispatch to fall back to agy's
+    // built-in default.
   }
 }
 
@@ -460,7 +466,8 @@ export async function runHeadless(opts) {
     child.on('error', (err) => {
       const message = err instanceof Error ? err.message : String(err);
       logSafe(`# spawn error: ${message}\n`);
-      // Record spawn failure message in stderr so callers have context for synthetic exit code 127 (not an agy 0/1/2 code).
+      // Record spawn failure message in stderr so callers have context for
+      // synthetic exit code 127 (not an agy 0/1/2 code).
       stderr.push(`spawn failed: ${message}`);
       done(127);
     });

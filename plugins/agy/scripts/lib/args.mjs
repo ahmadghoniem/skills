@@ -207,7 +207,7 @@ export function collapseCommandArgv(rawArgv) {
 }
 
 /**
- * Convenience wrapper: collapse the command argv then parse it.
+ * Collapse the command argv then parse it.
  *
  * @param {string[]} rawArgv
  * @param {string[]} [booleans]

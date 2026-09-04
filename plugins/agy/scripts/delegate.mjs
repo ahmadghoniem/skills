@@ -27,9 +27,9 @@ import { summariseEvents } from './lib/parse.mjs';
 import { anomalies, renderResult, viewFromJob } from './lib/render.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
-// under a backgrounded bash call to receive exit notifications without detaching.
-// agy models encode effort (e.g. `gemini-3.7-flash-low`); medium is default
-// unless overridden by `--effort`.
+// under a backgrounded bash call to receive exit notifications without
+// detaching. agy models encode effort (e.g. `gemini-3.7-flash-low`); medium is
+// default unless overridden by `--effort`.
 const DEFAULT_EFFORT = 'medium';
 
 const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
@@ -154,7 +154,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
     gitFiles: snapshotFiles(gitFiles),
     claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
-    // Persisted so `/agy:result <id>` matches foreground output; omitted when empty.
+    // Persisted so `/agy:result <id>` matches foreground output; omitted when
+    // empty.
     stderrTail: result.stderr?.length ? result.stderr : undefined,
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
   });
@@ -185,8 +186,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
 }
 
 /**
- * Runs `runAndRecord`, updating the job record to failed if an error throws
- * before completion (such as binary resolution failure), then rethrows.
+ * Run `runAndRecord`, updating the job record to failed if an error throws
+ * before completion (such as binary resolution failure), then rethrow.
  *
  * @param {ReturnType<typeof parseFlags>} flags
  * @param {string} prompt
@@ -243,8 +244,9 @@ export async function main(rawArgv) {
     }
   }
 
-  // Resolve default model from cache. Omitted on resume because `--conversation`
-  // preserves the initial model (e.g. pro), avoiding unintended downgrades.
+  // Resolve default model from cache. Omitted on resume because
+  // `--conversation` preserves the initial model (e.g. pro), avoiding
+  // unintended downgrades.
   if (!flags.model && !isResume(flags)) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }

@@ -19,6 +19,11 @@ const ALPHANUM = 'abcdefghijklmnopqrstuvwxyz0123456789';
 /**
  * Lowercase alphanumeric suffix for job names (`a7f3`).
  *
+ * Must remain lowercase alphanumeric: job names are lowercased by `kebabSlug`,
+ * and `matchQuery` in `jobs.mjs` resolves a 4-char suffix with case-sensitive
+ * `endsWith`. A mixed-case base64url suffix from `id()` would break suffix
+ * lookup.
+ *
  * @param {number} [length]
  * @returns {string}
  */
