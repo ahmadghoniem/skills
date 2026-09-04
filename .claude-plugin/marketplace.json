@@ -9,9 +9,9 @@
     {
       "name": "kit",
       "source": "./",
-      "description": "Standalone skills: align, tailwind, opencode, snapshot, recall.",
+      "description": "Standalone skills: align, tailwind, snapshot, recall.",
       "category": "engineering",
-      "keywords": ["skills", "tailwind", "context", "opencode"]
+      "keywords": ["skills", "tailwind", "context", "snapshot"]
     },
     {
       "name": "cursor",

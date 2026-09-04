@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Five standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
+Four standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -58,7 +58,6 @@ Reachable by name, and the agent fires them when a task fits.
 | Skill | What it does |
 | --- | --- |
 | [tailwind](./skills/tailwind/SKILL.md) | Tailwind v4 house style (semantic tokens, OKLCH, canonical syntax), plus a class-list cleanup pass. ([more](./skills/tailwind/README.md)) |
-| [opencode](./skills/opencode/SKILL.md) | Translates an approved plan into opencode-ready tasks, picks from the live model list, runs opencode, verifies the result. |
 
 ## Delegation plugins
 
