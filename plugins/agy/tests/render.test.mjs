@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WANDER_WARNING, anomalies, renderResult } from '../scripts/lib/render.mjs';
+import { anomalies, renderResult } from '../scripts/lib/render.mjs';
 
 describe('renderResult', () => {
   const base = {
@@ -92,33 +92,11 @@ describe('renderResult', () => {
       error:
         'permission check failed for command "echo SHELLOK": user denied permission to run command:\necho SHELLOK',
       summary: '',
-      claimedFileChanges: false,
     });
     expect(out).toContain(
       '\u26a0 permission check failed for command "echo SHELLOK": user denied permission to run command:',
     );
     expect(out).toContain('echo SHELLOK');
-  });
-
-  it('warns when the report claims writes but the working tree is unchanged', () => {
-    const out = renderResult({
-      ...base,
-      gitFiles: [],
-      claimedFileChanges: true,
-      summary: 'Created [touched.txt](file:///C:/tmp/touched.txt) containing `OK`.\n',
-    });
-    expect(out).toContain(WANDER_WARNING);
-    expect(out).toContain('antigravity-cli/scratch');
-  });
-
-  it('does not cry wander outside a git repo, where there is no tree to compare', () => {
-    const out = renderResult({
-      ...base,
-      gitRepo: false,
-      gitFiles: [],
-      claimedFileChanges: true,
-    });
-    expect(out).not.toContain(WANDER_WARNING);
   });
 
   it('reports a watchdog kill', () => {
@@ -157,7 +135,6 @@ describe('anomalies', () => {
         gitRepo: true,
         gitFiles: [{ status: 'M', path: 'a.ts' }],
         summary: 'done',
-        claimedFileChanges: true,
       }),
     ).toEqual([]);
   });

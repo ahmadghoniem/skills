@@ -34,4 +34,3 @@ Every warning kind the renderer produces is registered here. `WARNING_IDS` in
 | `agy-error` | `⚠ <agy's error>` | agy's own error text, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `watchdog` | `⚠ watchdog killed the run` | The print timeout plus 60s of grace elapsed and the plugin killed the process tree. The write-up, if any, is partial. |
 | `resume` | `⚠ this run can be resumed where it stopped: /agy:resume <id>` | Fires alongside the watchdog line when the conversation id was captured on the `init` event. Re-dispatching the brief instead is an alternative if the run diverged before the timeout. |
-| `wander` | `⚠ agy reported file changes but the working tree is unchanged` | agy reported file changes, but the working tree is unchanged; writes often landed in `~/.gemini/antigravity-cli/scratch`. Checked only inside a git repo. |

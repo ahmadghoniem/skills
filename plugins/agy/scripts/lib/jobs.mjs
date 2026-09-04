@@ -42,7 +42,6 @@ import { jobName } from './slug.mjs';
  * @property {boolean=} gitRepo
  * @property {Array<{status: string, path: string}>=} gitBefore
  * @property {Array<{status: string, path: string}>=} gitFiles
- * @property {boolean=} claimedFileChanges
  * @property {boolean=} killed
  * @property {boolean=} sandbox
  */

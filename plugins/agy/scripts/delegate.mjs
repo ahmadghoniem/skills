@@ -145,7 +145,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
     model: summary.model ?? flags.model ?? '',
     gitRepo: git,
     gitFiles,
-    claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
     // Persisted so `/agy:result <id>` matches foreground output; omitted when
     // empty.
@@ -168,8 +167,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
       filesChanged: git ? gitFiles.length : undefined,
       agyStatus: summary.status,
       exitCode: result.exitCode,
-      writeTargets: summary.writeTargets,
-      scratchPaths: summary.scratchPaths,
       toolErrors: summary.toolErrors,
       stderrTail: result.stderr,
     });

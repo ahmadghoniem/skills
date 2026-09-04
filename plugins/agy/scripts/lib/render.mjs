@@ -22,10 +22,6 @@ function firstLine(message) {
   return String(message ?? '').split('\n')[0].trim();
 }
 
-export const WANDER_WARNING =
-  'agy reported file changes but the working tree is unchanged — the writes\n' +
-  '  probably landed in ~/.gemini/antigravity-cli/scratch instead of the repo.';
-
 /**
  * @typedef {Object} GitFile
  * @property {string} status
@@ -43,7 +39,6 @@ export const WANDER_WARNING =
  * @property {number|undefined} durationSeconds
  * @property {string|undefined} conversationId
  * @property {string|undefined} summary
- * @property {boolean} [claimedFileChanges]
  * @property {boolean} [killed]
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
@@ -65,7 +60,6 @@ export const WARNING_IDS = Object.freeze([
   "agy-error",
   "watchdog",
   "resume",
-  "wander",
 ]);
 
 /**
@@ -178,12 +172,6 @@ export function anomalies(job) {
       id: 'resume',
       line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,
     });
-  }
-
-  // Checked only inside a git repository.
-  const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
-  if (noGitChanges && job.claimedFileChanges) {
-    out.push({ id: 'wander', line: WANDER_WARNING });
   }
 
   return out;

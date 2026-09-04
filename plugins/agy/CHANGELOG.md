@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- **The `wander` warning.** It fired when agy's write-up claimed file changes and the working
+  tree was unchanged, on the reading that the writes had landed in
+  `~/.gemini/antigravity-cli/scratch`. That misrouting happens when a fresh dispatch reaches
+  agy without `--add-dir`, and `buildArgs` refuses to build one, so the condition cannot arise
+  on a fresh run. The reader is an orchestrator that runs `git diff` before it reviews
+  anything, so an empty diff under a write-up claiming five edits is visible to it before
+  any ⚠ line is. Gone with it: `claimsFileChanges`, the regex over agy's prose that fed the
+  detector; `toolParamPaths` and the scratch-path and write-target collection in the
+  summariser; the `claimedFileChanges` field on the job record; the `wander` papercut and its
+  evidence branch; the two scratch-wander fixtures. A resumed run omits `--add-dir` on the
+  assumption that `--conversation <uuid>` restores the original session's workspace; no
+  fixture covers that path.
+
 ## 0.2.0
 
 ### Removed
