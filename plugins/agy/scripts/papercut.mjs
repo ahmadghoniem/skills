@@ -7,8 +7,8 @@
 //
 // Both record observations rather than diagnoses; `/agy:kaizen` clusters and analyzes them.
 import { readFileSync } from 'node:fs';
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { repoRoot } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
+import { repoRoot } from './lib/util/git.mjs';
 import { appendPapercut, pluginVersion } from './lib/papercuts.mjs';
 import { cachedToolVersion } from './lib/agy.mjs';
 import { jobsDir } from './lib/paths.mjs';

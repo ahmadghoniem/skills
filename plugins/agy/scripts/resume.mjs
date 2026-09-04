@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { repoRoot } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
+import { repoRoot } from './lib/util/git.mjs';
 import { mostRecentJob, resolveJob } from './lib/jobs.mjs';
 import { main as delegateMain } from './delegate.mjs';
 
@@ -56,9 +56,6 @@ async function dispatchWithConversation(conversationId, rest, flags) {
   if (typeof flags.model === 'string') rebuilt.push('--model', flags.model);
   if (typeof flags.effort === 'string') rebuilt.push('--effort', flags.effort);
   if (flags.timeout != null) rebuilt.push('--timeout', String(flags.timeout));
-  if (flags['no-git-check'] === true || flags.gitCheck === false) {
-    rebuilt.push('--no-git-check');
-  }
   rebuilt.push(...rest);
   return delegateMain(rebuilt);
 }

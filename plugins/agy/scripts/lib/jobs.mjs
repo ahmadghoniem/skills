@@ -8,9 +8,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { killTree } from './killtree.mjs';
+import { killTree } from './util/killtree.mjs';
 import { ensureDir, jobsDir, pluginHome } from './paths.mjs';
-import { jobName } from './slug.mjs';
+import { jobName } from './util/slug.mjs';
 
 /**
  * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
@@ -39,10 +39,8 @@ import { jobName } from './slug.mjs';
  * @property {{tool: string, message: string}[]=} toolErrors
  * @property {string|null=} error
  * @property {number=} durationSeconds
- * @property {boolean=} gitRepo
  * @property {Array<{status: string, path: string}>=} gitBefore
  * @property {Array<{status: string, path: string}>=} gitFiles
- * @property {boolean=} claimedFileChanges
  * @property {boolean=} killed
  * @property {boolean=} sandbox
  */

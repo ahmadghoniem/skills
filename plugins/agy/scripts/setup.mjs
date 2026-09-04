@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
 import {
   listModels,
   modelEncodesEffort,
@@ -9,7 +9,7 @@ import {
   cachedToolVersion,
   writeModelCache,
 } from './lib/agy.mjs';
-import { run } from './lib/run.mjs';
+import { run } from './lib/util/run.mjs';
 
 const INSTALL_HINT =
   'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n' +

@@ -4,6 +4,35 @@
 
 ### Removed
 
+- **The `wander` warning.** It fired when agy's write-up claimed file changes and the working
+  tree was unchanged, on the reading that the writes had landed in
+  `~/.gemini/antigravity-cli/scratch`. That misrouting happens when a fresh dispatch reaches
+  agy without `--add-dir`, and `buildArgs` refuses to build one, so the condition cannot arise
+  on a fresh run. The reader is an orchestrator that runs `git diff` before it reviews
+  anything, so an empty diff under a write-up claiming five edits is visible to it before
+  any ⚠ line is. Gone with it: `claimsFileChanges`, the regex over agy's prose that fed the
+  detector; `toolParamPaths` and the scratch-path and write-target collection in the
+  summariser; the `claimedFileChanges` field on the job record; the `wander` papercut and its
+  evidence branch; the two scratch-wander fixtures. A resumed run omits `--add-dir` on the
+  assumption that `--conversation <uuid>` restores the original session's workspace; no
+  fixture covers that path.
+- **The non-repository paths.** Delegation happens in a repository. Removed the `isRepo` guard,
+  `--no-git-check`, `isDirty` and the dirty-tree warning, the `gitRepo` field on the job
+  record, and the branches in the dispatcher and renderer that depended on them. `repoRoot`
+  stays: the job registry is keyed on a hash of it, so dispatching from a subdirectory and
+  from the root land in the same job directory.
+
+### Changed
+
+- **`scripts/lib/util/`** holds the helpers that know nothing about agy: `args`, `git`, `id`,
+  `killtree`, `run`, `slug`. Import paths only.
+- **README** no longer carries its own copy of the ⚠ table or the friction log's design
+  rationale; the contract file and `papercuts.mjs` are the single sources for each.
+
+## 0.2.0
+
+### Removed
+
 - **`--background`, `--wait`, and the `--worker` re-entry point.** One execution path: foreground
   execution under a backgrounded Bash call. `--background` detached workers and severed harness
   notifications without failing or raising errors; `--wait` was accepted and ignored. Removed
