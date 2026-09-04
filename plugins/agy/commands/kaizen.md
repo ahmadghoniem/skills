@@ -24,8 +24,9 @@ proposing anything:
 - Read the cluster's evidence rows. They exist so you can judge a cut without
   re-running the delegation — a re-run costs quota and often does not reproduce.
 - Check `toolCalls` against `filesChanged`. A run that took forty tool calls to
-  change one file indicates an unclear brief where the delegatee could not
-  determine when the task was complete.
+  change one file went wrong somewhere even if agy reported SUCCESS, and a
+  cluster where every cut has that shape is usually a brief problem, not a tool
+  problem: the delegatee could not tell what "done" meant, so it kept looking.
 - Check the `toolVersion` spread. A cluster that only appears at one version is
   a tool regression to work around. One spread across versions is ours.
 - Read any "Recurred after a recorded fix" section first. Those are fixes that
@@ -34,8 +35,9 @@ proposing anything:
 
 ## How to propose a fix
 
-Make redrafts rather than appending notes. Remove outdated or superseded
-guidance.
+Do not pile on extra notes at the end. Look at the file as a whole and make
+redrafts, not additions. Do not shy away from removing guidance that is out of
+date or that something later in the file has already overruled.
 
 Read the whole file before deciding where the fix goes. Appending near the
 symptom is the reflex; the cause is often an existing sentence that is vague or

@@ -12,9 +12,8 @@ const TOOL_ERROR_LIMIT = 3;
 const ERROR_TAIL_LIMIT = 4;
 
 /**
- * Take a tool error's first line. agy's tool errors are often multi-line — a
- * permission refusal repeats the whole command — and the first line carries the
- * fact.
+ * agy's tool errors are frequently multi-line (a permission refusal repeats the
+ * whole command). The first line carries the fact; the rest is restatement.
  *
  * @param {unknown} message
  * @returns {string}
