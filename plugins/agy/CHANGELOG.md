@@ -23,11 +23,37 @@
 
 ### Added
 
+- **A friction log, and `/agy:kaizen` to read it.** Every `⚠` line a run produces that is
+  actually friction — `wander`, `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
+  row to `~/.cad/papercuts.jsonl`. `agy-status`, `exit` and `resume` are deliberately excluded:
+  the first two disagree with reality in both directions and fire on runs that worked, and the
+  third is an offer rather than a problem, so logging them would bury the real rows.
+  `/agy:kaizen` groups the log and prints it; `--resolve <id> --note` appends a resolution and
+  never edits a row, which is what makes a fix that did not hold visible later.
+- **`/agy:papercut`** — writes the two rows the plugin cannot observe: `narrated` (agy's own
+  account of what got in its way, quoted) and `orchestrator` (a failure the brief caused —
+  expected, got, and the failing clause). Deliberately no field for *why*: a model that just
+  wrote a failing brief will construct a plausible story, and a tidy wrong story is harder to
+  correct later than a bare fact. The reading happens in `/agy:kaizen` with fresh context.
+- **`toolCalls` on the run summary.** Every tool step a run took. The only figure in a summary
+  not already derivable from something else, and the one that says how hard agy had to work:
+  forty tool calls to change one file went wrong somewhere even under a `SUCCESS` status.
+  Stamped on every papercut alongside the file count so clusters can be compared by effort.
+- **The `agy --version` string is recorded in the model cache** by `/agy:setup`, and stamped on
+  every papercut. Read from disk rather than probed per dispatch: with auto-update off the
+  version only changes when you upgrade deliberately, and `/agy:setup` is already the ritual
+  for that. `--print-models` refreshes the cache but never runs `--version`, so it carries the
+  stored value across untouched.
 - **A resume line when a killed run kept its conversation id.** `⚠ this run can be resumed
   where it stopped: /agy:resume <id>`. Says the option exists; does not tell you to take it.
 
 ### Changed
 
+- **`anomalies()` returns tagged objects rather than strings.** Each warning is now
+  `{id, line, detail}` instead of a prose line, so the papercut writer can record which warning
+  fired without a second copy of the detection rules to drift from the first. The rendered
+  output is byte-identical; `WARNING_IDS` is now load-bearing rather than documentation-only,
+  since its ids are values on the code path.
 - **`⚠ agy status: ERROR` now carries the facts next to it** — whether a write-up came back and
   how many files changed, both read from the run itself (the `result` event, and two
   `git status --porcelain` snapshots). agy reports `ERROR` for retryable provider hiccups on

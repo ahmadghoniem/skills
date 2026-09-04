@@ -5,6 +5,7 @@ import {
   DEFAULT_PRINT_TIMEOUT_SEC,
   WATCHDOG_GRACE_SEC,
   buildArgs,
+  cachedToolVersion,
   modelEncodesEffort,
   resolveDefaultModel,
   runHeadless,
@@ -21,8 +22,9 @@ import {
   uniqueJobName,
   updateJob,
 } from './lib/jobs.mjs';
+import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { renderResult, viewFromJob } from './lib/render.mjs';
+import { anomalies, renderResult, viewFromJob } from './lib/render.mjs';
 
 // This always runs in the foreground of its own process. The orchestrator
 // invokes it under a backgrounded Bash call, which keeps the user's session
@@ -164,6 +166,33 @@ async function runAndRecord(flags, prompt, jobId, root) {
     stderrTail: result.stderr?.length ? result.stderr : undefined,
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
   });
+
+  // Written here and nowhere else. `/agy:result` re-renders the same warnings
+  // when you fetch a job later, and logging there too would duplicate every cut
+  // once per read. One run, one set of rows.
+  //
+  // `anomalies` is the same call the renderer makes, so the log records exactly
+  // the ⚠ lines the user saw — there is no second copy of the detection rules to
+  // fall out of step.
+  const finalJob = readJob(root, jobId);
+  if (finalJob) {
+    recordDetected(anomalies(viewFromJob(finalJob)), {
+      toolVersion: cachedToolVersion() ?? undefined,
+      pluginVersion,
+      model: summary.model ?? flags.model ?? undefined,
+      repo: root,
+      jobId,
+      conversationId: summary.conversationId,
+      toolCalls: summary.toolCalls,
+      filesChanged: gitRepo ? gitFiles.length : undefined,
+      agyStatus: summary.status,
+      exitCode: result.exitCode,
+      writeTargets: summary.writeTargets,
+      scratchPaths: summary.scratchPaths,
+      toolErrors: summary.toolErrors,
+      stderrTail: result.stderr,
+    });
+  }
 
   return { result, summary, gitFiles, gitRepo };
 }

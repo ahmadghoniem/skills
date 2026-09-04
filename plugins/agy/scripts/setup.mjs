@@ -6,6 +6,7 @@ import {
   parseModelList,
   readAccountDefaultLabel,
   resolveBin,
+  cachedToolVersion,
   writeModelCache,
 } from './lib/agy.mjs';
 import { run } from './lib/run.mjs';
@@ -41,8 +42,10 @@ async function printModels() {
   }
   const defaultLabel = readAccountDefaultLabel();
   // `--print-models` is the other place that has just paid for a live fetch, so
-  // it refreshes the cache too rather than letting a stale one survive.
-  writeModelCache(models, defaultLabel);
+  // it refreshes the cache too rather than letting a stale one survive. It never
+  // runs `--version`, so the stamped version is carried across untouched —
+  // rewriting it as null here would silently strip it from every later papercut.
+  writeModelCache(models, defaultLabel, cachedToolVersion());
   for (const m of models) {
     const effort = modelEncodesEffort(m.id) ? 'effort-in-id' : 'effort-flag';
     const def = defaultLabel && m.label === defaultLabel ? '\tdefault' : '';
@@ -93,7 +96,7 @@ async function baseCheck() {
   const defaultLabel = readAccountDefaultLabel();
   // The only writer. Dispatch reads this cache and never fetches, so running
   // `/agy:setup` is how a newly released model becomes available to auto-pick.
-  writeModelCache(models, defaultLabel);
+  writeModelCache(models, defaultLabel, versionText);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
   lines.push('- models:');
   for (const m of models) {

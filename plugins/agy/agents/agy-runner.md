@@ -92,6 +92,23 @@ skill is preloaded into your context and is the authority on what each one means
 and why none of them may be folded together — follow it rather than paraphrasing
 from memory.
 
+### 5. Log friction agy named itself
+
+If agy's report says something got in its way — a path it could not read, a
+command that behaved differently than it expected, a flag that did not work —
+record it in one line before you return:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- \
+  --source narrated --job <job-id> \
+  --text "<what happened>" --quote "<agy's own words>"
+```
+
+Quote agy rather than summarising it, and do not add your theory of why. The
+warnings the plugin can see for itself are already logged; this is only for what
+agy said out loud and nothing else can observe. Skip it on a clean run — an
+empty log is the normal state.
+
 ## What you must NOT do
 
 - **Do not run `/agy:result` on your own.** If the main conversation wants it, it will run it itself.

@@ -135,22 +135,32 @@ function statusContext(job) {
 }
 
 /**
- * The anomaly lines for a finished job, in the order they are printed. Exported
- * so a test can assert "a clean run produces none of these" directly.
+ * @typedef {Object} Anomaly
+ * @property {string} id       one of `WARNING_IDS`
+ * @property {string} line     the ⚠ line, without its marker
+ * @property {string[]} [detail] indented continuation lines
+ */
+
+/**
+ * The anomalies for a finished job, in the order they are printed. Exported so
+ * a test can assert "a clean run produces none of these" directly, and so the
+ * papercut writer can record the same detections the renderer prints without a
+ * second copy of the logic — one detection site, two consumers.
  *
  * @param {ResultView} job
- * @returns {string[]}
+ * @returns {Anomaly[]}
  */
 export function anomalies(job) {
+  /** @type {Anomaly[]} */
   const out = [];
 
   const status = job.agyStatus == null ? '' : String(job.agyStatus);
   if (status && status.toUpperCase() !== 'SUCCESS') {
-    out.push(`agy status: ${status}${statusContext(job)}`);
+    out.push({ id: 'agy-status', line: `agy status: ${status}${statusContext(job)}` });
   }
 
   if (typeof job.exitCode === 'number' && job.exitCode !== 0) {
-    out.push(`exit ${job.exitCode}`);
+    out.push({ id: 'exit', line: `exit ${job.exitCode}` });
   }
 
   // agy said nothing at all: no write-up and no terminal `result` event. That is
@@ -166,8 +176,11 @@ export function anomalies(job) {
   const saidNothing = (job.summary == null || String(job.summary).trim() === '') && !status;
   const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
   if (saidNothing && stderrTail.length > 0) {
-    out.push('agy produced no result. Its stderr:');
-    for (const line of stderrTail) out.push(`  ${line}`);
+    out.push({
+      id: 'stderr',
+      line: 'agy produced no result. Its stderr:',
+      detail: [...stderrTail],
+    });
   }
 
   // Tools that failed while the run continued. agy recovers from most of these
@@ -187,30 +200,35 @@ export function anomalies(job) {
     }
     const shown = unique.slice(0, TOOL_ERROR_LIMIT);
     const noun = unique.length === 1 ? 'tool call' : 'tool calls';
-    out.push(`${unique.length} ${noun} failed during the run — reported, not judged:`);
-    for (const e of shown) {
-      out.push(`  ${e.tool}: ${firstLine(e.message)}`);
-    }
+    const detail = shown.map((e) => `${e.tool}: ${firstLine(e.message)}`);
     if (unique.length > shown.length) {
-      out.push(`  … and ${unique.length - shown.length} more`);
+      detail.push(`… and ${unique.length - shown.length} more`);
     }
+    out.push({
+      id: 'tool-errors',
+      line: `${unique.length} ${noun} failed during the run — reported, not judged:`,
+      detail,
+    });
   }
 
   if (job.error != null && String(job.error).length > 0) {
     const errLines = String(job.error).split('\n');
-    out.push(errLines[0]);
     // agy's errors can carry a long tail. An unknown `--model` appends the whole
     // catalogue — sixteen lines of menu behind one line of fact. The first line
     // names the problem; keep a little context and say how much was dropped.
     const extras = errLines.slice(1);
-    for (const extra of extras.slice(0, ERROR_TAIL_LIMIT)) out.push(`  ${extra}`);
+    const detail = extras.slice(0, ERROR_TAIL_LIMIT);
     if (extras.length > ERROR_TAIL_LIMIT) {
-      out.push(`  … ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
+      detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
     }
+    out.push({ id: 'agy-error', line: errLines[0], detail });
   }
 
   if (job.killed) {
-    out.push('watchdog killed the run — print-timeout plus 60s grace elapsed');
+    out.push({
+      id: 'watchdog',
+      line: 'watchdog killed the run — print-timeout plus 60s grace elapsed',
+    });
   }
 
   // A killed run is the one case where the work really is half-finished, and
@@ -220,14 +238,17 @@ export function anomalies(job) {
   // the whole brief. Fires only alongside the watchdog line — a run that
   // finished has nothing to resume.
   if (job.killed && job.conversationId) {
-    out.push(`this run can be resumed where it stopped: /agy:resume ${job.id}`);
+    out.push({
+      id: 'resume',
+      line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,
+    });
   }
 
   // Only meaningful inside a repo: outside one there is no tree to compare
   // against, so silence is the honest answer rather than a false alarm.
   const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
   if (noGitChanges && job.claimedFileChanges) {
-    out.push(WANDER_WARNING);
+    out.push({ id: 'wander', line: WANDER_WARNING });
   }
 
   return out;
@@ -250,7 +271,10 @@ export function renderResult(job) {
 
   if (warnings.length > 0) {
     if (lines.length > 0) lines.push('');
-    for (const w of warnings) lines.push(`⚠ ${w}`);
+    for (const w of warnings) {
+      lines.push(`⚠ ${w.line}`);
+      for (const d of w.detail ?? []) lines.push(`  ${d}`);
+    }
   }
 
   return `${lines.join('\n')}\n`;

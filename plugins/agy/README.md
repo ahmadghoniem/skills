@@ -25,7 +25,9 @@ If a Claude Code session was already open when you installed agy, its `PATH` wil
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
 - **`/agy:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree). Also reaps a record left stuck at `running` because its parent process died.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
-- **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list.
+- **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also the only writer of the model cache and the recorded `agy --version`.
+- **`/agy:papercut`** — record one friction point by hand, for `/agy:kaizen` to read later.
+- **`/agy:kaizen`** — read the friction log, cluster what keeps recurring, and agree on fixes.
 
 Plus an **`agy-runner`** agent that shapes a task into a self-contained brief and dispatches it.
 
@@ -72,6 +74,30 @@ What does get surfaced is the set of ways a run can be wrong while agy still cal
 | `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
 
 The same table, in the form the orchestrator actually reads, is `plugins/agy/skills/output-contract/contract.md` — preloaded into `agy-runner` and pulled into `/agy:delegate` and `/agy:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
+
+## The friction log
+
+Every run that ends with a `⚠` line also appends a row to `~/.cad/papercuts.jsonl`
+(`CAD_HOME` moves it). Not every warning: `agy-status`, `exit` and `resume` are
+skipped, because agy's own verdict and the process exit code are documented to
+disagree with reality in both directions and fire on runs that worked, so
+recording them would bury the rows that matter.
+
+Two more sources are written by hand through `/agy:papercut`. `narrated` is agy's
+own account of what got in its way, quoted from its report. `orchestrator` is a
+failure the brief caused, recorded by whoever wrote the brief after reading the
+result back — what was asked for, what came back, and the clause that failed.
+
+Rows are never rewritten. `/agy:kaizen --resolve <id> --note "…"` appends a
+resolution, so a problem that comes back after a fix shows up as a cluster with
+new rows dated after its own fix. That recurrence is the only feedback this loop
+has, which is why nothing is ever deduplicated or edited in place.
+
+Each row copies the evidence it needs rather than pointing at the job record,
+because `pruneOlderThanDays` runs on every dispatch and permanently deletes every
+file in the job directory older than 30 days — including the raw event stream,
+since unlike the job lister it does not filter by extension. A row has to be
+judgeable on its own three weeks later.
 
 ## Design notes
 

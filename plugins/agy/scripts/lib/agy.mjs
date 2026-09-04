@@ -75,8 +75,16 @@ export function sidecarPrint(absPromptPath) {
  * too, but it does the same job while creating a throwaway project on every
  * dispatch, so only `--add-dir` is sent.
  *
+ * Measured across nine runs on 1.1.24, and it is by design — the 1.0.12
+ * changelog says project resolution "defaults regardless of the active
+ * workspace". `--add-dir` and `--new-project` are the only two flags that bind
+ * the cwd. `--project` binds nothing and reports no error, given either an
+ * absolute path or a real conversation id. `--continue` resumes the globally
+ * most recent conversation rather than one matched to the directory, so it
+ * lands in scratch too unless the run it resumes was itself bound.
+ *
  * Resume omits it and adds `--conversation <uuid>` or `--continue`.
- * `--print=<text>` is last. Never emits flags that agy 1.1.19 does not have.
+ * `--print=<text>` is last.
  *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
@@ -275,6 +283,28 @@ export async function listModels() {
 }
 
 /**
+ * The `agy --version` string as of the last `/agy:setup`. Null when the cache
+ * predates this field or setup has never run.
+ *
+ * Read from disk rather than measured per dispatch: spawning `agy --version`
+ * on every run would cost a subprocess to learn something that, with
+ * auto-update disabled, only changes when the user upgrades on purpose. A
+ * papercut stamped with a stale version is a smaller problem than every
+ * dispatch paying for a version probe — and `/agy:setup` is already the
+ * documented "I changed something" ritual.
+ *
+ * @returns {string|null}
+ */
+export function cachedToolVersion() {
+  try {
+    const parsed = JSON.parse(readFileSync(modelCachePath(), 'utf8'));
+    return typeof parsed?.toolVersion === 'string' ? parsed.toolVersion : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read the cached model list. Returns null when there is no cache yet.
  *
  * The cache never expires on its own, deliberately. A time-based refresh means
@@ -301,15 +331,16 @@ export function cachedModels() {
  *
  * @param {ModelInfo[]} models
  * @param {string|null} [accountDefaultLabel]
+ * @param {string|null} [toolVersion] raw `agy --version` output
  * @returns {void}
  */
-export function writeModelCache(models, accountDefaultLabel) {
+export function writeModelCache(models, accountDefaultLabel, toolVersion) {
   try {
     const path = modelCachePath();
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(
       path,
-      `${JSON.stringify({ fetchedAt: new Date().toISOString(), accountDefaultLabel: accountDefaultLabel ?? null, models }, null, 2)}\n`,
+      `${JSON.stringify({ fetchedAt: new Date().toISOString(), accountDefaultLabel: accountDefaultLabel ?? null, toolVersion: toolVersion ?? null, models }, null, 2)}\n`,
       'utf8',
     );
   } catch {

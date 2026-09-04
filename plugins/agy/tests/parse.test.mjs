@@ -170,3 +170,25 @@ describe('tool errors from step_update', () => {
     expect(summariseEvents(load(ADD_DIR_WORKS)).toolErrors).toEqual([]);
   });
 });
+
+describe('toolCalls', () => {
+  it('counts every tool step, not just the ones that failed', () => {
+    const events = [
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'view_file' } },
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'view_file' } },
+      {
+        event: 'step_update',
+        step_update: { step_type: 'tool', tool_name: 'run_command', state: 'ERROR' },
+      },
+      { event: 'step_update', step_update: { step_type: 'thought' } },
+      { event: 'result', result: { status: 'SUCCESS', conversation_id: 'c', response: 'ok' } },
+    ];
+    const s = summariseEvents(events);
+    expect(s.toolCalls).toBe(3);
+    expect(s.toolErrors).toHaveLength(1);
+  });
+
+  it('is zero for a run that called no tools', () => {
+    expect(summariseEvents([]).toolCalls).toBe(0);
+  });
+});
