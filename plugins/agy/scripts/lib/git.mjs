@@ -1,3 +1,6 @@
+// Two `git status --porcelain` snapshots bracket every run. Their delta is the
+// file count on the `agy status` line and the `filesChanged` field on every
+// friction-log row, which is read after the diff itself is gone.
 import { run } from './run.mjs';
 
 /**
