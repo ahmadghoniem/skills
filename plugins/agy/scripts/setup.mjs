@@ -41,10 +41,8 @@ async function printModels() {
     return 1;
   }
   const defaultLabel = readAccountDefaultLabel();
-  // `--print-models` is the other place that has just paid for a live fetch, so
-  // it refreshes the cache too rather than letting a stale one survive. It never
-  // runs `--version`, so the stamped version is carried across untouched —
-  // rewriting it as null here would silently strip it from every later papercut.
+  // `--print-models` has just paid for a live fetch, so it refreshes the cache
+  // too. It never runs `--version`, so the stored version is carried across.
   writeModelCache(models, defaultLabel, cachedToolVersion());
   for (const m of models) {
     const effort = modelEncodesEffort(m.id) ? 'effort-in-id' : 'effort-flag';

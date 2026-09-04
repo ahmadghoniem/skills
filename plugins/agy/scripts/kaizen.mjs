@@ -20,12 +20,8 @@ const USAGE = `Usage: /agy:kaizen [--all] [--kind <name>] [--since <YYYY-MM-DD>]
  * A cut's cluster key: the id of the ⚠ line that produced it, or — for the
  * hand-written rows, which have no machine id — simply where it came from.
  *
- * There is deliberately no tag vocabulary. A fixed list of categories invented
- * before any cuts exist is a guess about what the log will contain, and a wrong
- * guess files real problems under the wrong heading, which is worse than
- * leaving them unfiled. The grouping here is free and always correct; the finer
- * reading is a job for whoever runs `/agy:kaizen`, who has the text in front of
- * them and can see what actually recurs.
+ * The grouping is free and always correct; the finer reading is the job of
+ * whoever runs `/agy:kaizen`, with the text in front of them.
  *
  * @param {Record<string, unknown>} cut
  * @returns {string}
@@ -100,9 +96,8 @@ export async function main(rawArgv) {
       process.stderr.write('Error: --resolve needs --note saying what was changed.\n');
       return 2;
     }
-    // Appended, never edited in place. A resolution that stops working shows up
-    // as the same cluster reappearing *after* its resolution date, and that only
-    // survives if the original row and the resolution both stay on the record.
+    // Appended, never edited in place: a fix that stops working shows up as its
+    // cluster reappearing after its own resolution date.
     const id = appendPapercut({
       ts: new Date().toISOString(),
       source: 'orchestrator',
@@ -154,9 +149,8 @@ export async function main(rawArgv) {
     out.push('');
   }
 
-  // Recurrence after a resolution is the one signal this log gives for free, and
-  // it is the only feedback the loop has: no scorer re-runs these, so a fix that
-  // did not work is invisible unless the cluster is read against its own history.
+  // Recurrence after a resolution is the only feedback this loop has — nothing
+  // re-runs these cuts to score them.
   const reappeared = [];
   for (const [key, cuts] of ordered) {
     const closedInCluster = all.filter(

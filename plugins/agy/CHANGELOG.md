@@ -25,25 +25,21 @@
 
 - **A friction log, and `/agy:kaizen` to read it.** Every `⚠` line a run produces that is
   actually friction — `wander`, `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
-  row to `~/.cad/papercuts.jsonl`. `agy-status`, `exit` and `resume` are deliberately excluded:
-  the first two disagree with reality in both directions and fire on runs that worked, and the
-  third is an offer rather than a problem, so logging them would bury the real rows.
-  `/agy:kaizen` groups the log and prints it; `--resolve <id> --note` appends a resolution and
-  never edits a row, which is what makes a fix that did not hold visible later.
-- **`/agy:papercut`** — writes the two rows the plugin cannot observe: `narrated` (agy's own
-  account of what got in its way, quoted) and `orchestrator` (a failure the brief caused —
-  expected, got, and the failing clause). Deliberately no field for *why*: a model that just
-  wrote a failing brief will construct a plausible story, and a tidy wrong story is harder to
-  correct later than a bare fact. The reading happens in `/agy:kaizen` with fresh context.
-- **`toolCalls` on the run summary.** Every tool step a run took. The only figure in a summary
-  not already derivable from something else, and the one that says how hard agy had to work:
-  forty tool calls to change one file went wrong somewhere even under a `SUCCESS` status.
-  Stamped on every papercut alongside the file count so clusters can be compared by effort.
-- **The `agy --version` string is recorded in the model cache** by `/agy:setup`, and stamped on
-  every papercut. Read from disk rather than probed per dispatch: with auto-update off the
-  version only changes when you upgrade deliberately, and `/agy:setup` is already the ritual
-  for that. `--print-models` refreshes the cache but never runs `--version`, so it carries the
-  stored value across untouched.
+  row to `~/.cad/papercuts.jsonl`. The other three warnings fire on runs that worked, so
+  filing them would bury the rows that matter. `/agy:kaizen` groups the log and prints it;
+  `--resolve <id> --note` appends a resolution and never edits a row, so a fix that did not
+  hold shows up as its cluster coming back.
+- **`/agy:papercut`** — writes the two rows the plugin cannot observe: `narrated` (what agy
+  said blocked it, quoted) and `orchestrator` (a failure the brief caused — expected, got, and
+  the failing clause). Both record what happened and never why; the reading happens in
+  `/agy:kaizen`, later, with fresh context.
+- **`toolCalls` on the run summary.** Every tool step a run took, stamped on each papercut
+  beside the file count. Forty calls to change one file went wrong somewhere, whatever the
+  status says.
+- **The `agy --version` string is recorded in the model cache** and stamped on every papercut.
+  Written by `/agy:setup`, which already resolves the binary, runs `--version` and rewrites the
+  cache from a live `agy models` fetch — so the version costs no extra subprocess per dispatch.
+  `--print-models` refreshes the model list and carries the stored version across untouched.
 - **A resume line when a killed run kept its conversation id.** `⚠ this run can be resumed
   where it stopped: /agy:resume <id>`. Says the option exists; does not tell you to take it.
 

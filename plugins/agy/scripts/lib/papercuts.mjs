@@ -1,21 +1,10 @@
 // The friction log. One JSON object per line in `~/.cad/papercuts.jsonl`,
-// append-only, never rewritten in place.
+// append-only, machine-wide. This module records; `/agy:kaizen` diagnoses.
 //
-// Why a log and not a fix: the model that just hit a problem is the worst
-// available judge of why it happened, so this module records and does not
-// diagnose. Diagnosis is `/agy:kaizen`, later, with fresh context and the whole
-// cluster in view. One cut is noise; three of the same kind is a pattern.
-//
-// Why the evidence is copied rather than referenced: `pruneOlderThanDays` runs
-// on every dispatch and `unlinkSync`s — permanently deletes — every file in the
-// job directory older than 30 days. That sweep takes the raw NDJSON event
-// stream with it, because unlike `listJobs` the prune does not filter by
-// extension. Whatever a cut did not copy is gone at 30 days, so a cut has to
-// stand on its own: you must be able to judge it without re-running the
-// delegation, which costs quota and may not reproduce anyway.
-//
-// Machine-wide, not per-repo. Patterns cross repositories, and a per-repo log
-// would be pruned by the same sweep it exists to outlive.
+// Rows copy their evidence rather than pointing at the job record:
+// `pruneOlderThanDays` runs on every dispatch and permanently deletes every
+// file in the job directory older than 30 days, the raw NDJSON event stream
+// included. A row has to be judgeable on its own three weeks later.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -41,15 +30,11 @@ export const pluginVersion = (() => {
 /**
  * Which renderer warnings become papercuts, and how each is filed.
  *
- * A deliberate subset. `agy-status` and `exit` are omitted because agy's own
- * verdict and the process exit code are documented to disagree with reality in
- * both directions — they fire constantly on runs that worked, and a log full of
- * them clusters into nothing. `resume` is omitted because it is an offer, not a
- * problem.
+ * `agy-status` and `exit` fire on runs that worked and `resume` is an offer
+ * rather than a problem, so the three of them are left out.
  *
- * The severity is the only judgement made here, and it is a coarse one: `warn`
- * means the run's output cannot be trusted as it stands, `info` means something
- * went wrong mid-run and agy carried on.
+ * `warn` means the run's output cannot be trusted as it stands; `info` means
+ * something went wrong mid-run and agy carried on.
  *
  * @type {Readonly<Record<string, {severity: 'warn'|'info'}>>}
  */
@@ -84,9 +69,8 @@ export const DETECTED_WARNINGS = Object.freeze({
  */
 
 /**
- * Stable 8-hex handle for a cut. Content-addressed over the whole row including
- * its timestamp, so two occurrences of the same problem get different ids —
- * recurrence is what tells you a fix did not work, and dedup would erase it.
+ * Stable 8-hex handle for a cut. Hashed over the whole row including its
+ * timestamp, so repeat occurrences get distinct ids and recurrence survives.
  *
  * @param {Omit<Papercut, 'id'>} cut
  * @returns {string}
@@ -142,10 +126,9 @@ export function readPapercuts() {
 }
 
 /**
- * Evidence for one warning, drawn from the run summary rather than re-derived.
- *
- * Deliberately narrow per warning kind. The point is a row you can judge cold
- * in three weeks, not a copy of the event stream.
+ * Evidence for one warning, drawn from the run summary. Narrow per warning
+ * kind: enough to judge the row cold in three weeks, not a second copy of the
+ * event stream.
  *
  * @param {string} warningId
  * @param {{line: string, detail?: string[]}} anomaly
@@ -156,9 +139,8 @@ function evidenceFor(warningId, anomaly, ctx) {
   /** @type {Record<string, unknown>} */
   const ev = { agyStatus: ctx.agyStatus ?? null, exitCode: ctx.exitCode ?? null };
   if (warningId === 'wander') {
-    // The smoking gun. `scratchPaths` are the paths agy actually wrote to, and
-    // they are the difference between "it lied" and "it wrote to the wrong
-    // root" — which are different fixes.
+    // `scratchPaths` are where agy actually wrote — the difference between a
+    // false claim and a misrouted one, which take different fixes.
     if (Array.isArray(ctx.writeTargets) && ctx.writeTargets.length) {
       ev.writeTargets = ctx.writeTargets.slice(0, 10);
     }
@@ -179,9 +161,8 @@ function evidenceFor(warningId, anomaly, ctx) {
 /**
  * Build the `detected` rows for a finished run.
  *
- * Takes the anomalies the renderer already computed rather than re-deriving
- * them, so the log and the ⚠ lines the user saw cannot drift apart. Warnings
- * absent from `DETECTED_WARNINGS` produce nothing.
+ * Takes the anomalies the renderer already computed, so the log and the ⚠ lines
+ * the user saw cannot drift apart. Only `DETECTED_WARNINGS` ids produce rows.
  *
  * @param {{id: string, line: string, detail?: string[]}[]} anomalyList
  * @param {Record<string, unknown>} ctx

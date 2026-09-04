@@ -42,9 +42,7 @@ export function modelCachePath() {
 }
 
 /**
- * The friction log. Machine-wide, deliberately: the patterns worth fixing show
- * up across repositories, and a per-repo file would sit inside the tree that
- * `pruneOlderThanDays` sweeps.
+ * The friction log. Machine-wide: the patterns worth fixing cross repositories.
  *
  * @returns {string}
  */

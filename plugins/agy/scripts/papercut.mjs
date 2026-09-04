@@ -1,21 +1,14 @@
 #!/usr/bin/env node
-// Write one papercut by hand — the `narrated` and `orchestrator` rows.
+// Write one papercut by hand — the two rows only a reader can supply.
+// `delegate.mjs` writes the `detected` rows on its own.
 //
-// `detected` rows need no CLI: `delegate.mjs` writes them from the warnings the
-// renderer already computed. The two sources here are the ones only a reader
-// can supply.
+//   narrated      what agy said blocked it, quoted by the runner agent from
+//                 agy's closing report.
+//   orchestrator  a failure the brief caused, recorded by whoever wrote it:
+//                 expected, got, and the failing clause.
 //
-//   narrated      the delegatee saying what got in its way, in its own words.
-//                 Written by the runner agent from agy's closing report.
-//   orchestrator  the frontier model that wrote the brief, having read the
-//                 result back, recording a failure its own instructions caused.
-//
-// The rule both share: record, do not diagnose. An orchestrator that has just
-// written a bad brief is the worst available judge of why it was bad — this is
-// the degeneration-of-thought failure the Reflexion literature describes, where
-// a model asked to critique its own reasoning talks itself into a story. So the
-// evidence captured is expected-versus-got plus the failing clause, and nothing
-// more. The reading happens in `/agy:kaizen`, later, with fresh context.
+// Both record what happened and never why. `/agy:kaizen` does the reading,
+// later, with fresh context.
 import { readFileSync } from 'node:fs';
 import { collapseCommandArgv, invokedAsScript, parseArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';

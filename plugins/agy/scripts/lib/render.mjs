@@ -142,10 +142,9 @@ function statusContext(job) {
  */
 
 /**
- * The anomalies for a finished job, in the order they are printed. Exported so
- * a test can assert "a clean run produces none of these" directly, and so the
- * papercut writer can record the same detections the renderer prints without a
- * second copy of the logic — one detection site, two consumers.
+ * The anomalies for a finished job, in the order they are printed. Exported for
+ * the tests and for the papercut writer, which files the same detections the
+ * renderer prints.
  *
  * @param {ResultView} job
  * @returns {Anomaly[]}

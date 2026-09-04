@@ -77,16 +77,19 @@ The same table, in the form the orchestrator actually reads, is `plugins/agy/ski
 
 ## The friction log
 
-Every run that ends with a `⚠` line also appends a row to `~/.cad/papercuts.jsonl`
-(`CAD_HOME` moves it). Not every warning: `agy-status`, `exit` and `resume` are
-skipped, because agy's own verdict and the process exit code are documented to
-disagree with reality in both directions and fire on runs that worked, so
-recording them would bury the rows that matter.
+Every run that ends with a `⚠` line worth acting on appends a row to
+`~/.cad/papercuts.jsonl` (`CAD_HOME` moves it). `agy-status`, `exit` and `resume`
+fire on runs that worked, so filing them would bury the rows that matter.
 
-Two more sources are written by hand through `/agy:papercut`. `narrated` is agy's
-own account of what got in its way, quoted from its report. `orchestrator` is a
-failure the brief caused, recorded by whoever wrote the brief after reading the
-result back — what was asked for, what came back, and the clause that failed.
+Two more sources are written by hand through `/agy:papercut`. `narrated` is what
+agy said blocked it, quoted from its report. `orchestrator` is a failure the
+brief caused, recorded by whoever wrote the brief after reading the result back —
+what was asked for, what came back, and the clause that failed.
+
+None of the three records *why*. A model that has just written a failing brief
+will construct a plausible story, and a tidy wrong story is harder to correct
+later than a bare fact, so the diagnosing is left to `/agy:kaizen` — later, in
+fresh context, with the whole cluster in view.
 
 Rows are never rewritten. `/agy:kaizen --resolve <id> --note "…"` appends a
 resolution, so a problem that comes back after a fix shows up as a cluster with

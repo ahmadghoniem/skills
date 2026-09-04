@@ -153,10 +153,9 @@ export function summariseEvents(events) {
   let durationSeconds;
   /** @type {unknown} */
   let usage;
-  // Every tool step the run took, successful or not. The only number in this
-  // summary that is not already derivable from somewhere else, and the one that
-  // says how hard agy had to work — a run that took forty tool calls to change
-  // one file went wrong somewhere even when it reports SUCCESS.
+  // Every tool step the run took, successful or not. Read against the file
+  // count it says how hard agy worked: forty calls to change one file went
+  // wrong somewhere, whatever the status says.
   let toolCalls = 0;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];

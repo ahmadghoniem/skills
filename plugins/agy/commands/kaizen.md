@@ -10,14 +10,13 @@ disable-model-invocation: true
 The output above is the friction log, grouped. Each cluster is one recurring
 problem; the count is how many times it has happened.
 
-This is a conversation, not a job. Propose, do not apply. The user decides what
-changes and applies it themselves — go back and forth until you both agree.
+This is a conversation, not a job. Propose, do not apply. The user picks which
+fixes go in — go back and forth until you both agree.
 
 ## How to read it
 
 Clusters are grouped by the warning that produced them, or by where a
-hand-written cut came from. There is no tag vocabulary — read the text and see
-what actually recurs.
+hand-written cut came from. Read the text and see what actually recurs.
 
 One cut is noise. A cluster of three or more is a pattern worth fixing. Before
 proposing anything:

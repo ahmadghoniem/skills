@@ -167,13 +167,9 @@ async function runAndRecord(flags, prompt, jobId, root) {
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
   });
 
-  // Written here and nowhere else. `/agy:result` re-renders the same warnings
-  // when you fetch a job later, and logging there too would duplicate every cut
-  // once per read. One run, one set of rows.
-  //
-  // `anomalies` is the same call the renderer makes, so the log records exactly
-  // the ⚠ lines the user saw — there is no second copy of the detection rules to
-  // fall out of step.
+  // The only write site: `/agy:result` re-renders these warnings on every fetch,
+  // so logging there too would add a cut per read. `anomalies` is the renderer's
+  // own call, so the log records the ⚠ lines the user saw.
   const finalJob = readJob(root, jobId);
   if (finalJob) {
     recordDetected(anomalies(viewFromJob(finalJob)), {
