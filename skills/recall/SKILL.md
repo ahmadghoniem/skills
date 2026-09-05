@@ -20,6 +20,12 @@ Otherwise orient. Take no edit action on this turn:
 1. Read the whole brief.
 2. Read the relevant files, starting from the ones the brief names — not everything
    changed in this repo belongs to this thread.
+3. Don't open an artifact the brief lists — that is a whole page into a fresh context
+   before you know you will touch it. Read it when you go to change it.
+4. Check the brief's **Running** claims against live state — the branch, the working tree,
+   anything it says is still up. That section describes the moment it was written, not now.
+   Verify only that; the rest of the brief is a record of the past and re-checking it is
+   the last session's work done twice.
 
 Then either:
 

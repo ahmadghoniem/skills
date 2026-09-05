@@ -1,6 +1,8 @@
 # One-shot mailbox for /snapshot. Path: %TEMP%\claude-snapshot-<project-folder>.md
 # SessionStart (matcher: clear): inject contents, then delete the file.
 
+$ttlHours = 12
+
 $utf8 = New-Object System.Text.UTF8Encoding $false
 
 $projectDir = $env:CLAUDE_PROJECT_DIR
@@ -8,6 +10,12 @@ if (-not $projectDir) { $projectDir = (Get-Location).Path }
 
 $mailbox = Join-Path $env:TEMP ("claude-snapshot-" + [IO.Path]::GetFileName($projectDir.TrimEnd('\', '/')) + ".md")
 if (-not (Test-Path -LiteralPath $mailbox)) { exit 0 }
+
+# Expire a brief nobody came back for: snapshot then no /clear leaves it on disk
+# indefinitely, and a stale brief is worse than none -- it describes a session
+# whose working tree has since moved on.
+$age = (Get-Date) - (Get-Item -LiteralPath $mailbox).LastWriteTime
+if ($age.TotalHours -gt $ttlHours) { Remove-Item -LiteralPath $mailbox -Force; exit 0 }
 
 $body = [System.IO.File]::ReadAllText($mailbox, $utf8)
 if ([string]::IsNullOrWhiteSpace($body)) { Remove-Item -LiteralPath $mailbox -Force; exit 0 }

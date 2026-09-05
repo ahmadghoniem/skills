@@ -9,8 +9,27 @@
             "command": "powershell.exe",
             "args": [
               "-NoProfile",
-              "-ExecutionPolicy", "Bypass",
-              "-File", "C:/Users/YOU/.claude/hooks/load-snapshot.ps1"
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "C:/Users/YOU/.claude/hooks/load-snapshot.ps1"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "C:/Users/YOU/.claude/hooks/compact-nudge.ps1"
             ]
           }
         ]
