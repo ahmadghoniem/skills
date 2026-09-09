@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { WANDER_WARNING, anomalies, renderResult } from '../scripts/lib/render.mjs';
+import { anomalies, renderResult } from '../scripts/lib/render.mjs';
 
 describe('renderResult', () => {
   const base = {
     id: 'add-retry-to-fetchuser-a7f3',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
     gitFiles: [
       { status: 'M', path: 'src/api/user.ts' },
       { status: 'A', path: 'src/api/user.test.ts' },
@@ -53,15 +52,10 @@ describe('renderResult', () => {
     ).toContain('\u26a0 agy status: ERROR (no write-up, 0 files changed)');
   });
 
-  it('singularises one file and omits the count outside a repo', () => {
+  it('singularises one file', () => {
     expect(
       renderResult({ ...base, agyStatus: 'ERROR', gitFiles: [{ status: 'M', path: 'a.ts' }] }),
     ).toContain('(write-up present, 1 file changed)');
-    // Outside a repo there is no tree to compare against, so `0 files changed`
-    // would be a claim rather than a measurement.
-    expect(
-      renderResult({ ...base, agyStatus: 'ERROR', gitRepo: false, gitFiles: [] }),
-    ).toContain('\u26a0 agy status: ERROR (write-up present)');
   });
 
   it('raises a non-zero exit independently of agy status', () => {
@@ -92,33 +86,11 @@ describe('renderResult', () => {
       error:
         'permission check failed for command "echo SHELLOK": user denied permission to run command:\necho SHELLOK',
       summary: '',
-      claimedFileChanges: false,
     });
     expect(out).toContain(
       '\u26a0 permission check failed for command "echo SHELLOK": user denied permission to run command:',
     );
     expect(out).toContain('echo SHELLOK');
-  });
-
-  it('warns when the report claims writes but the working tree is unchanged', () => {
-    const out = renderResult({
-      ...base,
-      gitFiles: [],
-      claimedFileChanges: true,
-      summary: 'Created [touched.txt](file:///C:/tmp/touched.txt) containing `OK`.\n',
-    });
-    expect(out).toContain(WANDER_WARNING);
-    expect(out).toContain('antigravity-cli/scratch');
-  });
-
-  it('does not cry wander outside a git repo, where there is no tree to compare', () => {
-    const out = renderResult({
-      ...base,
-      gitRepo: false,
-      gitFiles: [],
-      claimedFileChanges: true,
-    });
-    expect(out).not.toContain(WANDER_WARNING);
   });
 
   it('reports a watchdog kill', () => {
@@ -154,16 +126,14 @@ describe('anomalies', () => {
         id: 'x',
         agyStatus: 'SUCCESS',
         exitCode: 0,
-        gitRepo: true,
         gitFiles: [{ status: 'M', path: 'a.ts' }],
         summary: 'done',
-        claimedFileChanges: true,
       }),
     ).toEqual([]);
   });
 
   it('treats a missing status as unremarkable rather than a failure', () => {
-    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0, gitRepo: false })).toEqual([]);
+    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0 })).toEqual([]);
   });
 });
 
@@ -172,7 +142,6 @@ describe('tool failures during a run', () => {
     id: 'x-1111',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
     gitFiles: [{ status: 'M', path: 'src/a.ts' }],
     summary: 'Fixed the failing test.\n',
   };

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { repoRoot } from './lib/git.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/util/args.mjs';
+import { repoRoot } from './lib/util/git.mjs';
 import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
 import { renderResult } from './lib/render.mjs';
 

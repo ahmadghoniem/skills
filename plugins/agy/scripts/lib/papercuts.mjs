@@ -39,7 +39,6 @@ export const pluginVersion = (() => {
  * @type {Readonly<Record<string, {severity: 'warn'|'info'}>>}
  */
 export const DETECTED_WARNINGS = Object.freeze({
-  wander: { severity: 'warn' },
   stderr: { severity: 'warn' },
   'agy-error': { severity: 'warn' },
   watchdog: { severity: 'warn' },
@@ -138,16 +137,6 @@ export function readPapercuts() {
 function evidenceFor(warningId, anomaly, ctx) {
   /** @type {Record<string, unknown>} */
   const ev = { agyStatus: ctx.agyStatus ?? null, exitCode: ctx.exitCode ?? null };
-  if (warningId === 'wander') {
-    // `scratchPaths` are where agy actually wrote — the difference between a
-    // false claim and a misrouted one, which take different fixes.
-    if (Array.isArray(ctx.writeTargets) && ctx.writeTargets.length) {
-      ev.writeTargets = ctx.writeTargets.slice(0, 10);
-    }
-    if (Array.isArray(ctx.scratchPaths) && ctx.scratchPaths.length) {
-      ev.scratchPaths = ctx.scratchPaths.slice(0, 10);
-    }
-  }
   if (warningId === 'tool-errors' && Array.isArray(ctx.toolErrors)) {
     ev.toolErrors = ctx.toolErrors.slice(0, 5);
   }

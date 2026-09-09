@@ -1,13 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { claimsFileChanges, parseEvents, parseLine, summariseEvents, toolParamPaths } from '../scripts/lib/parse.mjs';
+import { parseEvents, parseLine, summariseEvents } from '../scripts/lib/parse.mjs';
 import {
   ADD_DIR_WORKS,
   ERROR_BUT_SUCCEEDED,
   PERMISSION_DENIED,
   READ_AND_COMMAND,
-  SCRATCH_WANDER,
-  SCRATCH_WANDER_IN_GIT,
 } from './helpers.mjs';
 
 function load(path) {
@@ -40,22 +38,6 @@ describe('parseLine', () => {
   });
 });
 
-describe('toolParamPaths', () => {
-  it('reads PascalCase tool parameters', () => {
-    expect(toolParamPaths({ TargetFile: 'a.txt' })).toEqual(['a.txt']);
-    expect(toolParamPaths({ AbsolutePath: 'b.txt' })).toEqual(['b.txt']);
-    expect(toolParamPaths({ Pattern: '*.md', SearchDirectory: 'C:\\x' })).toEqual(['C:\\x']);
-  });
-});
-
-describe('claimsFileChanges', () => {
-  it('detects a file:// link and a Created [file] pattern', () => {
-    expect(claimsFileChanges('Created [touched2.txt](file:///C:/tmp/touched2.txt)')).toBe(true);
-    expect(claimsFileChanges('probe\n')).toBe(false);
-    expect(claimsFileChanges('')).toBe(false);
-  });
-});
-
 describe('summariseEvents — captured runs', () => {
   it('happy path: tools plus run_command with output and no exit code', () => {
     const s = summariseEvents(load(READ_AND_COMMAND));
@@ -77,13 +59,10 @@ describe('summariseEvents — captured runs', () => {
     expect(cmd?.step_update?.tool_info?.parameters).toEqual({ CommandLine: 'echo probe' });
   });
 
-  it('add-dir write: SUCCESS, TargetFile inside the repo, always-proceed', () => {
+  it('add-dir write: SUCCESS, always-proceed', () => {
     const s = summariseEvents(load(ADD_DIR_WORKS));
     expect(s.status).toBe('SUCCESS');
     expect(s.permissionMode).toBe('always-proceed');
-    expect(s.claimedFileChanges).toBe(true);
-    expect(s.writeTargets.some((p) => p.endsWith('touched2.txt'))).toBe(true);
-    expect(s.scratchPaths).toEqual([]);
     expect(s.response).toContain('Created');
   });
 
@@ -110,38 +89,10 @@ describe('summariseEvents — captured runs', () => {
     );
   });
 
-  it('scratch wander in a git repo: tools target antigravity-cli/scratch', () => {
-    const s = summariseEvents(load(SCRATCH_WANDER_IN_GIT));
-    expect(s.scratchPaths.length).toBeGreaterThan(0);
-    expect(s.scratchPaths.every((p) => /antigravity-cli[\\/]+scratch/i.test(p))).toBe(true);
-    expect(s.claimedFileChanges).toBe(true);
-    expect(s.status).toBe('ERROR');
-    expect(s.error).toMatch(/not a valid artifact path/);
-  });
-
-  it('scratch wander (non-repo): write_to_file lands under scratch', () => {
-    const s = summariseEvents(load(SCRATCH_WANDER));
-    expect(s.writeTargets.some((p) => /antigravity-cli[\\/]+scratch[\\/]+hello\.py/i.test(p))).toBe(
-      true,
-    );
-    expect(s.claimedFileChanges).toBe(true);
-    expect(s.status).toBe('SUCCESS');
-    const events = load(SCRATCH_WANDER);
-    const cmd = events.find(
-      (e) =>
-        e.event === 'step_update' &&
-        e.step_update?.tool_name === 'run_command' &&
-        e.step_update?.state === 'DONE',
-    );
-    expect(cmd?.step_update?.tool_info?.parameters).toEqual({ CommandLine: 'exit 3' });
-    expect(cmd?.step_update?.tool_info?.exit_code).toBeUndefined();
-  });
-
   it('json format: status ERROR plus a real success in the response', () => {
     const s = summariseEvents(load(ERROR_BUT_SUCCEEDED));
     expect(s.status).toBe('ERROR');
     expect(s.conversationId).toBe('b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4');
-    expect(s.claimedFileChanges).toBe(true);
     expect(s.response).toContain('sidecar-worked.txt');
     expect(s.error).toMatch(/not a valid artifact path/);
   });

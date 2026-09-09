@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { shortSuffix } from '../scripts/lib/id.mjs';
-import { jobName, kebabSlug } from '../scripts/lib/slug.mjs';
+import { shortSuffix } from '../scripts/lib/util/id.mjs';
+import { jobName, kebabSlug } from '../scripts/lib/util/slug.mjs';
 
 describe('kebabSlug', () => {
   it('slugs the leading words of a task', () => {

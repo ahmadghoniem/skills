@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
 allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
 ---
 
@@ -62,7 +62,6 @@ has already tokenised argv, drop `--arg-string` and pass argv after a leading
 | `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 900 (15m); the watchdog is that plus 60s grace. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 

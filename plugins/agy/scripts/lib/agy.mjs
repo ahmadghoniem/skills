@@ -3,10 +3,10 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync }
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { killTree } from './killtree.mjs';
+import { killTree } from './util/killtree.mjs';
 import { parseLine } from './parse.mjs';
 import { modelCachePath } from './paths.mjs';
-import { run, spawnDirect } from './run.mjs';
+import { run, spawnDirect } from './util/run.mjs';
 
 export const DEFAULT_PRINT_TIMEOUT_SEC = 900;
 export const WATCHDOG_GRACE_SEC = 60;
