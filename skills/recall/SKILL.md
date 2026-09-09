@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 
 A brief from the prior session is injected at session start by the `SessionStart` hook
-(matcher `clear`). If one is in context, this session began with a `/clear`.
+(matcher `clear`).
 
 If there is none, reply with exactly:
 
@@ -15,17 +15,16 @@ If there is none, reply with exactly:
 
 and stop. Do not guess what the previous session was doing.
 
-Otherwise orient. Take no edit action on this turn:
+Otherwise orient. Read only — make no edits to files this turn:
 
 1. Read the whole brief.
-2. Read the relevant files, starting from the ones the brief names — not everything
-   changed in this repo belongs to this thread.
+2. Read the files relevant to the brief.
 3. Don't open an artifact the brief lists — that is a whole page into a fresh context
    before you know you will touch it. Read it when you go to change it.
-4. Check the brief's **Running** claims against live state — the branch, the working tree,
-   anything it says is still up. That section describes the moment it was written, not now.
-   Verify only that; the rest of the brief is a record of the past and re-checking it is
-   the last session's work done twice.
+4. Check the brief's **Running** claims against live state — anything it says is still
+   up. That section describes the moment it was written, not now, and the gap may have
+   moved the tree under you. Verify only that section; re-checking the rest repeats the
+   last session's work.
 
 Then either:
 

@@ -28,5 +28,5 @@ try {
 $total = $prior + 1
 if ($total -lt 2) { exit 0 }
 
-Write-Output "Compacted $total times. The next one summarizes a summary. Consider /snapshot, then /clear, then /recall."
+Write-Output "Compacted $total times. The next compaction summarizes a summary. Consider /snapshot, then /clear, then /recall."
 exit 0

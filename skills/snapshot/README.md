@@ -10,9 +10,11 @@ work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /re
 
 ## How it works
 
-1. A **`PostCompact` hook** counts the compactions already in the session transcript and, from the second one on, prints a line reminding you to snapshot. It is the only thing enforcing the "twice max" above. The count needs no state file: each compaction leaves one `compact_boundary` marker in the transcript, and `/clear` starts a fresh transcript, so it resets on its own. `PostCompact` output goes to you and never to Claude — which is the right audience, since `/snapshot` is user-invoked only.
+1. A **`PostCompact` hook** counts the compactions in the session transcript and, from the second one on, prints a reminder to snapshot. It is the only thing enforcing the "twice max" above. The count needs no state file: each compaction leaves one `compact_boundary` marker in the transcript, and `/clear` starts a fresh transcript, so it resets on its own. `PostCompact` output goes to you and never to Claude — which is the right audience, since `/snapshot` is user-invoked only. The same marker count reads cleanly from a `statusLine` command too, if you would rather see it standing in the status line than passing in the transcript.
 
-2. **`/snapshot [focus]`** writes one brief to `%TEMP%\claude-snapshot-<project-folder>.md`: State, Running, Decisions, Still open, Artifacts, Files. Sections with nothing real in them are left out entirely, headings included, so the brief can't pad itself into inventing work nobody settled on. Pass a focus and it scopes the whole brief, the way `/compact` takes instructions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
+2. **`/snapshot [focus]`** writes one brief to `%TEMP%\claude-snapshot-<parent>-<folder>.md`: State, Running, Decisions, Still open, Artifacts, Files. Sections with nothing real in them are left out entirely, headings included, so the brief can't pad itself into inventing work nobody settled on. Pass a focus and it scopes the whole brief, the way `/compact` takes instructions. Overwriting, not appending — there is only ever one live brief, and nothing lands in your repo.
+
+   **Running** earns its place from a session that started a dev server, compacted, and was then told by its own tooling that no server was running. It tried to start one and collided with the process it had started itself. Upstream carries the same shape as [anthropics/claude-code#9780](https://github.com/anthropics/claude-code/issues/9780).
 
 3. **`/clear`** wipes the conversation. The temp file is the only thing that survives it.
 
@@ -24,7 +26,7 @@ work  →  /compact (optional; twice max)  →  /snapshot  →  /clear  →  /re
 
 5. **`/recall`** has the fresh session orient before touching anything: it reads the brief and the relevant files, then either proposes a starting point in one line and waits for your go-ahead, or asks about a genuine gap the brief left. No edits on that first turn. Claude Code won't begin a turn without a user message, and a skill autocompletes where a typed word doesn't.
 
-Both skills are user-invoked only: Claude can't fire them on its own, and they don't take up room in the skill list it reads every turn. Only you, through `/snapshot` and `/recall`. The file is named after the project folder, so briefs from different projects stay separate.
+Both skills are user-invoked only: Claude can't fire them on its own, and they don't take up room in the skill list it reads every turn. Only you, through `/snapshot` and `/recall`. The file is named after the last two folders of the project path, so two checkouts sharing a folder name still get separate briefs.
 
 ## Install
 
