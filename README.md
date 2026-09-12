@@ -45,7 +45,7 @@ claude plugin update kit    # and cursor, grok, agy
 
 | Skill | What it does |
 | --- | --- |
-| [align](./skills/align/SKILL.md) | Reads the files behind a vague request, restates it in the repo's own names, labels what it assumed, and stops before editing. ([more](./skills/align/README.md)) |
+| [align-intent](./skills/align-intent/SKILL.md) | Reads the files behind a vague request, rephrases what it now understands, surfaces competing readings, and stops before editing. ([more](./skills/align-intent/README.md)) |
 | [snapshot](./skills/snapshot/SKILL.md) | Writes one brief of the current session to `%TEMP%`, for the next session to pick up. ([more](./skills/snapshot/README.md)) |
 | [recall](./skills/recall/SKILL.md) | Orients the fresh session on the brief the last `/clear` injected. |
 

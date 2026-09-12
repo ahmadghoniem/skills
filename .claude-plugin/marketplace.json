@@ -9,7 +9,7 @@
     {
       "name": "kit",
       "source": "./",
-      "description": "Standalone skills: align, tailwind, snapshot, recall.",
+      "description": "Standalone skills: align-intent, tailwind, snapshot, recall.",
       "category": "engineering",
       "keywords": ["skills", "tailwind", "context", "snapshot"]
     },
