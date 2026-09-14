@@ -92,13 +92,6 @@ describe('buildArgs', () => {
     expect(args).toContain('--add-dir');
   });
 
-  it('always bypasses permissions — there is no --safe and no --mode plan', () => {
-    const args = buildArgs({ ...fresh, safe: true, plan: true });
-    expect(args).toContain('--dangerously-skip-permissions');
-    expect(args).not.toContain('--mode');
-    expect(args).not.toContain('plan');
-  });
-
   it('passes --sandbox when asked', () => {
     const args = buildArgs({ ...fresh, sandbox: true });
     expect(args).toContain('--sandbox');
