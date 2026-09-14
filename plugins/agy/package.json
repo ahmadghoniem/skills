@@ -29,7 +29,9 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "vitest run --config evals/vitest.config.mjs",
+    "eval:live": "set AGY_EVAL_LIVE=1&& vitest run --config evals/vitest.config.mjs"
   },
   "devDependencies": {
     "vitest": "^2.1.8"
