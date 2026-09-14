@@ -7,9 +7,8 @@ disable-model-invocation: true
 
 # Align intent
 
-Work out what I mean from the code, not just from my phrasing.
-Read the relevant files and any provided attachments first, then rephrase what I asked as you now understand it.
-If I said delegate it, commit it, or hold off editing, rephrase that back too. Don't act on it.
-Make the rephrase about as long as my original prompt.
-if a phrase could have multiple interpretations that lead to different results, list them and don't silently pick one ("more compact": tighten the spacing, or drop rows?).
+Before you touch anything, work out what I mean from the code rather than from my phrasing alone. Read the files my request points at and any attachments I provided, then rephrase my request as you now understand it, about as long as the original, with every loose reference ("that panel", "the left thing") resolved to the concrete file, component, or element you believe I mean, so a wrong mapping is something I correct in one line rather than discover after the edit.
+
+Where a phrase has multiple interpretations that would lead to different results, list them instead of silently picking one ("more compact": tighten the spacing, or drop rows?). Otherwise commit to the interpretation the code supports. If I also told you to delegate, commit, or hold off on editing, include that in the rephrase rather than doing it.
+
 Then stop and wait for my confirmation, so we're aligned before you take any action.
