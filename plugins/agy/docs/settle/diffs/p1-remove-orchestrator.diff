@@ -1,0 +1,149 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -81,9 +81,8 @@ Every run ending in an actionable `⚠` warning appends a row to
+ `~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, and `resume`
+ are excluded because they fire on successful runs.
+ 
+-Two additional sources are recorded manually via `/agy:papercut`: `narrated`
+-quotes agy's report when blocked, and `orchestrator` records brief failures
+-(expected outcome, actual result, and the failing clause).
++One additional source is recorded manually via `/agy:papercut`: `narrated`
++quotes agy's report when blocked.
+ 
+ All entries record what occurred without diagnosing why. Analysis is deferred
+ to `/agy:kaizen` across aggregated clusters in a separate session.
+diff --git a/commands/kaizen.md b/commands/kaizen.md
+--- a/commands/kaizen.md
++++ b/commands/kaizen.md
+@@ -23,10 +23,6 @@ proposing anything:
+ 
+ - Read the cluster's evidence rows. They exist so you can judge a cut without
+   re-running the delegation — a re-run costs quota and often does not reproduce.
+-- Check `toolCalls` against `filesChanged`. A run that took forty tool calls to
+-  change one file went wrong somewhere even if agy reported SUCCESS, and a
+-  cluster where every cut has that shape is usually a brief problem, not a tool
+-  problem: the delegatee could not tell what "done" meant, so it kept looking.
+ - Check the `toolVersion` spread. A cluster that only appears at one version is
+   a tool regression to work around. One spread across versions is ours.
+ - Read any "Recurred after a recorded fix" section first. Those are fixes that
+diff --git a/commands/papercut.md b/commands/papercut.md
+--- a/commands/papercut.md
++++ b/commands/papercut.md
+@@ -1,23 +1,17 @@
+ ---
+ description: Record one friction point in the agy papercut log, for `/agy:kaizen` to read later.
+-argument-hint: '--source <narrated|orchestrator> --text "..." [--job <id>]'
++argument-hint: '--source narrated --text "..." [--job <id>]'
+ allowed-tools: Bash(node:*)
+ ---
+ 
+ !`node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- --arg-string "$ARGUMENTS"`
+ 
+ The plugin automatically logs warnings it detects at the end of a run. Use this
+-command to record two external sources:
++command for one more source:
+ 
+ **`--source narrated`** — what agy said blocked it. Take it from agy's closing
+ report and quote it in `--quote`; do not paraphrase it into a diagnosis.
+ 
+-**`--source orchestrator`** — a failure the brief caused. Use this after reading
+-back what came out of a delegation and finding that clearer instructions would
+-have prevented the problem. Record what you asked for (`--expected`), what came
+-back (`--got`), and the specific clause that failed (`--brief-excerpt`). Quote
+-the clause, not the whole brief.
+-
+ Record observations without diagnosing causes; `/agy:kaizen` evaluates
+ clusters later.
+ 
+diff --git a/scripts/kaizen.mjs b/scripts/kaizen.mjs
+--- a/scripts/kaizen.mjs
++++ b/scripts/kaizen.mjs
+@@ -11,7 +11,7 @@ const USAGE = `Usage: /agy:kaizen [--all] [--kind <name>] [--since <YYYY-MM-DD>]
+                   [--resolve <id> --note "<what was changed>"]
+ 
+   --all      include cuts already marked resolved
+-  --kind     show only one cluster (a warning id, or narrated/orchestrator)
++  --kind     show only one cluster (a warning id, or narrated)
+   --since    ignore cuts older than this date
+   --resolve  append a resolution for one cut (the log is never rewritten)
+ `;
+@@ -98,7 +98,7 @@ export async function main(rawArgv) {
+     // cluster reappearing after its own resolution date.
+     const id = appendPapercut({
+       ts: new Date().toISOString(),
+-      source: 'orchestrator',
++      source: 'resolution',
+       severity: 'info',
+       tool: 'agy',
+       pluginVersion,
+diff --git a/scripts/lib/papercuts.mjs b/scripts/lib/papercuts.mjs
+--- a/scripts/lib/papercuts.mjs
++++ b/scripts/lib/papercuts.mjs
+@@ -50,7 +50,7 @@ export const DETECTED_WARNINGS = Object.freeze({
+  * @typedef {Object} Papercut
+  * @property {string} id
+  * @property {string} ts
+- * @property {'detected'|'narrated'|'orchestrator'} source
++ * @property {'detected'|'narrated'|'resolution'} source   old logs may also hold 'orchestrator'
+  * @property {'warn'|'info'} severity
+  * @property {string} tool
+  * @property {string} [toolVersion]
+diff --git a/scripts/papercut.mjs b/scripts/papercut.mjs
+--- a/scripts/papercut.mjs
++++ b/scripts/papercut.mjs
+@@ -1,11 +1,7 @@
+ #!/usr/bin/env node
+-// Records manually authored papercuts (`narrated` or `orchestrator`).
+-// `delegate.mjs` logs `detected` anomalies automatically.
+-//
+-//   narrated      Quotes agy's closing report on blocking issues.
+-//   orchestrator  Records brief defects: expected outcome, actual outcome, failing clause.
+-//
+-// Both record observations rather than diagnoses; `/agy:kaizen` clusters and analyzes them.
++// Records a manually authored papercut: what agy's closing report said got in
++// its way, quoted rather than diagnosed. `delegate.mjs` logs `detected`
++// anomalies automatically; `/agy:kaizen` clusters both.
+ import { readFileSync } from 'node:fs';
+ import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
+ import { repoRoot } from './lib/git.mjs';
+@@ -14,13 +10,10 @@ import { cachedToolVersion } from './lib/agy.mjs';
+ import { jobsDir } from './lib/paths.mjs';
+ import { readJob } from './lib/jobs.mjs';
+ 
+-const USAGE = `Usage: /agy:papercut --source <narrated|orchestrator> --text "<what went wrong>"
++const USAGE = `Usage: /agy:papercut --source narrated --text "<what went wrong>"
+                     [--fix "<what would have prevented it>"]
+                     [--severity warn|info] [--job <job-id>]
+                     [--quote "<the delegatee's own words>"]
+-                    [--brief-excerpt "<the failing clause of the brief>"]
+-                    [--expected "<what the brief asked for>"]
+-                    [--got "<what came back>"]
+ `;
+ 
+ /**
+@@ -36,8 +29,8 @@ export async function main(rawArgv) {
+   }
+ 
+   const source = typeof flags.source === 'string' ? flags.source.trim() : '';
+-  if (source !== 'narrated' && source !== 'orchestrator') {
+-    process.stderr.write('Error: --source must be `narrated` or `orchestrator`.\n');
++  if (source !== 'narrated') {
++    process.stderr.write('Error: --source must be `narrated`.\n');
+     process.stderr.write(USAGE);
+     return 2;
+   }
+@@ -61,13 +54,6 @@ export async function main(rawArgv) {
+   /** @type {Record<string, unknown>} */
+   const evidence = {};
+   if (typeof flags.quote === 'string' && flags.quote.trim()) evidence.quote = flags.quote.trim();
+-  if (typeof flags['brief-excerpt'] === 'string' && flags['brief-excerpt'].trim()) {
+-    evidence.briefExcerpt = flags['brief-excerpt'].trim();
+-  }
+-  if (typeof flags.expected === 'string' && flags.expected.trim()) {
+-    evidence.expected = flags.expected.trim();
+-  }
+-  if (typeof flags.got === 'string' && flags.got.trim()) evidence.got = flags.got.trim();
+ 
+   const severity = flags.severity === 'info' ? 'info' : 'warn';
+ 
