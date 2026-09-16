@@ -17,7 +17,7 @@ const INSTALL_HINT =
 
 /**
  * Print just the TSV (id TAB label), one model per line, for `/agy:delegate`
- * to feed into AskUserQuestion. Marks models whose id already encodes effort.
+ * to show the user. Marks models whose id already encodes effort.
  *
  * @returns {Promise<number>}
  */

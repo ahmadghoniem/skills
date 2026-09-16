@@ -24,18 +24,16 @@
 ### Added
 
 - **A friction log, and `/agy:kaizen` to read it.** Every `⚠` line a run produces that is
-  actually friction — `wander`, `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
-  row to `~/.cad/papercuts.jsonl`. The other three warnings fire on runs that worked, so
+  actually friction — `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
+  row to `~/.cad/papercuts.jsonl`. The other warnings fire on runs that worked, so
   filing them would bury the rows that matter. `/agy:kaizen` groups the log and prints it;
   `--resolve <id> --note` appends a resolution and never edits a row, so a fix that did not
   hold shows up as its cluster coming back.
-- **`/agy:papercut`** — writes the two rows the plugin cannot observe: `narrated` (what agy
-  said blocked it, quoted) and `orchestrator` (a failure the brief caused — expected, got, and
-  the failing clause). Both record what happened and never why; the reading happens in
+- **`/agy:papercut`** — writes the one row the plugin cannot observe: `narrated` (what agy
+  said blocked it, quoted). Records what happened and never why; the reading happens in
   `/agy:kaizen`, later, with fresh context.
-- **`toolCalls` on the run summary.** Every tool step a run took, stamped on each papercut
-  beside the file count. Forty calls to change one file went wrong somewhere, whatever the
-  status says.
+- **`toolCalls` on the run summary.** Every tool step a run took, stamped on each papercut.
+  Forty calls on a one-file task went wrong somewhere, whatever the status says.
 - **The `agy --version` string is recorded in the model cache** and stamped on every papercut.
   Written by `/agy:setup`, which already resolves the binary, runs `--version` and rewrites the
   cache from a live `agy models` fetch — so the version costs no extra subprocess per dispatch.
@@ -50,10 +48,9 @@
   fired without a second copy of the detection rules to drift from the first. The rendered
   output is byte-identical; `WARNING_IDS` is now relied-on in code rather than documentation-only,
   since its ids are values on the code path.
-- **`⚠ agy status: ERROR` now carries the facts next to it** — whether a write-up came back and
-  how many files changed, both read from the run itself (the `result` event, and two
-  `git status --porcelain` snapshots). agy reports `ERROR` for retryable provider hiccups on
-  runs whose work landed intact, and the bare line read as a failure.
+- **`⚠ agy status: ERROR` now carries the fact next to it** — whether a write-up came back,
+  read from the run itself (the `result` event). agy reports `ERROR` for retryable provider
+  hiccups on runs whose work landed intact, and the bare line read as a failure.
 - **`--effort` now reaches the default model.** agy encodes effort in the model id, so the
   auto-pick used to resolve to `…-flash-high` and `--effort` was discarded on every run that
   did not also pin `--model` — the flag was unreachable. `pickDefaultModel` now takes the

@@ -39,7 +39,7 @@ Plus an **`agy-runner`** agent that shapes a task into a self-contained brief an
 /agy:delegate --model gemini-3.7-pro-high --timeout 1800 "the hard one"
 ```
 
-The plugin automatically selects the newest `flash` model from `agy models` at the chosen `--effort` (`medium` by default). Claude prompts for a model only when requested in the prompt.
+The plugin automatically selects the newest `flash` model from `agy models` at the chosen `--effort` (`medium` by default).
 
 | Flag | Effect |
 | --- | --- |
@@ -47,7 +47,6 @@ The plugin automatically selects the newest `flash` model from `agy models` at t
 | `--effort <level>` | Sent only when the model id does not already end in `-low` / `-medium` / `-high`. |
 | `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 900 (15m); watchdog is that plus 60s. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. |
 | `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 
@@ -71,7 +70,6 @@ The warnings below fire on runs agy reports as finished:
 | `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
 | `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
-| `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
 
 `plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, preloaded into `agy-runner` and included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
 
@@ -81,9 +79,8 @@ Every run ending in an actionable `⚠` warning appends a row to
 `~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, and `resume`
 are excluded because they fire on successful runs.
 
-Two additional sources are recorded manually via `/agy:papercut`: `narrated`
-quotes agy's report when blocked, and `orchestrator` records brief failures
-(expected outcome, actual result, and the failing clause).
+One additional source is recorded manually via `/agy:papercut`: `narrated`
+quotes agy's report when blocked.
 
 All entries record what occurred without diagnosing why. Analysis is deferred
 to `/agy:kaizen` across aggregated clusters in a separate session.

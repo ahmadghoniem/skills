@@ -69,46 +69,6 @@ export function parseEvents(text) {
   return events;
 }
 
-const SCRATCH_RE = /antigravity-cli[\\/]+scratch/i;
-
-/**
- * Detect whether agy's response claims file creation or modification
- * (matched by file:// links or modification verbs near filenames).
- *
- * @param {string} response
- * @returns {boolean}
- */
-export function claimsFileChanges(response) {
-  const text = String(response ?? '');
-  if (text.length === 0) return false;
-  if (/file:\/\//i.test(text)) return true;
-  if (/\bcreated the file\b/i.test(text)) return true;
-  if (/\bcreated\b/i.test(text) && /\[[^\]]+\]\(/i.test(text)) return true;
-  if (/\b(created|wrote|modified|updated)\b/i.test(text) && /\.[a-z0-9]{1,8}\b/i.test(text)) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Pull a filesystem path out of a tool_info.parameters object. PascalCase
- * keys are tool-specific: write_to_file → TargetFile, view_file →
- * AbsolutePath, find_by_name → SearchDirectory.
- *
- * @param {Record<string, unknown>|undefined} params
- * @returns {string[]}
- */
-export function toolParamPaths(params) {
-  if (params == null || typeof params !== 'object') return [];
-  /** @type {string[]} */
-  const out = [];
-  for (const key of ['TargetFile', 'AbsolutePath', 'SearchDirectory']) {
-    const v = params[key];
-    if (typeof v === 'string' && v.length > 0) out.push(v);
-  }
-  return out;
-}
-
 /**
  * @typedef {Object} RunSummary
  * @property {string|undefined} conversationId
@@ -122,9 +82,6 @@ export function toolParamPaths(params) {
  * @property {unknown} usage
  * @property {number} toolCalls
  * @property {{tool: string, message: string}[]} toolErrors
- * @property {string[]} scratchPaths
- * @property {string[]} writeTargets
- * @property {boolean} claimedFileChanges
  */
 
 /**
@@ -155,10 +112,6 @@ export function summariseEvents(events) {
   let toolCalls = 0;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];
-  /** @type {string[]} */
-  const scratchPaths = [];
-  /** @type {string[]} */
-  const writeTargets = [];
 
   for (const ev of events ?? []) {
     if (ev == null || typeof ev !== 'object') continue;
@@ -184,16 +137,6 @@ export function summariseEvents(events) {
       if (su.step_type === 'tool') {
         toolCalls += 1;
         const info = su.tool_info;
-        const params = info != null && typeof info === 'object' ? info.parameters : undefined;
-        const paths = toolParamPaths(
-          params != null && typeof params === 'object' ? /** @type {Record<string, unknown>} */ (params) : undefined,
-        );
-        for (const p of paths) {
-          if (SCRATCH_RE.test(p)) scratchPaths.push(p);
-        }
-        if (su.tool_name === 'write_to_file' && typeof params?.TargetFile === 'string') {
-          writeTargets.push(params.TargetFile);
-        }
 
         // Record tool failures, including undocumented binary `state: "ERROR"`,
         // to surface failed verification steps during runs marked SUCCESS.
@@ -236,8 +179,5 @@ export function summariseEvents(events) {
     usage,
     toolCalls,
     toolErrors,
-    scratchPaths,
-    writeTargets,
-    claimedFileChanges: claimsFileChanges(response),
   };
 }

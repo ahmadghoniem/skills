@@ -1,7 +1,7 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>'
-allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
+argument-hint: '[--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+allowed-tools: Bash(node:*), Bash(cat:*)
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/agy:delegate`.
@@ -16,30 +16,11 @@ task and let agy inspect files rather than pre-reading the tree and pasting it i
 
 This command prints one (`add-retry-to-fetchuser-a7f3`). `/agy:result` takes it.
 
-## Model and effort selection
+## Model and effort
 
-Omit `--model`. The plugin resolves the newest **flash** id from the live
-`agy models` list at the requested `--effort`, because agy encodes effort in
-the id itself.
-
-Set `--effort` per task.
-
-Ask **one** `AskUserQuestion` about models only when the user raises them: they
-name a model or a family, ask what is available, say the default is not up to
-this one, or ask for cheaper / faster / stronger. If they name one outright, pass
-it without confirming a choice they already made.
-
-When you do ask, get the real ids first and offer only those:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models
-```
-
-Each line is `id<TAB>label<TAB>effort-in-id|effort-flag`, with an optional
-`default` column. Never invent an id. If the chosen id's third column is
-`effort-flag` (the slug does **not** end in `-low`/`-medium`/`-high`) and the user
-did not already pass `--effort`, ask a second question for effort. If it is
-`effort-in-id`, do **not** send `--effort` — agy rejects the combination.
+Omit `--model`. The plugin picks the newest **flash** id from the cached `agy models`
+list at the `--effort` you pass (`medium` if you pass none). Pass a model only when the
+user names one. Never invent an id; the ids agy accepts are listed below.
 
 ## Run it — always backgrounded
 
@@ -62,7 +43,6 @@ has already tokenised argv, drop `--arg-string` and pass argv after a leading
 | `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 900 (15m); the watchdog is that plus 60s grace. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
 

@@ -11,7 +11,7 @@ const USAGE = `Usage: /agy:kaizen [--all] [--kind <name>] [--since <YYYY-MM-DD>]
                   [--resolve <id> --note "<what was changed>"]
 
   --all      include cuts already marked resolved
-  --kind     show only one cluster (a warning id, or narrated/orchestrator)
+  --kind     show only one cluster (a warning id, or narrated)
   --since    ignore cuts older than this date
   --resolve  append a resolution for one cut (the log is never rewritten)
 `;
@@ -51,8 +51,7 @@ function line(cut) {
   const bits = [`  \`${cut.id}\``, String(cut.ts ?? '').slice(0, 10)];
   if (cut.toolVersion) bits.push(String(cut.toolVersion));
   if (typeof cut.toolCalls === 'number') {
-    const files = typeof cut.filesChanged === 'number' ? cut.filesChanged : '?';
-    bits.push(`${cut.toolCalls} calls / ${files} files`);
+    bits.push(`${cut.toolCalls} calls`);
   }
   const head = bits.join('  ');
   const body = `      ${String(cut.text ?? '').trim()}`;
@@ -98,7 +97,7 @@ export async function main(rawArgv) {
     // cluster reappearing after its own resolution date.
     const id = appendPapercut({
       ts: new Date().toISOString(),
-      source: 'orchestrator',
+      source: 'resolution',
       severity: 'info',
       tool: 'agy',
       pluginVersion,

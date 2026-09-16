@@ -1,9 +1,9 @@
 // Presentation shared by the foreground dispatch and `/agy:result`, so the
 // write-up you see when a job finishes and the one you fetch later cannot drift.
 //
-// Default output is agy's own report. Status, exit code, and working tree
-// modifications remain separate facts that can raise individual warning lines
-// rather than being collapsed into a single pass/fail verdict.
+// Default output is agy's own report. Status and exit code are separate facts
+// that can raise individual warning lines rather than being collapsed into a
+// single pass/fail verdict.
 
 /** Beyond this many distinct tool failures the list stops being readable. */
 const TOOL_ERROR_LIMIT = 3;
@@ -22,28 +22,15 @@ function firstLine(message) {
   return String(message ?? '').split('\n')[0].trim();
 }
 
-export const WANDER_WARNING =
-  'agy reported file changes but the working tree is unchanged — the writes\n' +
-  '  probably landed in ~/.gemini/antigravity-cli/scratch instead of the repo.';
-
-/**
- * @typedef {Object} GitFile
- * @property {string} status
- * @property {string} path
- */
-
 /**
  * @typedef {Object} ResultView
  * @property {string} id
  * @property {string|null|undefined} agyStatus
  * @property {number|null|undefined} exitCode
- * @property {boolean} [gitRepo]
- * @property {GitFile[]} [gitFiles]
  * @property {string|null|undefined} error
  * @property {number|undefined} durationSeconds
  * @property {string|undefined} conversationId
  * @property {string|undefined} summary
- * @property {boolean} [claimedFileChanges]
  * @property {boolean} [killed]
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
@@ -65,26 +52,18 @@ export const WARNING_IDS = Object.freeze([
   "agy-error",
   "watchdog",
   "resume",
-  "wander",
 ]);
 
 /**
- * Report whether a write-up exists and the git status file delta count
- * to disambiguate non-SUCCESS statuses without judging the run.
- * File count is omitted outside a git repository.
+ * Report whether a write-up exists, to disambiguate non-SUCCESS statuses
+ * without judging the run.
  *
  * @param {ResultView} job
  * @returns {string}
  */
 function statusContext(job) {
-  const bits = [];
   const hasReport = job.summary != null && String(job.summary).trim() !== '';
-  bits.push(hasReport ? 'write-up present' : 'no write-up');
-  if (job.gitRepo !== false) {
-    const n = job.gitFiles?.length ?? 0;
-    bits.push(`${n} file${n === 1 ? '' : 's'} changed`);
-  }
-  return ` (${bits.join(', ')})`;
+  return hasReport ? ' (write-up present)' : ' (no write-up)';
 }
 
 /**
@@ -178,12 +157,6 @@ export function anomalies(job) {
       id: 'resume',
       line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,
     });
-  }
-
-  // Checked only inside a git repository.
-  const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
-  if (noGitChanges && job.claimedFileChanges) {
-    out.push({ id: 'wander', line: WANDER_WARNING });
   }
 
   return out;

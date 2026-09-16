@@ -5,8 +5,8 @@
 // compares what the caller receives (stdout, exit code, job record) with the
 // fixture's `truth`, which build-fixtures.mjs derived from the raw run, never
 // from the renderer. A handful of scripted scenarios cover what replay cannot:
-// parallel jobs, orphaned records, id lookups across repositories, resume
-// fallbacks, and argv for models that take no effort flag.
+// orphaned records, id lookups across repositories, resume fallbacks, and
+// argv for models that take no effort flag.
 //
 // Free and offline. Run: npm run eval -- reporting
 import { spawnSync } from 'node:child_process';
@@ -44,7 +44,6 @@ const checks = {
   neverStarted: { id: 'neverStarted', title: 'Never-started run recorded as failed', flaw: 'F7', results: [] },
   quiet: { id: 'quiet', title: 'Clean run is quiet: no warning, exit 0, done', flaw: 'F6', results: [] },
   conversation: { id: 'conversation', title: 'Conversation id saved', flaw: '', results: [] },
-  parallel: { id: 'parallel', title: 'Parallel jobs count only their own files', flaw: 'F4', results: [] },
   effort: { id: 'effort', title: 'No --effort for a model that refuses it', flaw: 'F8', results: [] },
   orphan: { id: 'orphan', title: 'Dead wrapper does not leave a running record', flaw: 'F3', results: [] },
   bareCancel: { id: 'bareCancel', title: 'Bare cancel works with one live job and one orphan', flaw: 'F3', results: [] },
@@ -104,26 +103,6 @@ function gradeReplay({ fx, run, record }) {
   }
   if (t.conversationId) {
     grade('conversation', tag, record?.conversationId === t.conversationId, `record ${record?.conversationId ?? 'none'}`);
-  }
-}
-
-async function scenarioParallel() {
-  const env = makeRepo();
-  try {
-    const fx = join(REPLAY_DIR, 'rec-000-clean.json');
-    const base = { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: fx, AGY_REPLAY_DELAY_MS: '2500' };
-    await Promise.all([
-      runScript('delegate.mjs', ['job a'], { cwd: env.repo, env: { ...base, AGY_REPLAY_WRITES: 'a1.txt,a2.txt' } }),
-      runScript('delegate.mjs', ['job b'], { cwd: env.repo, env: { ...base, AGY_REPLAY_WRITES: 'b1.txt,b2.txt,b3.txt' } }),
-    ]);
-    const jobs = readJobs(env.cadHome);
-    for (const [prompt, own] of [['job a', 2], ['job b', 3]]) {
-      const j = jobs.find((x) => x.prompt === prompt);
-      const n = j?.gitFiles?.length ?? null;
-      grade('parallel', prompt, n === own, `wrote ${own}, record says ${n}`);
-    }
-  } finally {
-    env.cleanup();
   }
 }
 
@@ -247,7 +226,6 @@ describe('eval: reporting accuracy', () => {
     const fixtures = loadReplayFixtures();
     const replays = await pool(fixtures, 8, replayCase);
     for (const r of replays) gradeReplay(r);
-    await scenarioParallel();
     await scenarioEffort();
     await scenarioOrphan();
     await scenarioCrossRepo();
@@ -256,7 +234,7 @@ describe('eval: reporting accuracy', () => {
     const byClass = {};
     for (const f of fixtures) byClass[f.truth.class] = (byClass[f.truth.class] ?? 0) + 1;
     out = results.summarise(Object.values(checks), {
-      preamble: `${fixtures.length} replayed runs: ${Object.entries(byClass).map(([k, v]) => `${k} ${v}`).join(', ')}. Plus six scripted scenarios.`,
+      preamble: `${fixtures.length} replayed runs: ${Object.entries(byClass).map(([k, v]) => `${k} ${v}`).join(', ')}. Plus five scripted scenarios.`,
       data: { fixtures: byClass },
     });
   }, 600_000);
