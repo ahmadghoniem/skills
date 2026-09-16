@@ -397,6 +397,8 @@ a family "has levels" when its set is non-empty. Given `--model M`:
   `--effort` (today's behaviour, `agy.mjs:107`).
 - `M` is a family with levels: pass `--model M --effort <level>` and let agy pick the id. If
   the level does not exist for that family, agy's own error already names the available ones.
+  Dropping the level instead is refused too (checked 2026-09-16: "--model gemini-3.1-pro
+  requires --effort (available: low, high)"). A bare `gpt-oss-120b` with no `--effort` runs.
 - `M` is a full id with no levels (no cached id starts with `M-low|medium|high`, the Claude
   models case): drop `--effort` and print a note.
 - No cache: today's behaviour.

@@ -84,13 +84,9 @@ export function resolveEffort(model, effort) {
   if (levels.size === 0) {
     return { effort: undefined, note: `--effort does not apply to ${model}; dropped` };
   }
-  // A family can list only some levels (`gemini-3.1-pro` has low and high).
-  if (!levels.has(effort)) {
-    return {
-      effort: undefined,
-      note: `${model} takes --effort ${[...levels].join(', ')}, not ${effort}; dropped`,
-    };
-  }
+  // A level the family lacks (`gemini-3.1-pro` has no medium) is still sent:
+  // agy requires `--effort` for that family, so dropping it is refused too,
+  // and agy's own error names the levels it has.
   return { effort, note: undefined };
 }
 
@@ -331,15 +327,20 @@ export async function resolveBin() {
 /**
  * Live model list from `agy models`.
  *
- * Makes a network request (~2s). The dispatch path must not call this; use
- * `cachedModels()` instead.
+ * Makes a network request, 4 to 16 s measured. Throws rather than return a
+ * partial list from a killed or failed fetch, which would be written over a
+ * good cache.
  *
  * @returns {Promise<ModelInfo[]>}
  */
 export async function listModels() {
   const bin = await resolveBin();
-  const res = await run(bin, ['models'], { timeoutMs: 10_000 });
-  return parseModelList(res.stdout);
+  const res = await run(bin, ['models'], { timeoutMs: 30_000 });
+  const models = res.exitCode === 0 ? parseModelList(res.stdout) : [];
+  if (models.length === 0) {
+    throw new Error(`agy models failed: ${(res.stderr || res.stdout || (res.timedOut ? 'timed out' : 'no models listed')).trim()}`);
+  }
+  return models;
 }
 
 /**

@@ -251,6 +251,17 @@ describe('stubbed spawn (never the real binary)', () => {
     expect(models.map((m) => m.id)).toContain('claude-sonnet-4-6');
   });
 
+  it('listModels throws on a failed fetch instead of returning an empty list', async () => {
+    process.env.AGY_BIN = STUB_BIN;
+    process.env.AGY_STUB_FAIL = '1';
+    resetBinCache();
+    try {
+      await expect(listModels()).rejects.toThrow(/agy models failed: stub: forced failure/);
+    } finally {
+      delete process.env.AGY_STUB_FAIL;
+    }
+  });
+
   it('runHeadless replays a fixture and captures NDJSON', async () => {
     process.env.AGY_BIN = STUB_BIN;
     process.env.AGY_STUB_FIXTURE = ADD_DIR_WORKS;
@@ -428,7 +439,7 @@ describe('resolveEffort (M1b)', () => {
     });
   });
 
-  it('a family that lists only some levels: drops a level it does not take, naming the ones it does', () => {
+  it('a family that lists only some levels: still sends a level it does not take, for agy to refuse', () => {
     freshHome();
     writeModelCache(
       [
@@ -438,10 +449,7 @@ describe('resolveEffort (M1b)', () => {
       null,
       null,
     );
-    expect(resolveEffort('gemini-3.1-pro', 'medium')).toEqual({
-      effort: undefined,
-      note: 'gemini-3.1-pro takes --effort low, high, not medium; dropped',
-    });
+    expect(resolveEffort('gemini-3.1-pro', 'medium')).toEqual({ effort: 'medium', note: undefined });
     expect(resolveEffort('gemini-3.1-pro', 'high')).toEqual({ effort: 'high', note: undefined });
   });
 

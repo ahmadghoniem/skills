@@ -44,7 +44,7 @@ The plugin automatically selects the newest `flash` model from the cached `agy m
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | A model family (`gemini-3.1-pro`) or a full id (`gemini-3.8-flash-high`) from `agy models`. Omit it and the newest flash at the chosen `--effort` is used. |
-| `--effort <level>` | Sent with a family that lists that level. Dropped, with a note at dispatch, when the id already encodes effort, when the model takes no levels, or when its family does not list the one asked for. |
+| `--effort <level>` | Sent with a family. Dropped, with a note at dispatch, when the id already encodes effort or the model takes no levels. A level the family lacks is refused by agy, which names the ones it has. |
 | `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 3600 (60m); watchdog is that plus 60s. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
 | `--conversation <uuid>` | Resume a specific conversation. |

@@ -5,10 +5,9 @@ import {
   familyLevels,
   listModels,
   modelEncodesEffort,
-  parseModelList,
   readAccountDefaultLabel,
+  refreshModelCache,
   resolveBin,
-  cachedToolVersion,
   writeModelCache,
 } from './lib/agy.mjs';
 import { run } from './lib/run.mjs';
@@ -35,39 +34,21 @@ function formatLevels(levels) {
 /**
  * Print a family/levels table (`family<TAB>levels|none`, one line per
  * family) for `commands/delegate.md` to embed and `/agy:delegate` to read.
- * Reads `cachedModels()` — M3 already guarantees the cache is refreshed
- * independently of this call — and falls back to a live `agy models` fetch
- * only when no cache exists yet.
+ * Reads `cachedModels()`, and refreshes the cache only when it is missing or
+ * empty.
  *
  * @returns {Promise<number>}
  */
 async function printModels() {
   let models = cachedModels();
-  if (models == null) {
-    let bin;
+  if (!models?.length) {
     try {
-      bin = await resolveBin();
+      models = await refreshModelCache();
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.stderr.write(INSTALL_HINT + '\n');
       return 1;
     }
-    const res = await run(bin, ['models'], { timeoutMs: 10_000 });
-    if (res.exitCode !== 0) {
-      process.stderr.write(`${res.stderr || res.stdout || 'agy models failed'}\n`);
-      return 1;
-    }
-    models = parseModelList(res.stdout);
-    if (models.length === 0) {
-      process.stderr.write('Could not parse model list from `agy models`.\n');
-      return 1;
-    }
-    // Seeds the cache so the next dispatch does not pay this fetch.
-    writeModelCache(models, readAccountDefaultLabel(), cachedToolVersion(), bin);
-  }
-  if (models.length === 0) {
-    process.stderr.write('No models in the cache.\n');
-    return 1;
   }
   for (const [family, levels] of familyLevels(models)) {
     process.stdout.write(`${family}\t${formatLevels(levels)}\n`);
@@ -106,11 +87,6 @@ async function baseCheck() {
     models = await listModels();
   } catch (err) {
     lines.push(`- ✗ models: ${err instanceof Error ? err.message : String(err)}`);
-    process.stdout.write(lines.join('\n') + '\n');
-    return 1;
-  }
-  if (models.length === 0) {
-    lines.push('- ✗ no models reported');
     process.stdout.write(lines.join('\n') + '\n');
     return 1;
   }
