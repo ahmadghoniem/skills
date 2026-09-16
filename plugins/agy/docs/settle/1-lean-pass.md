@@ -6,9 +6,27 @@ change code that this batch deletes or simplifies.
 Scope is the agy plugin only. Checked against `main` plus the working tree, 122 job records in
 `~/.cad/jobs`, and live agy 1.2.2 on 2026-09-12 and 2026-09-13.
 
+## Landing order
+
+File 1 lands first, then file 2, then file 3. One commit per item, in the order each file
+lists its items, with two exceptions:
+
+- **The `splitArgString` backslash fix lands before everything else, as its own commit.**
+  It is described under C1/C2 in file 3, but it has to land first because C1 and C2 depend on
+  Windows paths surviving `--arg-string` parsing, and nothing else in the three files touches
+  argument parsing.
+- **File 2's internal order is K4, J1, K2, F1, K1, I2, K3, X1, B2, B1, J3**, not the order the
+  items appear in that file. K4 has to land before J1, since J1 detects a stderr line that K4
+  stops hiding. K2 has to land before F1 and K1, since both of those rely on K2's "did the run
+  finish" rule and share one `isUnfinished(job)` definition with it (see F1 in file 2).
+- **K5 (retire the `agy-runner` subagent) is the first commit of file 3.** G1 and M1 below were
+  both written to edit `agents/agy-runner.md`, the file K5 deletes. Neither touches it: G1 is a
+  no-op (see G1 below) and M1 edits only `commands/delegate.md`, so file 1 still lands first and
+  nothing in it depends on K5.
+
 ## How this batch is committed
 
-One commit per item, in the order below, on a branch off `main`. PR #2 "agy: the lean pass"
+One commit per item, in the order below. PR #2 "agy: the lean pass"
 was closed without merging on 2026-09-13. Its branch is kept as reference only: local `pr2`,
 remote `hoplite/sinope-c639038a`. The Hoplite bot opened it on 2026-09-04. Its commits:
 
@@ -56,17 +74,39 @@ wrote anything. Its answer was one sentence with two Markdown links, both `file:
 Run through `claimsFileChanges`, the `file://` rule matched and the verb rule did not. With the
 links removed, the same sentence does not trigger it.
 
-**Change.** Delete `WANDER_WARNING`, the `wander` anomaly, `claimsFileChanges`,
-`claimedFileChanges`, `scratchPaths` and `writeTargets` if nothing else reads them, the
-`wander` id in `WARNING_IDS`, and its section in `skills/output-contract/contract.md`.
+**Change.** Delete, all verified at HEAD:
+
+- `scripts/lib/parse.mjs:72` `SCRATCH_RE`, `:81` `claimsFileChanges`, `:101` `toolParamPaths`
+  (only used to feed `scratchPaths`, `:188-193`), `:159-161` and `:239-241` `scratchPaths`,
+  `writeTargets`, `claimedFileChanges`.
+- `scripts/lib/render.mjs:25` `WANDER_WARNING`, `:68` `"wander"` in `WARNING_IDS`, `:183-187`
+  the anomaly, `:46` `claimedFileChanges` in the typedef.
+- `scripts/lib/papercuts.mjs:42` `wander` in `DETECTED_WARNINGS`, `:145-154` the `wander`
+  branch of `evidenceFor`.
+- `scripts/delegate.mjs:148` `claimedFileChanges`, `:172-173` `writeTargets`, `scratchPaths`.
+- `scripts/lib/jobs.mjs:45` `claimedFileChanges` in the `JobRecord` typedef.
+- `skills/output-contract/contract.md:37` the `wander` row (`tests/contract.test.mjs` checks
+  the row and the `WARNING_IDS` entry stay in sync, so remove both together).
+- `README.md:74` the wander row in the warnings table.
+- Tests: `tests/render.test.mjs:2` (`WANDER_WARNING` import), `:101-122` (two wander tests),
+  `:95`, `:107`, `:119`, `:160` (`claimedFileChanges` setup). `tests/parse.test.mjs:3`
+  (`claimsFileChanges`, `toolParamPaths` imports), `:43-48` (`toolParamPaths` test), `:50-58`
+  (`claimsFileChanges` tests), `:84-86`, `:113-127`, `:144` (`claimedFileChanges`,
+  `writeTargets`, `scratchPaths` assertions). `tests/papercuts.test.mjs:64-65`
+  (`writeTargets`/`scratchPaths` setup), `:68-79` ("turns a wander into one cut"), `:122`
+  (a cut with `warningId: 'wander'`).
+
+Keep the fixtures `tests/fixtures/agy-events/scratch-wander*.ndjson`:
+`tests/parse.test.mjs:128-138` uses them for the `run_command` exit-code assertion, which is
+unrelated to wander. Delete only the wander assertions in those tests, not the fixtures.
 
 ## A2. Remove the git repository check and `--no-git-check`
 
 **Story.** Inherited from the April 2026 scaffold (`1134cbd`). Before doing anything,
 `delegate.mjs:221` runs `git rev-parse --is-inside-work-tree` in the folder Claude Code
-runs it from. If that folder is not inside a git work tree, it prints
-"current directory is not a git repository" and exits 2 without writing a job record.
-`--no-git-check` skips the refusal.
+runs it from (`if (!(await isRepo(process.cwd())) && !flags.noGitCheck)`). If that folder is
+not inside a git work tree, it prints "current directory is not a git repository" and exits 2
+without writing a job record. `--no-git-check` skips the refusal.
 
 In practice: a repo subfolder passes, a git worktree passes (it has a `.git` file), and a
 plain folder with no `.git` anywhere above it is refused. The check existed because the
@@ -83,8 +123,15 @@ with `--add-dir` pointing at a second temp folder with no `.git`, and asked to c
 describes the flag only as "Add a directory to the workspace (repeatable)", and neither the help,
 the changelog nor Google's CLI docs mention git for it.
 
-**Change.** Delete `isRepo`, the refusal, the `--no-git-check` flag in `delegate.mjs`,
-`resume.mjs`, `commands/delegate.md` and the usage string, and `gitRepo` in the job record.
+**Change.** Delete `isRepo`, the refusal at `delegate.mjs:221`, the `--no-git-check` flag
+(`delegate.mjs:41` parse, `:52`, and `resume.mjs:59-61`'s rebuild), `isRepo(root)` inside
+`runAndRecord` (`delegate.mjs:74`, which feeds `gitRepo`), the `gitRepo` field
+(`delegate.mjs:89`, `:146`, `jobs.mjs:42` typedef, `render.mjs:40` typedef, and
+`render.mjs:83`'s `if (job.gitRepo !== false)`, which goes together with A4), and the flag's
+mentions in `commands/delegate.md:3`, `:65` and `README.md:50`.
+
+Keep `tests/args.test.mjs:93` (`parseArgv(['--no-git-check'], ['git-check'])`): it tests the
+parser's generic `--no-` negation using an arbitrary flag name, not the feature itself.
 
 ## A3. Remove the dirty-tree warning
 
@@ -95,7 +142,8 @@ uncommitted.
 **Why it goes.** Delegating while work is uncommitted is the normal case, so the line prints
 on nearly every run and tells the caller nothing it can act on. It also costs one git call.
 
-**Change.** Delete `isDirty` and the warning.
+**Change.** Delete `isDirty` and the warning at `delegate.mjs:230`. `isDirty` is called only
+there.
 
 ## A4. Remove the before/after porcelain snapshots
 
@@ -122,8 +170,42 @@ differ as `gitFiles`.
 
 Claude reviews `git diff` itself after a run, which is the reliable view.
 
-**Change.** Delete `porcelain`, `parsePorcelain`, `porcelainDelta`, `gitBefore`, `gitFiles`,
-the status-line file count in `render.mjs:79`, and their tests.
+**Change.** In `scripts/lib/git.mjs`, keep only `repoRoot` and its `run` import; delete
+`parsePorcelain`, `porcelainLetter`, `porcelain`, `isDirty`, `porcelainDelta` and the `GitFile`
+typedef, which is defined twice (once in `git.mjs`, again at `render.mjs:29-33`; delete both
+copies). Delete `gitBefore`, `gitFiles` and their typedef lines (`jobs.mjs:43-44`). Delete the
+status-line file count in `render.mjs:79` (`statusContext`); after the change it returns
+` (write-up present)` or ` (no write-up)`.
+
+Update `skills/output-contract/contract.md:30`:
+
+```diff
+-| `agy-status` | `⚠ agy status: <status> (write-up present, N files changed)` | agy's own verdict, verbatim. Not a pass/fail: agy can report `ERROR` on runs that worked and `SUCCESS` on runs that did not. The parenthetical reports whether a write-up exists and the file count from before and after `git status --porcelain` snapshots. The file count is omitted outside a git repo. |
++| `agy-status` | `⚠ agy status: <status> (write-up present)` | agy's own verdict, verbatim. Not a pass/fail: agy can report `ERROR` on runs that worked and `SUCCESS` on runs that did not. The parenthetical says only whether agy returned a write-up. Check `git diff` yourself for what changed. |
+```
+
+And `contract.md:16-18`, rule 2:
+
+```diff
+-2. **Never fold two into one verdict.** agy's own status, the process exit code,
+-   and the state of the working tree are independent facts that disagree in both
+-   directions. Each is allowed to fire alone.
++2. **Never fold two into one verdict.** agy's own status, the process exit code,
++   and what agy wrote to stderr are independent facts that disagree in both
++   directions. Each is allowed to fire alone.
+```
+
+`render.mjs:4-6`'s header comment says "working tree modifications remain separate facts";
+drop that phrase.
+
+Tests to rewrite: `tests/render.test.mjs:9-10` (`gitRepo`, `gitFiles` in the test `base`),
+`:44-64` (the two file-count tests, "measures the ERROR" and "singularises one file"), `:91`,
+`:106`, `:118`, `:157-158`, `:166`, `:175-176`.
+
+**Eval.** `evals/reporting.eval.mjs:110-128` `scenarioParallel` grades `j?.gitFiles?.length`
+(the `parallel` check, "Parallel jobs count only their own files", line 47). With `gitFiles`
+gone it fails forever. Delete the `parallel` check, the `scenarioParallel` scenario, and its
+call site.
 
 ## A5. Drop `filesChanged` and the calls-per-file check in `/agy:kaizen`
 
@@ -131,14 +213,24 @@ the status-line file count in `render.mjs:79`, and their tests.
 `filesChanged`: forty tool calls for one file suggests agy was going in circles. A4 is its
 only data source, so the number is wrong in every case listed there.
 
-**Change.** Remove `filesChanged` from `papercuts.mjs`, `papercut.mjs`, `kaizen.mjs` and
-`commands/kaizen.md`. Keep `toolCalls` and duration.
+**Change.** Remove `filesChanged` from `papercuts.mjs` (`:63` typedef, `:188`), `papercut.mjs`
+(`:85`), `kaizen.mjs` (`:52-55`, the `calls / files` bit in `line()`) and `commands/kaizen.md`
+(`:26-29`, covered by the P1 diff), and `delegate.mjs:170`. Keep `toolCalls` in
+`kaizen.mjs:52-55`: `bits.push(`${cut.toolCalls} calls`)`.
+
+Also:
+- `commands/papercut.md:24`: "the run's model, conversation and file count are filled in" →
+  "the run's model and conversation are filled in".
+- `tests/papercuts.test.mjs:61` (`filesChanged: 0` in ctx) and `:78`
+  (`expect(cuts[0].filesChanged).toBe(0)`).
+
+Keep `toolCalls` and duration.
 
 ## A6. Keep `repoRoot` as the only git call
 
 **How it works.** `git rev-parse --show-toplevel`. Inside a repo, including a subfolder, it
 returns the repo's top folder. Outside git, or if git is missing, it returns the current
-folder.
+folder (`git.mjs:19-26` falls back to `cwd` on non-zero exit).
 
 **What the root is used for.** It is the workspace passed to agy with `--add-dir`, agy's
 working folder, and the key for the job folder `~/.cad/jobs/<hash of root>` where
@@ -147,20 +239,24 @@ working folder, and the key for the job folder `~/.cad/jobs/<hash of root>` wher
 **Worth knowing.** Started from a repo subfolder, agy's workspace is the whole repo, not the
 subfolder.
 
-**Change.** None, beyond confirming nothing else calls git after A2 to A5.
+**Change.** None, beyond confirming nothing else calls git after A2 to A5. After those land,
+the only callers of `scripts/lib/git.mjs` are `repoRoot`, from `delegate.mjs`, `resume.mjs`,
+`result.mjs`, `cancel.mjs` and `papercut.mjs`.
 
 ## G1. Delete the pre-read mandate in the runner prompt
 
-**Story.** `agents/agy-runner.md:25-33` tells the runner to read `AGENTS.md`, `CLAUDE.md`,
+**Story.** `agents/agy-runner.md:25-33` told the runner to read `AGENTS.md`, `CLAUDE.md`,
 `package.json`, `README.md` and similar files before writing every brief, so the brief can
 name the right build and test commands.
 
 **Why it goes.** Past runner sessions spent two to five thousand tokens on it each time, on
 Claude's side, before agy starts. agy has its own file tools and can read those files in its
-own context, which is the reason to delegate at all. `commands/delegate.md` already says to
-let agy inspect files rather than pre-reading the tree.
+own context, which is the reason to delegate at all.
 
-**Change.** Delete the section. Keep the brief anatomy.
+**Change.** No-op here, superseded by file 3's K5. K5 deletes `agents/agy-runner.md`
+entirely, which removes this section along with the rest of the file. `commands/delegate.md`
+already tells Claude to let agy inspect files rather than pre-reading the tree (`:11-13`), so
+no separate edit to that file is needed for G1.
 
 ## M1. Remove the AskUserQuestion model prompt
 
@@ -172,8 +268,31 @@ mentions models, plus a second question for effort in some cases.
 A user who wants another model names it. The only real gap is a name that matches no model,
 which file 3 (M2) handles by listing the valid ids.
 
-**Change.** Remove the AskUserQuestion section and the tool from `allowed-tools` in
-`commands/delegate.md` and from the runner's `tools`.
+**Change.** `agents/agy-runner.md:67-69` is deleted along with the whole file by K5 (file 3);
+edit only `commands/delegate.md` here:
+
+- `commands/delegate.md:4` `allowed-tools`: remove `AskUserQuestion`. (C2, file 3, later adds
+  `Write`.)
+- `commands/delegate.md:19-42` is wrong today beyond the AskUserQuestion flow: lines 21-23 say
+  the model id is resolved "from the live `agy models` list", but `resolveDefaultModel`
+  (`agy.mjs:330-338`) reads only the cache. Replace lines 19-42 with:
+
+```markdown
+## Model and effort
+
+Omit `--model`. The plugin picks the newest **flash** id from the cached `agy models`
+list at the `--effort` you pass (`medium` if you pass none). Pass a model only when the
+user names one. Never invent an id; the ids agy accepts are listed below.
+```
+
+  (M1b, file 3, appends the model table under that heading.)
+
+- `README.md:42` "Claude prompts for a model only when requested in the prompt." → delete the
+  sentence.
+- `setup.mjs:19-20`'s docstring says the `--print-models` mode exists "for `/agy:delegate` to
+  feed into AskUserQuestion". Keep the `--print-models` mode itself: M1b repurposes it to read
+  the cache and generate the model table. Just reword the docstring so it no longer names
+  AskUserQuestion.
 
 ## P1. Remove the "brief defect" papercut source (`orchestrator`)
 
@@ -197,6 +316,10 @@ is removed in A5. It has never been used: the papercut log holds 64 rows, 63 `de
   Give it its own source, `resolution`, and keep reading old rows. Update the `--kind` help.
 - `scripts/lib/papercuts.mjs`: update the `source` type.
 - `README.md` lines 84-86. No test names the source.
+- `CHANGELOG.md:32-35` (Unreleased) still advertises the `orchestrator` source: "writes the
+  two rows the plugin cannot observe: `narrated` … and `orchestrator` …". The feature never
+  shipped, so edit that entry to describe `narrated` only.
 
-The exact before and after is in `diffs/p1-remove-orchestrator.diff`, made against the current
-working tree. The `commands/kaizen.md` hunk also covers A5.
+The exact before and after for the code sites above is in `diffs/p1-remove-orchestrator.diff`,
+made against the current working tree; it applies cleanly to HEAD. The `commands/kaizen.md`
+hunk also covers A5.
