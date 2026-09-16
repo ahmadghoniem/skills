@@ -71,6 +71,14 @@ const CASES = [
     checks: ['dispatched', 'background', 'jobSurvived', 'noPolling', 'relayed'],
   },
   {
+    id: 'error-but-done',
+    files: RANGE_FILES,
+    fixture: firstFixture('other'),
+    prompt: 'Use agy to fix the off-by-one bug in src/range.mjs so that node test.mjs passes. Tell me when it is done.',
+    stub: DONE,
+    checks: ['dispatched', 'background', 'jobSurvived', 'noResumeWhenDone'],
+  },
+  {
     id: 'long-brief',
     files: { 'src/lib0.mjs': 'export {};\n', 'README.md': '# libs\n' },
     fixture: firstFixture('clean'),
@@ -193,6 +201,7 @@ const TITLES = {
   briefIntact: 'Long brief reached agy intact',
   noToolErrors: 'No failed Bash call before dispatch',
   jobSurvived: 'Dispatched job ran to completion',
+  noResumeWhenDone: 'No resume when agy said ERROR but the work landed',
 };
 const FLAWS = { jobSurvived: 'F21', noPolling: 'F19', briefIntact: 'F14', noToolErrors: 'F14', toldIncomplete: 'F1', relayed: 'contract' };
 
@@ -263,6 +272,9 @@ describe.skipIf(!LIVE)('eval: caller behaviour (live Claude Code, stub agy)', ()
 
         const firstDispatch = delegates[0]?.index ?? Infinity;
         const failedBefore = s.toolUses.filter((t) => ['Bash', 'PowerShell', 'Write'].includes(t.name) && t.index < firstDispatch && s.toolResults.get(t.id)?.is_error);
+        const resumes = s.toolUses.filter((t) => /resume.mjs|agy:resume/.test(JSON.stringify(t.input ?? {})));
+        grades.noResumeWhenDone = [resumes.length === 0, `${resumes.length} resume call(s)`];
+
         grades.noToolErrors = [failedBefore.length === 0, failedBefore.map((t) => `${t.name}: ${cmdOf(t).slice(0, 80)}`).join(' || ') || 'none'];
 
         const row = {

@@ -84,9 +84,9 @@ no `--effort`. A model with no levels ignores `--effort`; the plugin drops it an
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 
 A non-zero exit from `delegate.mjs` means the run did not finish, not that agy's work is
-wrong. Read the ⚠ lines. If a `/agy:resume` line is offered, resume rather than
-re-dispatching.
+wrong: agy reports `ERROR` on runs it retried and completed. Read the ⚠ lines.
 
 After a job that changed code, read `git diff` for the files the brief named and run the
 verification command the brief gave. Do not run the repository's whole test suite over a
-slice.
+slice. Check the diff first even when a `/agy:resume` line is offered. Resume only if the
+work is missing, and prefer resume to a new dispatch.
