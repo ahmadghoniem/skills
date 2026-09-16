@@ -236,7 +236,9 @@ describe.skipIf(!LIVE)('eval: caller behaviour (live Claude Code, stub agy)', ()
         grades.dispatchedThree = [jobCount >= 3, `${jobCount} job(s), ${delegates.length} dispatch call(s)`];
         grades.background = [delegates.length > 0 && delegates.every((t) => t.input?.run_in_background === true), delegates.map((t) => `bg=${t.input?.run_in_background}`).join(', ')];
         const bg = delegates.filter((t) => t.input?.run_in_background === true);
-        grades.jobSurvived = [bg.length > 0 && bg.every((t) => s.taskStatus.get(t.id) === 'completed'), bg.map((t) => s.taskStatus.get(t.id) ?? 'no notification').join(', ')];
+        // `failed` is a run that ended with exit 1, which delegate.mjs returns for
+        // an unfinished run; only a killed task, or none, means the job was cut short.
+        grades.jobSurvived = [bg.length > 0 && bg.every((t) => ['completed', 'failed'].includes(s.taskStatus.get(t.id))), bg.map((t) => s.taskStatus.get(t.id) ?? 'no notification').join(', ')];
 
         // Only calls made while a background job was still running count as polling.
         const pollers = s.toolUses.filter((t) => {
