@@ -29,8 +29,6 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 - **`/agy:papercut`** — record one friction point by hand, for `/agy:kaizen` to read later.
 - **`/agy:kaizen`** — read the friction log, cluster what keeps recurring, and agree on fixes.
 
-Plus an **`agy-runner`** agent that shapes a task into a self-contained brief and dispatches it.
-
 ### `/agy:delegate`
 
 ```bash
@@ -71,7 +69,7 @@ The warnings below fire on runs agy reports as finished:
 | `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
 
-`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, preloaded into `agy-runner` and included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
+`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
 
 ## The friction log
 

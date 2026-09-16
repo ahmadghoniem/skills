@@ -81,6 +81,7 @@ export function parseEvents(text) {
  * @property {number|undefined} durationSeconds
  * @property {unknown} usage
  * @property {number} toolCalls
+ * @property {string|undefined} lastTool
  * @property {{tool: string, message: string}[]} toolErrors
  * @property {number} compactions
  * @property {string[]|undefined} deniedActions
@@ -114,6 +115,8 @@ export function summariseEvents(events) {
   let usage;
   // Total tool steps during the run, successful or failed.
   let toolCalls = 0;
+  /** @type {string|undefined} */
+  let lastTool;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];
   // agy replaces the conversation so far with a summary once it grows large.
@@ -149,6 +152,7 @@ export function summariseEvents(events) {
 
       if (su.step_type === 'tool') {
         toolCalls += 1;
+        if (typeof su.tool_name === 'string') lastTool = su.tool_name;
         const info = su.tool_info;
 
         // Record tool failures, including undocumented binary `state: "ERROR"`,
@@ -194,6 +198,7 @@ export function summariseEvents(events) {
     durationSeconds,
     usage,
     toolCalls,
+    lastTool,
     toolErrors,
     compactions,
     deniedActions,

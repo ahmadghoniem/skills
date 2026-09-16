@@ -4,6 +4,10 @@
 
 ### Removed
 
+- **The `agy-runner` subagent.** A background Bash job started inside a subagent is stopped
+  when the subagent ends its turn, so the dispatch was lost in 2 of 3 eval runs: the runner
+  ended its turn to wait for the notification, and Claude Code killed the still-running job
+  with it. `/agy:delegate` now carries the brief-writing guidance the agent used to hold.
 - **`--background`, `--wait`, and the `--worker` re-entry point.** One execution path: foreground
   execution under a backgrounded Bash call. `--background` detached workers and severed harness
   notifications without failing or raising errors; `--wait` was accepted and ignored. Removed

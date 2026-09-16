@@ -166,6 +166,21 @@ describe('toolCalls', () => {
   });
 });
 
+describe('lastTool', () => {
+  it('is the tool_name of the most recent tool step', () => {
+    const events = [
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'view_file' } },
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'run_command' } },
+      { event: 'step_update', step_update: { step_type: 'thought' } },
+    ];
+    expect(summariseEvents(events).lastTool).toBe('run_command');
+  });
+
+  it('is undefined for a run that called no tools', () => {
+    expect(summariseEvents([]).lastTool).toBeUndefined();
+  });
+});
+
 describe('summariseEvents — context compactions', () => {
   it('does not count the checkpoint every run emits before any work', () => {
     // Each recorded fixture carries one `checkpoint` at step_index 1, right

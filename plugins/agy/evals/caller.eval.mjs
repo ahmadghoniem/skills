@@ -86,14 +86,6 @@ const CASES = [
     stub: { ...DONE, AGY_REPLAY_RESPONSE: 'Done. The change is in the working tree.' },
     checks: ['dispatchedThree', 'background', 'jobSurvived', 'noPolling'],
   },
-  {
-    id: 'runner-subagent',
-    files: RANGE_FILES,
-    fixture: 'rec-000-clean.json',
-    prompt: 'Use the agy-runner subagent to get the off-by-one in src/range.mjs fixed so node test.mjs passes.',
-    stub: DONE,
-    checks: ['dispatched', 'background', 'jobSurvived', 'noPolling', 'noToolErrors'],
-  },
 ];
 
 // A plain `claude -p` may exit before a background task notifies, so the session

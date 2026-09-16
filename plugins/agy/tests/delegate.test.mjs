@@ -120,3 +120,47 @@ describe('delegate.mjs: exit code', () => {
     expect(code).toBe(0);
   });
 });
+
+describe('delegate.mjs: --prompt-file', () => {
+  it('dispatches the content of the file as the prompt', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    const fixture = writeFixture(home, 'from-file.ndjson', {
+      status: 'SUCCESS',
+      conversation_id: 'c0ffee00-0000-4000-8000-000000000003',
+      response: 'read the brief and did it',
+    });
+    process.env.AGY_STUB_FIXTURE = fixture;
+    process.env.AGY_STUB_EXIT = '0';
+
+    const briefPath = join(repo, 'brief.md');
+    writeFileSync(briefPath, 'Fix the off-by-one in src/range.mjs.\n', 'utf8');
+
+    const code = await main(['--prompt-file', briefPath]);
+
+    expect(code).toBe(0);
+    const [job] = listJobs(repo);
+    expect(job.prompt).toBe('Fix the off-by-one in src/range.mjs.');
+    expect(job.briefPath).toBe(briefPath);
+  });
+
+  it('errors when both a positional task and --prompt-file are given', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    const briefPath = join(repo, 'brief.md');
+    writeFileSync(briefPath, 'Do the thing.\n', 'utf8');
+
+    const code = await main(['--prompt-file', briefPath, 'also a task on the command line']);
+
+    expect(code).toBe(2);
+    expect(listJobs(repo)).toHaveLength(0);
+  });
+
+  it('errors clearly when the prompt file cannot be read', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    const missingPath = join(repo, 'does-not-exist.md');
+
+    const code = await main(['--prompt-file', missingPath]);
+
+    expect(code).toBe(2);
+    expect(listJobs(repo)).toHaveLength(0);
+  });
+});

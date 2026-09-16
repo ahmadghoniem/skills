@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
@@ -34,7 +34,35 @@ const DEFAULT_EFFORT = 'medium';
 
 const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+
+/**
+ * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief
+ * reaches agy without going through the command line. Claude writes the file
+ * with its Write tool; this only reads it back.
+ *
+ * @param {unknown} spec
+ * @returns {string}
+ */
+function readPromptFile(spec) {
+  if (spec === true || spec === '') {
+    throw new Error('--prompt-file needs a path.');
+  }
+  const path = String(spec);
+  let raw;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `could not read --prompt-file ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const text = raw.trim();
+  if (text.length === 0) {
+    throw new Error(`prompt file is empty: ${path}`);
+  }
+  return text;
+}
 
 function parseFlags(argv) {
   const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
@@ -52,6 +80,9 @@ function parseFlags(argv) {
     help: flags['help'] === true,
     conversation,
     continueLatest,
+    // `undefined` = flag absent; `true` = bare `--prompt-file` with no value
+    // (a usage error, caught in main); otherwise the path as given.
+    promptFile: flags['prompt-file'],
   };
 }
 
@@ -78,6 +109,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     effort,
     promptPath: absPrompt,
     sandbox: flags.sandbox || undefined,
+    briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });
 
   const args = buildArgs({
@@ -209,7 +241,21 @@ export async function main(rawArgv) {
     return 0;
   }
 
-  const prompt = flags.positional.join(' ').trim();
+  let prompt = flags.positional.join(' ').trim();
+  if (flags.promptFile !== undefined) {
+    if (prompt.length > 0) {
+      process.stderr.write(
+        'Error: pass the task either on the command line or via --prompt-file, not both.\n',
+      );
+      return 2;
+    }
+    try {
+      prompt = readPromptFile(flags.promptFile);
+    } catch (err) {
+      process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
   if (!prompt && !isResume(flags)) {
     process.stderr.write('Error: no task description provided.\n');
     process.stderr.write(USAGE);

@@ -34,6 +34,7 @@ import { jobName } from './slug.mjs';
  * @property {string} rawLogPath
  * @property {string} agyLogPath
  * @property {string} promptPath
+ * @property {string=} briefPath
  * @property {string=} summary
  * @property {string[]=} stderrTail
  * @property {{tool: string, message: string}[]=} toolErrors
@@ -405,12 +406,4 @@ export function findRunningJobs(repoPath) {
  */
 export function mostRecentFinishedJob(repoPath) {
   return listJobs(repoPath).find((j) => j.status !== 'running') ?? null;
-}
-
-/**
- * @param {string} repoPath
- * @returns {JobRecord|null}
- */
-export function mostRecentJob(repoPath) {
-  return listJobs(repoPath)[0] ?? null;
 }

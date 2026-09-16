@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
+import { parseEvents, summariseEvents } from './lib/parse.mjs';
 import { renderResult } from './lib/render.mjs';
 
 function renderList(jobs) {
@@ -12,6 +14,49 @@ function renderList(jobs) {
     lines.push(`${j.id}  ${j.status}  ${agy}  ${j.startedAt}`);
   }
   return lines.join('\n') + '\n';
+}
+
+/**
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatElapsed(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m${s}s`;
+}
+
+/**
+ * A running job has no `result` event yet, so `renderResult` cannot be used.
+ * Read what has streamed in so far and print one progress line instead of
+ * "still running" alone. Safe on a missing or empty log, or one torn by a
+ * write still in progress: `parseEvents`/`parseLine` drop what they cannot
+ * parse.
+ *
+ * @param {import('./lib/jobs.mjs').JobRecord} job
+ * @returns {string}
+ */
+function renderRunning(job) {
+  let text = '';
+  try {
+    text = readFileSync(job.rawLogPath, 'utf8');
+  } catch {
+    // No log written yet.
+  }
+  const summary = summariseEvents(parseEvents(text));
+  const elapsed = formatElapsed(Date.now() - Date.parse(job.startedAt));
+  const toolCalls = summary.toolCalls;
+  const lastTool = summary.lastTool ? `, last tool ${summary.lastTool}` : '';
+  const failures = summary.toolErrors.length;
+  const failureNote =
+    failures > 0
+      ? `, ${failures} tool failure${failures === 1 ? '' : 's'} so far (agy may retry)`
+      : '';
+  return (
+    `Job \`${job.id}\` is still running: ${elapsed} elapsed, ${toolCalls} tool call${toolCalls === 1 ? '' : 's'}${lastTool}${failureNote}. ` +
+    `Wait for the task notification, or re-run /agy:result ${job.id} later.\n`
+  );
 }
 
 /**
@@ -38,9 +83,7 @@ export async function main(rawArgv) {
       return 1;
     }
     if (resolved.job.status === 'running') {
-      process.stdout.write(
-        `Job \`${resolved.job.id}\` is still running. Re-run \`/agy:result ${resolved.job.id}\` once it finishes.\n`,
-      );
+      process.stdout.write(renderRunning(resolved.job));
       return 0;
     }
     process.stdout.write(renderResult(resolved.job));
