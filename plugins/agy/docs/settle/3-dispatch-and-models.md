@@ -482,8 +482,7 @@ name."
 
 ## H1. Build `/agy:update`
 
-Record the current agy version, run `agy update`, read `agy changelog`, refresh the model cache
-(M3), and hand the orchestrator the entries newer than the old version with the instruction to
+Record the current agy version, run `agy update`, read `agy changelog`, and hand the orchestrator the entries newer than the old version with the instruction to
 check them against this plugin for workarounds that are no longer needed. `/agy:setup` stays as
 the health check.
 

@@ -4,7 +4,7 @@
 // newer than the recorded version so the orchestrator can check them against
 // this plugin's workarounds.
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { refreshModelCache, resolveBin } from './lib/agy.mjs';
+import { resolveBin } from './lib/agy.mjs';
 import { run } from './lib/run.mjs';
 
 /**
@@ -143,16 +143,6 @@ export async function main(rawArgv) {
   if (compareVersions(newVersion, oldVersion) === 0) {
     process.stdout.write(`agy is already up to date at ${oldVersion}.\n`);
     return 0;
-  }
-
-  // A new agy can add or drop models, and the cache also carries the version
-  // stamped on papercuts. A failed refresh does not undo a working update.
-  try {
-    await refreshModelCache();
-  } catch (err) {
-    process.stderr.write(
-      `Updated, but the model cache was not refreshed (run /agy:setup): ${err instanceof Error ? err.message : String(err)}\n`,
-    );
   }
 
   const changelog = await run(bin, ['changelog'], { timeoutMs: 10_000 });

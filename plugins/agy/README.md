@@ -26,7 +26,7 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 - **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). Also reaps job records left at `running` if the parent process died.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
 - **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
-- **`/agy:update`** — run `agy update` and print the changelog entries newer than the old version, for Claude to check against the plugin's workarounds. Refreshes the model cache when the version changed.
+- **`/agy:update`** — run `agy update` and print the changelog entries newer than the old version, for Claude to check against the plugin's workarounds.
 - **`/agy:papercut`** — record one friction point by hand, for `/agy:kaizen` to read later.
 - **`/agy:kaizen`** — read the friction log, cluster what keeps recurring, and agree on fixes.
 

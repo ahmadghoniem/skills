@@ -84,7 +84,8 @@ no `--effort`. A model with no levels ignores `--effort`; the plugin drops it an
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 
 A non-zero exit from `delegate.mjs` means the run did not finish, not that agy's work is
-wrong: agy reports `ERROR` on runs it retried and completed. Read the ⚠ lines.
+wrong: agy reports `ERROR` on runs it retried and completed, such as a run that hit
+`UNAVAILABLE (code 503)` once. Read the ⚠ lines.
 
 After a job that changed code, read `git diff` for the files the brief named and run the
 verification command the brief gave. Do not run the repository's whole test suite over a

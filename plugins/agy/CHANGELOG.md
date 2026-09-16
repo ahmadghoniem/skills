@@ -40,7 +40,7 @@
 ### Added
 
 - **`/agy:update`.** Runs `agy update`, prints the `agy changelog` entries newer than the old
-  version for Claude to check against this plugin's workarounds, and refreshes the model cache.
+  version for Claude to check against this plugin's workarounds.
 - **`--prompt-file <path>`.** Claude writes the brief with its Write tool and passes the path, so
   a long or quote-heavy brief never goes through the command line.
 - **Warnings for agy's own print timeout, context compactions and denied actions.** agy returns
