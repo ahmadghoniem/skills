@@ -8,8 +8,11 @@ import { parseLine } from './parse.mjs';
 import { modelCachePath } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 
-export const DEFAULT_PRINT_TIMEOUT_SEC = 900;
+export const DEFAULT_PRINT_TIMEOUT_SEC = 3600;
 export const WATCHDOG_GRACE_SEC = 60;
+
+/** Max age, in days, before the weekly model-cache refresh trigger fires. */
+const MODEL_CACHE_MAX_AGE_DAYS = 7;
 
 const SIDECAR_INSTRUCTION =
   'Read the file at %PATH% in full and carry out that task exactly.';
@@ -23,6 +26,72 @@ const SIDECAR_INSTRUCTION =
  */
 export function modelEncodesEffort(modelId) {
   return typeof modelId === 'string' && /-(low|medium|high)$/.test(modelId);
+}
+
+/**
+ * A model id with any trailing `-low`/`-medium`/`-high` removed.
+ *
+ * @param {string} modelId
+ * @returns {string}
+ */
+export function modelFamily(modelId) {
+  return modelId.replace(/-(low|medium|high)$/, '');
+}
+
+/**
+ * Map every family in `models` to the set of effort levels its ids carry.
+ * A family with an empty set (e.g. `claude-opus-4-6-thinking`) has no
+ * `--effort` levels at all — agy lists it as a single bare id.
+ *
+ * @param {ModelInfo[]} models
+ * @returns {Map<string, Set<'low'|'medium'|'high'>>}
+ */
+export function familyLevels(models) {
+  /** @type {Map<string, Set<string>>} */
+  const map = new Map();
+  for (const m of models ?? []) {
+    const suffix = /-(low|medium|high)$/.exec(m.id)?.[1];
+    const family = suffix ? modelFamily(m.id) : m.id;
+    if (!map.has(family)) map.set(family, new Set());
+    if (suffix) map.get(family).add(suffix);
+  }
+  return map;
+}
+
+/**
+ * Decide whether `--effort` should accompany `--model M`, using the cached
+ * model list to tell a bare family (`gemini-3.8-flash`, which takes
+ * `--effort`) from a full id with no levels (`claude-opus-4-6-thinking`,
+ * which agy refuses `--effort` on).
+ *
+ * - `M` already encodes a level: no `--effort` (today's behaviour).
+ * - `M` is a family with cached levels: keep `--effort` when the family lists
+ *   that level, otherwise drop it and return a note naming the levels it has.
+ * - `M` is a full id with no cached levels: drop `--effort` and return a note.
+ * - No cache, or `M` not found in it: today's behaviour (pass `effort`
+ *   through unchanged and let agy respond).
+ *
+ * @param {string|undefined} model
+ * @param {string|undefined} effort
+ * @returns {{ effort: string|undefined, note: string|undefined }}
+ */
+export function resolveEffort(model, effort) {
+  if (!effort || modelEncodesEffort(model)) return { effort: undefined, note: undefined };
+  const models = cachedModels();
+  if (!model || models == null) return { effort, note: undefined };
+  const levels = familyLevels(models).get(model);
+  if (levels === undefined) return { effort, note: undefined };
+  if (levels.size === 0) {
+    return { effort: undefined, note: `--effort does not apply to ${model}; dropped` };
+  }
+  // A family can list only some levels (`gemini-3.1-pro` has low and high).
+  if (!levels.has(effort)) {
+    return {
+      effort: undefined,
+      note: `${model} takes --effort ${[...levels].join(', ')}, not ${effort}; dropped`,
+    };
+  }
+  return { effort, note: undefined };
 }
 
 /**
@@ -224,8 +293,9 @@ export function resetBinCache() {
 }
 
 /**
- * Resolve the agy binary path. Precedence: `AGY_BIN`, PATH, then the default
- * installer location under `%LOCALAPPDATA%\agy\bin\agy.exe`.
+ * Resolve the agy binary path. Precedence: `AGY_BIN`, the path stored in the
+ * model cache (if it still exists on disk), PATH, then the default installer
+ * location under `%LOCALAPPDATA%\agy\bin\agy.exe`.
  *
  * @returns {Promise<string>}
  */
@@ -234,6 +304,11 @@ export async function resolveBin() {
   const override = process.env.AGY_BIN?.trim();
   if (override) {
     cachedBin = override;
+    return cachedBin;
+  }
+  const stored = readModelCacheRaw()?.bin;
+  if (typeof stored === 'string' && stored && existsSync(stored)) {
+    cachedBin = stored;
     return cachedBin;
   }
   const res = await run('where', ['agy'], { timeoutMs: 5_000 });
@@ -268,54 +343,77 @@ export async function listModels() {
 }
 
 /**
- * `agy --version` string saved during the last `/agy:setup` run (the sole writer).
- * Null when the cache predates this field or setup has not run.
+ * Parsed model cache, or null on any read/parse failure.
+ *
+ * @returns {Record<string, unknown>|null}
+ */
+function readModelCacheRaw() {
+  try {
+    return JSON.parse(readFileSync(modelCachePath(), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `agy --version` string saved by the last writer — `/agy:setup`, or the
+ * weekly/cache-miss/rejected-model refresh in `delegate.mjs` (`M3`). Null
+ * when the cache predates this field or nothing has written it yet.
  *
  * @returns {string|null}
  */
 export function cachedToolVersion() {
-  try {
-    const parsed = JSON.parse(readFileSync(modelCachePath(), 'utf8'));
-    return typeof parsed?.toolVersion === 'string' ? parsed.toolVersion : null;
-  } catch {
-    return null;
-  }
+  const parsed = readModelCacheRaw();
+  return typeof parsed?.toolVersion === 'string' ? parsed.toolVersion : null;
 }
 
 /**
  * Read the cached model list. Returns null when no cache file exists.
  *
- * The cache does not auto-expire to avoid 2s network latency on dispatch.
- * Run `/agy:setup` to refresh the cached models.
+ * A read here never auto-expires or refetches: `delegate.mjs` is responsible
+ * for refreshing the cache (weekly, on a cache miss, and after agy rejects a
+ * model — see `refreshModelCache`); this function only serves what is there.
  *
  * @returns {ModelInfo[]|null}
  */
 export function cachedModels() {
-  try {
-    const raw = readFileSync(modelCachePath(), 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed?.models)) return null;
-    return parsed.models;
-  } catch {
-    return null;
-  }
+  const parsed = readModelCacheRaw();
+  if (!Array.isArray(parsed?.models)) return null;
+  return parsed.models;
 }
 
 /**
- * Overwrite the model cache. Only `/agy:setup` calls this.
+ * True when the cache has no `fetchedAt`, or it is older than `maxAgeDays`.
+ * Drives the weekly refresh trigger in `delegate.mjs`.
+ *
+ * @param {number} [maxAgeDays]
+ * @returns {boolean}
+ */
+export function modelCacheStale(maxAgeDays = MODEL_CACHE_MAX_AGE_DAYS) {
+  const parsed = readModelCacheRaw();
+  const fetchedAt = typeof parsed?.fetchedAt === 'string' ? Date.parse(parsed.fetchedAt) : NaN;
+  if (!Number.isFinite(fetchedAt)) return true;
+  return Date.now() - fetchedAt > maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Overwrite the model cache. Written by `/agy:setup` and by
+ * `refreshModelCache`'s weekly/cache-miss/rejected-model triggers.
  *
  * @param {ModelInfo[]} models
  * @param {string|null} [accountDefaultLabel]
  * @param {string|null} [toolVersion] raw `agy --version` output
+ * @param {string|null} [bin] resolved agy binary path, so the next
+ *   `resolveBin()` can skip `where` while it still exists on disk
  * @returns {void}
  */
-export function writeModelCache(models, accountDefaultLabel, toolVersion) {
+export function writeModelCache(models, accountDefaultLabel, toolVersion, bin) {
   try {
     const path = modelCachePath();
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(
       path,
-      `${JSON.stringify({ fetchedAt: new Date().toISOString(), accountDefaultLabel: accountDefaultLabel ?? null, toolVersion: toolVersion ?? null, models }, null, 2)}\n`,
+      `${JSON.stringify({ fetchedAt: new Date().toISOString(), accountDefaultLabel: accountDefaultLabel ?? null, toolVersion: toolVersion ?? null, bin: bin ?? null, models }, null, 2)}\n`,
       'utf8',
     );
   } catch {
@@ -344,6 +442,31 @@ export function resolveDefaultModel(effort = 'medium') {
 }
 
 /**
+ * Refresh the model cache in-process: fetch the live model list, the account
+ * default label, and `agy --version`, then overwrite `models.json`. This
+ * also stamps `toolVersion`, so `cachedToolVersion()` stays current without a
+ * separate `agy --version` call anywhere else.
+ *
+ * `delegate.mjs` calls this on three triggers — weekly after a run, before
+ * dispatch when the requested `--model` is not cached, and right after agy
+ * rejects a model — always awaited in the same process, never detached.
+ * Throws on failure; callers that must not fail the run wrap it in
+ * try/catch.
+ *
+ * @returns {Promise<ModelInfo[]>}
+ */
+export async function refreshModelCache() {
+  const bin = await resolveBin();
+  const [models, ver] = await Promise.all([
+    listModels(),
+    run(bin, ['--version'], { timeoutMs: 5_000 }),
+  ]);
+  const versionText = `${ver.stdout}${ver.stderr}`.trim() || null;
+  writeModelCache(models, readAccountDefaultLabel(), versionText, bin);
+  return models;
+}
+
+/**
  * @typedef {Object} DelegateOpts
  * @property {string[]} args
  * @property {string=} cwd
@@ -364,7 +487,8 @@ export function resolveDefaultModel(effort = 'medium') {
 export const STDERR_TAIL_LINES = 20;
 
 /**
- * Escalate to SIGKILL if the child process has not exited.
+ * Terminate the direct child if taskkill did not: SIGKILL it when it has not
+ * exited.
  *
  * Checks `exitCode` and `signalCode` because Node sets `child.killed`
  * when the signal is sent, not when the process terminates.
@@ -449,7 +573,7 @@ export async function runHeadless(opts) {
   const onTimeout = () => {
     killed = true;
     if (typeof child.pid === 'number') {
-      void killTree(child.pid, { graceMs: 5_000 });
+      void killTree(child.pid, { taskkillTimeoutMs: 5_000 });
     }
     setTimeout(() => escalateSigkill(child), 5_000);
   };

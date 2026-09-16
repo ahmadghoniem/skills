@@ -8,6 +8,18 @@
   when the subagent ends its turn, so the dispatch was lost in 2 of 3 eval runs: the runner
   ended its turn to wait for the notification, and Claude Code killed the still-running job
   with it. `/agy:delegate` now carries the brief-writing guidance the agent used to hold.
+- **The `wander` warning.** The plugin could not tell a scratch file from a deliberate one, so
+  it warned on runs doing the right thing.
+- **The git checks: `--no-git-check`, the non-repository refusal, and the dirty-tree warning.**
+  Delegating from a dirty tree is the normal case.
+- **The before and after `git status --porcelain` snapshots, and every file count built on
+  them** (the status line, `filesChanged` on papercuts, the calls-per-file ratio in
+  `/agy:kaizen`). Read `git diff` for what changed.
+- **The AskUserQuestion model prompt.** The model comes from the cached list; name one only
+  when the user does.
+- **The `--continue` fallback in `/agy:resume`.** It was machine-wide and could resume another
+  repository's conversation. With no id, resume takes the newest job in this repository that
+  has a conversation id, or says so and stops.
 - **`--background`, `--wait`, and the `--worker` re-entry point.** One execution path: foreground
   execution under a backgrounded Bash call. `--background` detached workers and severed harness
   notifications without failing or raising errors; `--wait` was accepted and ignored. Removed
@@ -27,6 +39,22 @@
 
 ### Added
 
+- **`/agy:update`.** Runs `agy update`, prints the `agy changelog` entries newer than the old
+  version for Claude to check against this plugin's workarounds, and refreshes the model cache.
+- **`--prompt-file <path>`.** Claude writes the brief with its Write tool and passes the path, so
+  a long or quote-heavy brief never goes through the command line.
+- **Warnings for agy's own print timeout, context compactions and denied actions.** agy returns
+  `SUCCESS` and exit 0 when it stops at its print timeout; the stderr line was the only record.
+- **A progress line from `/agy:result` on a running job**: elapsed time, tool calls, the last
+  tool, and tool failures so far.
+- **An `orphaned` status** for a job whose processes are gone but whose record still says
+  running.
+- **A model table in `/agy:delegate`**, generated from the cache, with the effort levels each
+  family takes. `--model <family> --effort <level>` now works, and `--effort` is dropped with a
+  note when the model cannot take it.
+- **Model cache refreshes without `/agy:setup`**: weekly after a run, before a run whose
+  `--model` is not cached, and after agy rejects a model. Each is awaited in the same process
+  and cannot change the exit code.
 - **A friction log, and `/agy:kaizen` to read it.** Every `⚠` line a run produces that is
   actually friction — `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
   row to `~/.cad/papercuts.jsonl`. The other warnings fire on runs that worked, so
@@ -47,6 +75,21 @@
 
 ### Changed
 
+- **`delegate.mjs` exits 1 when a run did not finish** (failed, cancelled, orphaned, killed,
+  timed out, or agy status `ERROR`). It returned 0 on every finished run before, so a
+  never-started run and a watchdog kill looked the same as a clean one.
+- **agy's stderr prints on every run that wrote any**, not only when there was no write-up.
+- **The resume offer appears on every unfinished run that kept a conversation**, not only a
+  watchdog kill: over 136 recorded runs, 33 instead of 2.
+- **A run that never started is recorded as `failed`**: status `ERROR` with no conversation id.
+- **Short job ids resolve within this repository only.** A full job id still resolves anywhere.
+- **An unknown `--model` lists the valid ids** from the refreshed cache instead of agy's display
+  labels, which cannot be passed back.
+- **The default timeout is 3600 s (60 m)**, up from 900 s.
+- **`/agy:resume` passes through every flag it is given.** It rebuilt the command from a
+  hand-picked few.
+- **`splitArgString` keeps backslashes in paths.** A Windows path typed into any slash command
+  lost its separators.
 - **`anomalies()` returns tagged objects rather than strings.** Each warning is now
   `{id, line, detail}` instead of a prose line, so the papercut writer can record which warning
   fired without a second copy of the detection rules to drift from the first. The rendered

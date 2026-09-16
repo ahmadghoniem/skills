@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { writeModelCache } from '../scripts/lib/agy.mjs';
 import { anomalies, isUnfinished, renderResult } from '../scripts/lib/render.mjs';
 
 describe('renderResult', () => {
@@ -296,6 +300,77 @@ describe('long agy errors', () => {
     expect(out).toBe(
       '⚠ agy status: ERROR (no write-up)\n⚠ exit 1\n⚠ one line only\n',
     );
+  });
+});
+
+describe('invalid model selection (M2)', () => {
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  function freshHome() {
+    const dir = mkdtempSync(join(tmpdir(), 'cad-render-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    return dir;
+  }
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('replaces the detail with the cached ids instead of agy’s display labels', () => {
+    freshHome();
+    writeModelCache(
+      [
+        { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
+        { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+      ],
+      null,
+      null,
+    );
+    const out = renderResult({
+      id: 'x-9999',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error:
+        'invalid model selection (--model "not-a-model" --effort ""): model not recognized',
+    });
+    expect(out).toContain('⚠ invalid model selection');
+    expect(out).toContain('  Valid ids:');
+    expect(out).toContain('    gemini-3.8-flash-high');
+    expect(out).toContain('    claude-opus-4-6-thinking');
+    // Not agy's own display labels — those cannot be passed back to --model.
+    expect(out).not.toContain('(High)');
+  });
+
+  it('is case-insensitive and matches anywhere in the error text', () => {
+    freshHome();
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
+    const out = renderResult({
+      id: 'x-8888',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'Invalid Model Selection: nope',
+    });
+    expect(out).toContain('  Valid ids:');
+    expect(out).toContain('    gemini-3.8-flash-high');
+  });
+
+  it('falls back to an empty list when there is no cache, rather than throwing', () => {
+    freshHome();
+    const out = renderResult({
+      id: 'x-7777',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'invalid model selection: nope',
+    });
+    expect(out).toContain('  Valid ids:');
   });
 });
 

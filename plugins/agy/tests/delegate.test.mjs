@@ -5,8 +5,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resetBinCache } from '../scripts/lib/agy.mjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
 import { listJobs } from '../scripts/lib/jobs.mjs';
 import { STUB_BIN } from './helpers.mjs';
 

@@ -48,6 +48,13 @@ Omit `--model`. The plugin picks the newest **flash** id from the cached `agy mo
 list at the `--effort` you pass (`medium` if you pass none). Pass a model only when the
 user names one. Never invent an id; the ids agy accepts are listed below.
 
+Models agy accepts right now (family, then the effort levels it takes):
+
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
+
+Pass `--model <family> --effort <level>`, or a full id such as `gemini-3.8-flash-high` with
+no `--effort`. A model with no levels ignores `--effort`; the plugin drops it and says so.
+
 ## Run it
 
 1. Write the brief with the **Write** tool to `~/.cad/briefs/<short-name>.md`. Never put
@@ -67,7 +74,7 @@ user names one. Never invent an id; the ids agy accepts are listed below.
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
 | `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
-| `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 900 (15m); the watchdog is that plus 60s grace. |
+| `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 3600 (60m); the watchdog is that plus 60s grace. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. Only when you pass it yourself; the plugin never falls back to it. |

@@ -372,19 +372,19 @@ export function pruneOlderThanDays(repoPath, days = 30) {
 /**
  * @param {string} repoPath
  * @param {string} id
- * @param {number} [graceMs]
+ * @param {number} [taskkillTimeoutMs]
  * @returns {Promise<JobRecord|null>}
  */
-export async function cancelJob(repoPath, id, graceMs = 5_000) {
+export async function cancelJob(repoPath, id, taskkillTimeoutMs = 5_000) {
   const resolved = resolveJob(repoPath, id);
   const job = resolved.job;
   if (!job) return null;
   if (job.status !== 'running') return job;
   if (typeof job.cliPid === 'number') {
-    await killTree(job.cliPid, { graceMs });
+    await killTree(job.cliPid, { taskkillTimeoutMs });
   }
   if (typeof job.pid === 'number') {
-    await killTree(job.pid, { graceMs });
+    await killTree(job.pid, { taskkillTimeoutMs });
   }
   return updateJob(job.repoPath, job.id, {
     status: 'cancelled',

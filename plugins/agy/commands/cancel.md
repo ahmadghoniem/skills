@@ -1,5 +1,5 @@
 ---
-description: Cancel an active agy job (SIGTERM, then SIGKILL after 5 s).
+description: Cancel an active agy job by force-killing agy and its child processes.
 argument-hint: '[job-id]'
 allowed-tools: Bash(node:*)
 ---

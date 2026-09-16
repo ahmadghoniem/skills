@@ -269,14 +269,14 @@ describe('acceptance: --arg-string round-trip', () => {
 
 describe('parseTimeout', () => {
   it('falls back for junk, zero, and negatives', () => {
-    expect(parseTimeout('abc')).toBe(900);
-    expect(parseTimeout('0')).toBe(900);
-    expect(parseTimeout(0)).toBe(900);
-    expect(parseTimeout(-1)).toBe(900);
-    expect(parseTimeout('-10')).toBe(900);
-    expect(parseTimeout(undefined)).toBe(900);
-    expect(parseTimeout('')).toBe(900);
-    expect(parseTimeout(Number.NaN)).toBe(900);
+    expect(parseTimeout('abc')).toBe(3600);
+    expect(parseTimeout('0')).toBe(3600);
+    expect(parseTimeout(0)).toBe(3600);
+    expect(parseTimeout(-1)).toBe(3600);
+    expect(parseTimeout('-10')).toBe(3600);
+    expect(parseTimeout(undefined)).toBe(3600);
+    expect(parseTimeout('')).toBe(3600);
+    expect(parseTimeout(Number.NaN)).toBe(3600);
   });
 
   it('keeps a positive number or numeric string', () => {

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import {
+  cachedModels,
+  familyLevels,
   listModels,
   modelEncodesEffort,
   parseModelList,
@@ -15,38 +17,60 @@ const INSTALL_HINT =
   'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n' +
   'Then re-run `/agy:setup`.';
 
+/** Effort levels in the order they print, when a family has any. */
+const LEVEL_ORDER = ['low', 'medium', 'high'];
+
 /**
- * Print just the TSV (id TAB label), one model per line, for `/agy:delegate`
- * to show the user. Marks models whose id already encodes effort.
+ * Format one family's levels for the table: a comma-joined list, or `none`
+ * when the family's ids carry no effort suffix at all (the Claude models).
+ *
+ * @param {Set<string>} levels
+ * @returns {string}
+ */
+function formatLevels(levels) {
+  if (!levels || levels.size === 0) return 'none';
+  return LEVEL_ORDER.filter((l) => levels.has(l)).join(', ');
+}
+
+/**
+ * Print a family/levels table (`family<TAB>levels|none`, one line per
+ * family) for `commands/delegate.md` to embed and `/agy:delegate` to read.
+ * Reads `cachedModels()` — M3 already guarantees the cache is refreshed
+ * independently of this call — and falls back to a live `agy models` fetch
+ * only when no cache exists yet.
  *
  * @returns {Promise<number>}
  */
 async function printModels() {
-  let bin;
-  try {
-    bin = await resolveBin();
-  } catch (err) {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.stderr.write(INSTALL_HINT + '\n');
-    return 1;
+  let models = cachedModels();
+  if (models == null) {
+    let bin;
+    try {
+      bin = await resolveBin();
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(INSTALL_HINT + '\n');
+      return 1;
+    }
+    const res = await run(bin, ['models'], { timeoutMs: 10_000 });
+    if (res.exitCode !== 0) {
+      process.stderr.write(`${res.stderr || res.stdout || 'agy models failed'}\n`);
+      return 1;
+    }
+    models = parseModelList(res.stdout);
+    if (models.length === 0) {
+      process.stderr.write('Could not parse model list from `agy models`.\n');
+      return 1;
+    }
+    // Seeds the cache so the next dispatch does not pay this fetch.
+    writeModelCache(models, readAccountDefaultLabel(), cachedToolVersion(), bin);
   }
-  const res = await run(bin, ['models'], { timeoutMs: 10_000 });
-  if (res.exitCode !== 0) {
-    process.stderr.write(`${res.stderr || res.stdout || 'agy models failed'}\n`);
-    return 1;
-  }
-  const models = parseModelList(res.stdout);
   if (models.length === 0) {
-    process.stderr.write('Could not parse model list from `agy models`.\n');
+    process.stderr.write('No models in the cache.\n');
     return 1;
   }
-  const defaultLabel = readAccountDefaultLabel();
-  // Refreshes the cache after the live fetch, preserving the cached toolVersion.
-  writeModelCache(models, defaultLabel, cachedToolVersion());
-  for (const m of models) {
-    const effort = modelEncodesEffort(m.id) ? 'effort-in-id' : 'effort-flag';
-    const def = defaultLabel && m.label === defaultLabel ? '\tdefault' : '';
-    process.stdout.write(`${m.id}\t${m.label}\t${effort}${def}\n`);
+  for (const [family, levels] of familyLevels(models)) {
+    process.stdout.write(`${family}\t${formatLevels(levels)}\n`);
   }
   return 0;
 }
@@ -91,8 +115,10 @@ async function baseCheck() {
     return 1;
   }
   const defaultLabel = readAccountDefaultLabel();
-  // Sole writer of the model cache. Dispatch reads this cache without fetching.
-  writeModelCache(models, defaultLabel, versionText);
+  // One writer among several: `delegate.mjs`'s weekly, cache-miss, and
+  // rejected-model refreshes (M3) also call `writeModelCache`. Dispatch reads
+  // this cache without fetching.
+  writeModelCache(models, defaultLabel, versionText, bin);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
   lines.push('- models:');
   for (const m of models) {

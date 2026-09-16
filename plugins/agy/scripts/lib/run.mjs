@@ -1,6 +1,6 @@
 // Promise wrapper around child_process.spawn:
 //   - resolves non-zero exits with exitCode
-//   - optional timeout (tree-kill the child, 5 s grace)
+//   - optional timeout (taskkill the child tree; give taskkill 5 s to return)
 //   - captures stdout and stderr as strings
 
 import { spawn } from 'node:child_process';
@@ -71,7 +71,7 @@ export function run(cmd, args, opts = {}) {
       timeout = setTimeout(() => {
         timedOut = true;
         if (typeof child.pid === 'number') {
-          void killTree(child.pid, { graceMs: 5_000 });
+          void killTree(child.pid, { taskkillTimeoutMs: 5_000 });
         }
       }, opts.timeoutMs);
     }

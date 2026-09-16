@@ -5,9 +5,13 @@ import {
   DEFAULT_PRINT_TIMEOUT_SEC,
   WATCHDOG_GRACE_SEC,
   buildArgs,
+  cachedModels,
   cachedToolVersion,
-  modelEncodesEffort,
+  familyLevels,
+  modelCacheStale,
+  refreshModelCache,
   resolveDefaultModel,
+  resolveEffort,
   runHeadless,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
@@ -91,6 +95,20 @@ function isResume(flags) {
 }
 
 /**
+ * Whether `model` is a known family or full id in `models` — either key of
+ * `familyLevels(models)`, since a family and a full id with no levels are
+ * both stored as keys with possibly-empty sets.
+ *
+ * @param {string|undefined} model
+ * @param {import('./lib/agy.mjs').ModelInfo[]|null} models
+ * @returns {boolean}
+ */
+function isModelCached(model, models) {
+  if (!model || !Array.isArray(models)) return false;
+  return familyLevels(models).has(model) || models.some((m) => m.id === model);
+}
+
+/**
  * @param {ReturnType<typeof parseFlags>} flags
  * @param {string} prompt
  * @param {string} jobId
@@ -100,8 +118,9 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const absPrompt = resolvePath(promptPath(root, jobId));
   writeFileSync(absPrompt, prompt, 'utf8');
 
-  const effort =
-    flags.effort && !modelEncodesEffort(flags.model) ? flags.effort : undefined;
+  // `main` already resolved `flags.effort` via `resolveEffort` (M1b): it is
+  // undefined here whenever it should not be sent.
+  const effort = flags.effort;
 
   updateJob(root, jobId, {
     pid: process.pid,
@@ -272,16 +291,45 @@ export async function main(rawArgv) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }
 
+  // M3, trigger 2: a model named today must not be rejected by a week-old
+  // cache. Refresh once, before the run starts, when it is not cached yet.
+  if (flags.model && !isResume(flags) && !isModelCached(flags.model, cachedModels())) {
+    await refreshModelCache().catch(() => {});
+  }
+
+  // M1b: `--model` may be a family (`gemini-3.8-flash`) or a full id; decide
+  // whether `--effort` travels with it from the now-fresh cache, and note it
+  // at dispatch time when it is dropped.
+  const { effort: resolvedEffort, note } = resolveEffort(flags.model, flags.effort);
+  flags.effort = resolvedEffort;
+
   const jobId = uniqueJobName(root, prompt || 'continue');
   const task = prompt || 'Continue from where you left off.';
 
   createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
-  process.stdout.write(`agy \`${jobId}\`\n\n`);
+  const noteSuffix = note ? ` (note: ${note})` : '';
+  process.stdout.write(`agy \`${jobId}\`${noteSuffix}\n\n`);
 
   await runOrMarkFailed(flags, task, jobId, root);
   const finished = readJob(root, jobId);
+
+  // M3, trigger 3: refresh right away on a rejected model, so the `Valid
+  // ids:` list M2 prints from `renderResult` below is current.
+  if (finished && /invalid model selection/i.test(String(finished.error ?? ''))) {
+    await refreshModelCache().catch(() => {});
+  }
+
   if (finished) process.stdout.write(renderResult(finished));
-  return finished && isUnfinished(finished) ? 1 : 0;
+  const code = finished && isUnfinished(finished) ? 1 : 0;
+
+  // M3, trigger 1: weekly, after the output above is written, and before
+  // returning — never a detached process. Swallowed so a failed refresh
+  // cannot change the exit code.
+  if (modelCacheStale()) {
+    await refreshModelCache().catch(() => {});
+  }
+
+  return code;
 }
 
 if (invokedAsScript(import.meta.url)) {

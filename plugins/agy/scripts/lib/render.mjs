@@ -5,6 +5,8 @@
 // that can raise individual warning lines rather than being collapsed into a
 // single pass/fail verdict.
 
+import { cachedModels } from './agy.mjs'; // no cycle: agy.mjs does not import render.mjs
+
 /** Beyond this many distinct tool failures the list stops being readable. */
 const TOOL_ERROR_LIMIT = 3;
 
@@ -186,12 +188,22 @@ export function anomalies(job) {
   }
 
   if (job.error != null && String(job.error).length > 0) {
-    const errLines = String(job.error).split('\n');
-    // Error messages can be long; display the first line and truncate details.
-    const extras = errLines.slice(1);
-    const detail = extras.slice(0, ERROR_TAIL_LIMIT);
-    if (extras.length > ERROR_TAIL_LIMIT) {
-      detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
+    const errText = String(job.error);
+    const errLines = errText.split('\n');
+    let detail;
+    if (/invalid model selection/i.test(errText)) {
+      // agy's own message names display labels ("Gemini 3.8 Flash (High)"),
+      // which cannot be passed back to `--model`; the cache is the source of
+      // truth for ids that can.
+      const models = cachedModels() ?? [];
+      detail = ['Valid ids:', ...models.map((m) => `  ${m.id}`)];
+    } else {
+      // Error messages can be long; display the first line and truncate details.
+      const extras = errLines.slice(1);
+      detail = extras.slice(0, ERROR_TAIL_LIMIT);
+      if (extras.length > ERROR_TAIL_LIMIT) {
+        detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
+      }
     }
     out.push({ id: 'agy-error', line: errLines[0], detail });
   }

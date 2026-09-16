@@ -480,20 +480,30 @@ name."
 
 ## H1. Build `/agy:update`
 
-Record the current agy version, run `agy update`, read `agy changelog` between the old and new
-version, refresh the model cache (M3), and hand the orchestrator that changelog slice with the
-instruction to check it against this plugin for workarounds that are no longer needed.
-`/agy:setup` stays as the health check.
+Record the current agy version, run `agy update`, read `agy changelog`, refresh the model cache
+(M3), and hand the orchestrator the entries newer than the old version with the instruction to
+check them against this plugin for workarounds that are no longer needed. `/agy:setup` stays as
+the health check.
 
-Needs `commands/update.md` and `scripts/update.mjs`. Whether `agy update` and
-`agy changelog <from> <to>` exist with those names on 1.2.2 is unverified; check `agy --help`
-before writing the script. Build it last, after the rest of this file lands.
+Both subcommands exist on 1.2.2, checked against the installed binary
+(`C:/Users/Ahmed Ibrahim/AppData/Local/agy/bin/agy.exe`):
+
+- `agy update` takes no flags at all. `agy help update` prints a usage line and nothing else.
+- `agy changelog` takes no version arguments either, only `-h`. It prints the whole changelog,
+  newest version first, as `<version>:` followed by `· ` bullet lines. So the slicing is the
+  script's job: read the whole output, keep the blocks whose version is newer than the version
+  recorded before the update, and pass only those on. The plan's `agy changelog <from> <to>` is
+  not a real call.
+
+Needs `commands/update.md` and `scripts/update.mjs`. Build it last, after the rest of this file
+lands.
 
 ## T1. Timeouts
 
 **How agy's timeout works.** Each run gets one limit, passed to agy as `--print-timeout`. It is
 900 s unless the dispatch passed `--timeout <sec>`, which replaces it. agy's help calls it
-"Timeout for print mode wait". It counts total time from the start of the run, not idle time:
+"Timeout for print mode wait" and its own default is 5m0s, which the plugin never relies on
+since it always passes the flag. It counts total time from the start of the run, not idle time:
 runs stopped at their limit while agy was still busy, with 142 to 885 events in the log.
 
 The job record does not store which limit a run had. I matched each timed-out job to its dispatch

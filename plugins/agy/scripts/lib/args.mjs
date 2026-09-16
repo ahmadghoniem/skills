@@ -237,7 +237,7 @@ export function parseCommandArgv(rawArgv, booleans = []) {
  * @param {number} [fallback]
  * @returns {number}
  */
-export function parseTimeout(raw, fallback = 900) {
+export function parseTimeout(raw, fallback = 3600) {
   const n = typeof raw === 'number' ? raw : raw == null || raw === '' ? NaN : Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
