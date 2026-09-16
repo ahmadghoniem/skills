@@ -23,7 +23,7 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 
 - **`/agy:delegate <task>`** — run a task via agy. Claude runs it under a backgrounded Bash call and announces completion without polling.
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). Also reaps job records left at `running` if the parent process died.
+- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). A job whose processes are already gone reads as `orphaned`, and nothing is killed.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
 - **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
 - **`/agy:update`** — run `agy update` and print the changelog entries newer than the old version, for Claude to check against the plugin's workarounds.

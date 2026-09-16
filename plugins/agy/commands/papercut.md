@@ -10,7 +10,7 @@ The plugin automatically logs warnings it detects at the end of a run. Use this
 command for one more source:
 
 **`--source narrated`** — what agy said blocked it. Take it from agy's closing
-report and quote it in `--quote`; do not paraphrase it into a diagnosis.
+report and quote it in `--text`; do not paraphrase it into a diagnosis.
 
 Record observations without diagnosing causes; `/agy:kaizen` evaluates
 clusters later.

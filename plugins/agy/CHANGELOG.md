@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 ### Removed
 
@@ -56,7 +56,7 @@
   `--model` is not cached, and after agy rejects a model. Each is awaited in the same process
   and cannot change the exit code.
 - **A friction log, and `/agy:kaizen` to read it.** Every `⚠` line a run produces that is
-  actually friction — `stderr`, `agy-error`, `watchdog`, `tool-errors` — appends a
+  actually friction — `stderr`, `agy-error`, `watchdog`, `timeout`, `tool-errors` — appends a
   row to `~/.cad/papercuts.jsonl`. The other warnings fire on runs that worked, so
   filing them would bury the rows that matter. `/agy:kaizen` groups the log and prints it;
   `--resolve <id> --note` appends a resolution and never edits a row, so a fix that did not
@@ -69,7 +69,7 @@
 - **The `agy --version` string is recorded in the model cache** and stamped on every papercut.
   Written by `/agy:setup`, which already resolves the binary, runs `--version` and rewrites the
   cache from a live `agy models` fetch — so the version costs no extra subprocess per dispatch.
-  `--print-models` refreshes the model list and carries the stored version across untouched.
+  `--print-models` reads that cache, and refreshes it only when it is missing or empty.
 - **A resume line when a killed run kept its conversation id.** `⚠ this run can be resumed
   where it stopped: /agy:resume <id>`. Says the option exists; does not tell you to take it.
 
@@ -102,7 +102,7 @@
   auto-pick used to resolve to `…-flash-high` and `--effort` was discarded on every run that
   did not also pin `--model` — the flag was unreachable. `pickDefaultModel` now takes the
   effort and picks within the newest flash version; the default is `medium`, not `high`.
-- **Trimmed `agents/agy-runner.md` and `commands/delegate.md` by ~40%.** Removed the
+- **Trimmed `commands/delegate.md` by ~40%.** Removed the
   restatements of "you are a forwarder", the hedged task-size thresholds, the list of ways a
   user might signal they want a say in the model, the delegation examples, the job-registry
   path duplicated from `result.md`, and the paragraph restating the first rule of the
