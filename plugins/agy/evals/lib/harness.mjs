@@ -95,6 +95,22 @@ export function loadReplayFixtures() {
     .map((f) => ({ name: f.slice(0, -5), path: join(REPLAY_DIR, f), ...JSON.parse(readFileSync(join(REPLAY_DIR, f), 'utf8')) }));
 }
 
+/**
+ * File name of the first replay fixture of a class. `build-fixtures.mjs`
+ * numbers fixtures by job order, so a rebuild renumbers them: never hard-code
+ * a name like `rec-000-clean.json`.
+ *
+ * @param {string} cls
+ * @returns {string}
+ */
+export function firstFixture(cls) {
+  const name = existsSync(REPLAY_DIR)
+    ? readdirSync(REPLAY_DIR).sort().find((f) => f.endsWith(`-${cls}.json`))
+    : undefined;
+  if (!name) throw new Error(`No replay fixture of class ${cls}. Build them: node evals/build-fixtures.mjs`);
+  return name;
+}
+
 export async function pool(items, limit, fn) {
   const out = new Array(items.length);
   let next = 0;

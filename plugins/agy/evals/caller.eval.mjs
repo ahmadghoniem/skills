@@ -18,7 +18,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { LIVE, REPLAY_DIR, REPLAY_STUB, makeRepo, openResults, pool } from './lib/harness.mjs';
+import { LIVE, REPLAY_DIR, REPLAY_STUB, firstFixture, makeRepo, openResults, pool } from './lib/harness.mjs';
 
 const STUB_DELAY_MS = '45000';
 // The npm shim is a .cmd, which cannot be spawned without a shell; use the exe behind it.
@@ -44,13 +44,13 @@ const longSpec = () => {
 const FIXED_RANGE = JSON.stringify({ 'src/range.mjs': RANGE_FILES['src/range.mjs'].replace('end - 1', 'end') });
 const DONE = { AGY_REPLAY_FILES: FIXED_RANGE, AGY_REPLAY_RESPONSE: 'Fixed the loop bound in src/range.mjs. node test.mjs now prints ok.' };
 
-const firstFixture = (cls) => readdirSync(REPLAY_DIR).find((f) => f.includes(`-${cls}`));
+
 
 const CASES = [
   {
     id: 'simple-delegation',
     files: RANGE_FILES,
-    fixture: 'rec-000-clean.json',
+    fixture: firstFixture('clean'),
     prompt: 'Use agy to fix the off-by-one bug in src/range.mjs so that node test.mjs passes. Tell me when it is done.',
     stub: DONE,
     checks: ['dispatched', 'background', 'jobSurvived', 'noPolling', 'noToolErrors'],
@@ -73,7 +73,7 @@ const CASES = [
   {
     id: 'long-brief',
     files: { 'src/lib0.mjs': 'export {};\n', 'README.md': '# libs\n' },
-    fixture: 'rec-000-clean.json',
+    fixture: firstFixture('clean'),
     prompt: `Delegate the following spec to agy in one job, passing every requirement through exactly as written:\n\n${longSpec()}`,
     stub: { AGY_REPLAY_RESPONSE: 'Implemented all 61 requirements.' },
     checks: ['dispatched', 'background', 'jobSurvived', 'briefIntact', 'noToolErrors'],
@@ -81,7 +81,7 @@ const CASES = [
   {
     id: 'three-in-parallel',
     files: { ...RANGE_FILES, 'src/a.mjs': 'export const a = 1;\n', 'src/b.mjs': 'export const b = 2;\n' },
-    fixture: 'rec-000-clean.json',
+    fixture: firstFixture('clean'),
     prompt: 'Use agy for three independent jobs at the same time: (1) fix the off-by-one in src/range.mjs, (2) add a JSDoc comment to src/a.mjs, (3) add a JSDoc comment to src/b.mjs. Tell me when all three are done.',
     stub: { ...DONE, AGY_REPLAY_RESPONSE: 'Done. The change is in the working tree.' },
     checks: ['dispatchedThree', 'background', 'jobSurvived', 'noPolling'],

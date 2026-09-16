@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   REPLAY_DIR,
   REPLAY_STUB,
+  firstFixture,
   loadReplayFixtures,
   makeRepo,
   openResults,
@@ -26,6 +27,7 @@ import {
 } from './lib/harness.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const CLEAN = firstFixture('clean');
 
 const CAUSE = {
   timeout: /time ?out/i,
@@ -112,9 +114,11 @@ async function scenarioEffort() {
     const dump = join(env.dir, 'argv.json');
     await runScript('delegate.mjs', ['--model', 'claude-opus-4-6-thinking', '--effort', 'high', 'task'], {
       cwd: env.repo,
-      env: { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, 'rec-000-clean.json'), AGY_REPLAY_ARGV: dump },
+      env: { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, CLEAN), AGY_REPLAY_ARGV: dump },
     });
-    const argv = JSON.parse(spawnSync(process.execPath, ['-e', `process.stdout.write(require('fs').readFileSync(${JSON.stringify(dump)},'utf8'))`], { encoding: 'utf8' }).stdout);
+    // No dump means the script never reached agy: grade it as a fail instead of
+    // letting JSON.parse abort every other check in this suite.
+    const argv = JSON.parse(spawnSync(process.execPath, ['-e', `const f=require('fs');const p=${JSON.stringify(dump)};process.stdout.write(f.existsSync(p)?f.readFileSync(p,'utf8'):'[]')`], { encoding: 'utf8' }).stdout || '[]');
     grade('effort', 'claude-opus-4-6-thinking --effort high', !argv.includes('--effort'), `argv has --effort: ${argv.includes('--effort')}`);
   } finally {
     env.cleanup();
@@ -137,7 +141,7 @@ async function waitFor(fn, ms = 20_000) {
 
 async function scenarioOrphan() {
   const env = makeRepo();
-  const stubEnv = { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, 'rec-000-clean.json'), AGY_REPLAY_HANG: '1' };
+  const stubEnv = { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, CLEAN), AGY_REPLAY_HANG: '1' };
   let live;
   try {
     // Orphan: the wrapper dies (as it does when its Claude session goes away).
@@ -148,8 +152,11 @@ async function scenarioOrphan() {
     await orphanRun;
     killTree(orphan?.cliPid);
     await sleep(1500);
-    const after = readJobs(env.cadHome).find((j) => j.prompt === 'orphan job');
-    grade('orphan', 'wrapper killed mid-run', after?.status !== 'running', `record status ${after?.status}`);
+    // The plugin marks a record orphaned when it reads it, not by rewriting the
+    // file, so grade what a plugin command reports rather than the raw JSON.
+    const list = await runScript('result.mjs', ['--list', '--all'], { cwd: env.repo, env: { CAD_HOME: env.cadHome } });
+    const row = list.stdout.split('\n').find((l) => orphan?.id && l.includes(orphan.id)) ?? '';
+    grade('orphan', 'wrapper killed mid-run', row !== '' && !/\brunning\b/.test(row), `listed as: ${row.trim().slice(0, 120) || '(missing)'}`);
 
     // A second job that is actually alive, then a bare cancel.
     live = runScript('delegate.mjs', ['live job'], { cwd: env.repo, env: stubEnv });
@@ -170,7 +177,7 @@ async function scenarioCrossRepo() {
   const a = makeRepo();
   const b = makeRepo();
   try {
-    const shared = { CAD_HOME: a.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, 'rec-000-clean.json') };
+    const shared = { CAD_HOME: a.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, CLEAN) };
     await runScript('delegate.mjs', ['repo a task'], { cwd: a.repo, env: shared });
     const job = readJobs(a.cadHome)[0];
     const suffix = job.id.split('-').pop();
@@ -187,12 +194,14 @@ async function scenarioBareResume() {
   try {
     const base = { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB };
     const neverStarted = loadReplayFixtures().find((f) => f.truth.class === 'never-started');
-    await runScript('delegate.mjs', ['first task'], { cwd: env.repo, env: { ...base, AGY_REPLAY: join(REPLAY_DIR, 'rec-000-clean.json') } });
+    await runScript('delegate.mjs', ['first task'], { cwd: env.repo, env: { ...base, AGY_REPLAY: join(REPLAY_DIR, CLEAN) } });
     await sleep(1100);
     await runScript('delegate.mjs', ['second task'], { cwd: env.repo, env: { ...base, AGY_REPLAY: neverStarted.path } });
     const dump = join(env.dir, 'argv.json');
-    await runScript('resume.mjs', ['follow', 'up'], { cwd: env.repo, env: { ...base, AGY_REPLAY: join(REPLAY_DIR, 'rec-000-clean.json'), AGY_REPLAY_ARGV: dump } });
-    const argv = JSON.parse(spawnSync(process.execPath, ['-e', `process.stdout.write(require('fs').readFileSync(${JSON.stringify(dump)},'utf8'))`], { encoding: 'utf8' }).stdout);
+    await runScript('resume.mjs', ['follow', 'up'], { cwd: env.repo, env: { ...base, AGY_REPLAY: join(REPLAY_DIR, CLEAN), AGY_REPLAY_ARGV: dump } });
+    // No dump means the script never reached agy: grade it as a fail instead of
+    // letting JSON.parse abort every other check in this suite.
+    const argv = JSON.parse(spawnSync(process.execPath, ['-e', `const f=require('fs');const p=${JSON.stringify(dump)};process.stdout.write(f.existsSync(p)?f.readFileSync(p,'utf8'):'[]')`], { encoding: 'utf8' }).stdout || '[]');
     grade('bareResume', 'newest job never started', argv.includes('--conversation') && !argv.includes('--continue'), `argv: ${argv.filter((x) => x.startsWith('--')).join(' ')}`);
   } finally {
     env.cleanup();
