@@ -16,6 +16,17 @@ import { fileURLToPath } from 'node:url';
  * Split a raw argument string on whitespace, honouring single/double quotes
  * and backslash escapes. Quoted spans preserve inner whitespace.
  *
+ * Backslash rule. Windows paths are the common input here, so a backslash is
+ * literal unless it is escaping something this splitter would otherwise act on:
+ *   - Outside quotes: `\` escapes whitespace, `"` and `'` (so `a\ b` is one
+ *     token `a b`). Before anything else it is literal, which is what keeps an
+ *     unquoted `C:\Users\x\b.md` intact.
+ *   - Inside double quotes: `\` escapes only `"`. Every other backslash is
+ *     literal, including a doubled one, so `"\\server\share"` survives as
+ *     typed. A POSIX shell would collapse `\\` to one backslash; this splitter
+ *     deliberately does not.
+ *   - Inside single quotes: `\` is always literal.
+ *
  * @param {string} arg
  * @returns {string[]}
  */
@@ -35,7 +46,17 @@ export function splitArgString(arg) {
     }
     // Backslashes inside single quotes are literal characters.
     if (ch === '\\' && quote !== "'") {
-      escape = true;
+      const next = arg[i + 1];
+      // Only an escape when it shields a character this splitter would act on:
+      // the closing quote, or a quote/space that would otherwise start a quoted
+      // span or end the token. Anything else is a literal path separator.
+      const escapes =
+        quote === '"' ? next === '"' : next === '"' || next === "'" || next === ' ' || next === '\t' || next === '\n';
+      if (escapes) {
+        escape = true;
+      } else {
+        cur += ch;
+      }
       continue;
     }
     if (quote) {

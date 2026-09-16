@@ -50,6 +50,68 @@ describe('splitArgString', () => {
   });
 });
 
+describe('splitArgString: Windows paths', () => {
+  it('a double-quoted Windows path survives byte for byte', () => {
+    expect(
+      splitArgString(String.raw`--prompt-file "C:\Users\Ahmed Ibrahim\.cad\briefs\b.md"`),
+    ).toEqual(['--prompt-file', String.raw`C:\Users\Ahmed Ibrahim\.cad\briefs\b.md`]);
+  });
+
+  it('an unquoted Windows path survives, because a backslash only escapes quotes and spaces', () => {
+    expect(splitArgString(String.raw`C:\Users\x\b.md`)).toEqual([String.raw`C:\Users\x\b.md`]);
+  });
+
+  it('a backslash outside quotes still escapes a space, joining one token', () => {
+    expect(splitArgString(String.raw`a\ b`)).toEqual(['a b']);
+  });
+
+  it('a single-quoted Windows path is literal', () => {
+    expect(splitArgString(String.raw`'C:\Users\x\b.md'`)).toEqual([String.raw`C:\Users\x\b.md`]);
+  });
+
+  it('an escaped double quote inside double quotes unescapes to a bare quote', () => {
+    expect(splitArgString('"a\\"b"')).toEqual(['a"b']);
+  });
+
+  it('a doubled backslash inside double quotes stays doubled, unlike a POSIX shell', () => {
+    expect(splitArgString('"a\\\\b"')).toEqual(['a\\\\b']);
+  });
+
+  it('a trailing backslash inside double quotes escapes the closing quote, leaving the string unterminated', () => {
+    // `\"` is an escaped quote, not a close, so the span never closes and the
+    // trailing quote character is folded into the token literally.
+    expect(splitArgString(String.raw`"C:\dir\"`)).toEqual(['C:\\dir"']);
+  });
+
+  it('a UNC path in double quotes keeps both leading backslashes', () => {
+    expect(splitArgString(String.raw`"\\server\share\file.md"`)).toEqual([
+      String.raw`\\server\share\file.md`,
+    ]);
+  });
+
+  it('an unquoted UNC path keeps both leading backslashes too', () => {
+    expect(splitArgString(String.raw`\\server\share\file.md`)).toEqual([
+      String.raw`\\server\share\file.md`,
+    ]);
+  });
+
+  it('a forward-slash path in double quotes is unchanged (control case)', () => {
+    expect(splitArgString('"C:/Users/a b/x.md"')).toEqual(['C:/Users/a b/x.md']);
+  });
+
+  it('a realistic full command keeps flag values intact', () => {
+    expect(
+      splitArgString(String.raw`--effort high --prompt-file "C:\Users\a b\.cad\briefs\x.md"`),
+    ).toEqual(['--effort', 'high', '--prompt-file', String.raw`C:\Users\a b\.cad\briefs\x.md`]);
+  });
+
+  it('round-trips through collapseCommandArgv with the path intact', () => {
+    expect(
+      collapseCommandArgv(['--', '--arg-string', String.raw`--prompt-file "C:\Users\a b\x.md"`]),
+    ).toEqual(['--prompt-file', String.raw`C:\Users\a b\x.md`]);
+  });
+});
+
 describe('a `--` inside the task text does not swallow flags', () => {
   it('keeps flags that follow a `--` in the user text', () => {
     const r = parseCommandArgv(['--', 'fix the bug -- see notes', '--model', 'gemini-3.1-pro-high']);
