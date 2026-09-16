@@ -25,6 +25,7 @@ function firstLine(message) {
 /**
  * @typedef {Object} ResultView
  * @property {string} id
+ * @property {string|undefined} [status]
  * @property {string|null|undefined} agyStatus
  * @property {number|null|undefined} exitCode
  * @property {string|null|undefined} error
@@ -32,6 +33,10 @@ function firstLine(message) {
  * @property {string|undefined} conversationId
  * @property {string|undefined} summary
  * @property {boolean} [killed]
+ * @property {boolean} [timedOut]
+ * @property {string} [timedOutAfter]
+ * @property {number} [compactions]
+ * @property {string[]} [deniedActions]
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
@@ -49,8 +54,11 @@ export const WARNING_IDS = Object.freeze([
   "exit",
   "stderr",
   "tool-errors",
+  "compaction",
+  "denied",
   "agy-error",
   "watchdog",
+  "timeout",
   "resume",
 ]);
 
@@ -74,6 +82,27 @@ function statusContext(job) {
  */
 
 /**
+ * Whether the run ended before agy finished: the plugin's own record says so
+ * (`failed`, `cancelled`, `orphaned`), the watchdog killed it, agy hit its own
+ * print timeout, or agy's own status says `ERROR`. One definition shared by
+ * the resume offer, the exit code, and the watchdog/timeout lines — they used
+ * to diverge.
+ *
+ * @param {ResultView} job
+ * @returns {boolean}
+ */
+export function isUnfinished(job) {
+  return (
+    job.status === 'failed' ||
+    job.status === 'cancelled' ||
+    job.status === 'orphaned' ||
+    Boolean(job.killed) ||
+    Boolean(job.timedOut) ||
+    String(job.agyStatus ?? '').toUpperCase() === 'ERROR'
+  );
+}
+
+/**
  * The anomalies for a finished job, in the order they are printed. Exported for
  * the tests and for the papercut writer, which files the same detections the
  * renderer prints.
@@ -94,15 +123,15 @@ export function anomalies(job) {
     out.push({ id: 'exit', line: `exit ${job.exitCode}` });
   }
 
-  // When agy produces neither a write-up nor a status event, display stderr
-  // to surface initialisation failures (e.g. auth, unknown flags, spawn errors).
-  // Runs with a write-up suppress stderr to avoid noisy warnings.
-  const saidNothing = (job.summary == null || String(job.summary).trim() === '') && !status;
+  // agy is silent on stderr when nothing went wrong, so any output there is
+  // worth showing: initialisation failures, its own timeout notice,
+  // background-task notes, and network errors on a run that did return a
+  // status.
   const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
-  if (saidNothing && stderrTail.length > 0) {
+  if (stderrTail.length > 0) {
     out.push({
       id: 'stderr',
-      line: 'agy produced no result. Its stderr:',
+      line: 'agy wrote to stderr:',
       detail: [...stderrTail],
     });
   }
@@ -133,6 +162,29 @@ export function anomalies(job) {
     });
   }
 
+  // Information about the run, not friction, so it is not filed as a
+  // papercut. It matters because work after a compaction is where agy is
+  // most likely to redo something or drift from the brief.
+  const compactions = typeof job.compactions === 'number' ? job.compactions : 0;
+  if (compactions > 0) {
+    out.push({
+      id: 'compaction',
+      line: `agy compacted its context ${compactions} time${compactions === 1 ? '' : 's'} during this run; check the diff against the brief`,
+    });
+  }
+
+  // Empty on every run the plugin makes, since it passes
+  // `--dangerously-skip-permissions`. Kept as a guard: if agy ever does skip a
+  // tool action, the caller sees which one instead of a silent gap.
+  const denied = Array.isArray(job.deniedActions) ? job.deniedActions : [];
+  if (denied.length > 0) {
+    out.push({
+      id: 'denied',
+      line: `agy skipped ${denied.length} action${denied.length === 1 ? '' : 's'} it was not allowed to take:`,
+      detail: denied.map((d) => `  ${d}`),
+    });
+  }
+
   if (job.error != null && String(job.error).length > 0) {
     const errLines = String(job.error).split('\n');
     // Error messages can be long; display the first line and truncate details.
@@ -151,8 +203,17 @@ export function anomalies(job) {
     });
   }
 
-  // Offer resume command when a watchdog-killed run captured a conversation id.
-  if (job.killed && job.conversationId) {
+  if (job.timedOut) {
+    out.push({
+      id: 'timeout',
+      line: `agy hit its print timeout after ${job.timedOutAfter ?? 'its limit'}; the output is partial`,
+    });
+  }
+
+  // Offer resume whenever the run ended before agy finished and kept a
+  // conversation to continue, whatever stopped it (agy's own timeout, the
+  // watchdog, a dropped connection, a quota error) — not only a watchdog kill.
+  if (isUnfinished(job) && job.conversationId) {
     out.push({
       id: 'resume',
       line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,

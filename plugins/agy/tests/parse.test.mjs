@@ -165,3 +165,56 @@ describe('toolCalls', () => {
     expect(summariseEvents([]).toolCalls).toBe(0);
   });
 });
+
+describe('summariseEvents — context compactions', () => {
+  it('does not count the checkpoint every run emits before any work', () => {
+    // Each recorded fixture carries one `checkpoint` at step_index 1, right
+    // after `user_input`. Counting it would warn on every clean run.
+    expect(summariseEvents(load(READ_AND_COMMAND)).compactions).toBe(0);
+    expect(summariseEvents(load(ADD_DIR_WORKS)).compactions).toBe(0);
+    expect(summariseEvents(load(PERMISSION_DENIED)).compactions).toBe(0);
+  });
+
+  it('counts a checkpoint that follows a tool step', () => {
+    const events = [
+      { event: 'step_update', step_update: { step_type: 'user_input' } },
+      { event: 'step_update', step_update: { step_type: 'checkpoint' } },
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'view_file' } },
+      { event: 'step_update', step_update: { step_type: 'checkpoint' } },
+      { event: 'step_update', step_update: { step_type: 'tool', tool_name: 'view_file' } },
+      { event: 'step_update', step_update: { step_type: 'checkpoint' } },
+      { event: 'result', result: { status: 'SUCCESS', conversation_id: 'c', response: 'ok' } },
+    ];
+    expect(summariseEvents(events).compactions).toBe(2);
+  });
+
+  it('counts a checkpoint that follows a write-up step', () => {
+    const events = [
+      { event: 'step_update', step_update: { step_type: 'agent_response' } },
+      { event: 'step_update', step_update: { step_type: 'checkpoint' } },
+      { event: 'result', result: { status: 'SUCCESS', conversation_id: 'c', response: 'ok' } },
+    ];
+    expect(summariseEvents(events).compactions).toBe(1);
+  });
+});
+
+describe('summariseEvents — denied actions', () => {
+  it('captures denied_actions from the result event', () => {
+    const events = [
+      {
+        event: 'result',
+        result: {
+          status: 'SUCCESS',
+          conversation_id: 'c',
+          response: 'ok',
+          denied_actions: ['run_command: rm -rf build'],
+        },
+      },
+    ];
+    expect(summariseEvents(events).deniedActions).toEqual(['run_command: rm -rf build']);
+  });
+
+  it('is undefined when agy denied nothing', () => {
+    expect(summariseEvents(load(READ_AND_COMMAND)).deniedActions).toBeUndefined();
+  });
+});

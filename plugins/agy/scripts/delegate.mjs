@@ -24,7 +24,7 @@ import {
 } from './lib/jobs.mjs';
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { anomalies, renderResult } from './lib/render.mjs';
+import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
@@ -117,9 +117,21 @@ async function runAndRecord(flags, prompt, jobId, root) {
 
   const summary = summariseEvents(result.events);
 
-  // Mark failed if killed or exited non-zero without emitting a result event.
-  // Native exit code and agy status can disagree on completed runs.
-  const neverStarted = summary.status == null && result.exitCode !== 0;
+  // agy 1.1.28+ stops itself at the print timeout and returns partial output
+  // with status SUCCESS and exit 0 — the only trace is this stderr line.
+  const timeoutLine = (result.stderr ?? []).find((l) =>
+    /^\[agy\] print timeout after \S+ with turn in progress/.test(l),
+  );
+  const timedOut = Boolean(timeoutLine);
+  const timedOutAfter = timeoutLine ? /after (\S+)/.exec(timeoutLine)[1] : undefined;
+
+  // Mark failed if killed, if agy exited non-zero without emitting a result
+  // event (spawn failure), or if agy did no work at all (status ERROR with no
+  // conversation id — an unknown model, a rejected flag). Native exit code and
+  // agy status can otherwise disagree on completed runs.
+  const neverStarted =
+    (summary.status == null && result.exitCode !== 0) ||
+    (String(summary.status).toUpperCase() === 'ERROR' && !summary.conversationId);
   const pluginStatus = result.killed || neverStarted ? 'failed' : 'done';
   updateJob(root, jobId, {
     status: pluginStatus,
@@ -132,10 +144,14 @@ async function runAndRecord(flags, prompt, jobId, root) {
     conversationId: summary.conversationId,
     model: summary.model ?? flags.model ?? '',
     killed: result.killed || undefined,
+    timedOut: timedOut || undefined,
+    timedOutAfter,
     // Persisted so `/agy:result <id>` matches foreground output; omitted when
     // empty.
     stderrTail: result.stderr?.length ? result.stderr : undefined,
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
+    compactions: summary.compactions || undefined,
+    deniedActions: summary.deniedActions?.length ? summary.deniedActions : undefined,
   });
 
   // Sole write site for detected papercuts. `/agy:result` evaluates anomalies
@@ -219,7 +235,7 @@ export async function main(rawArgv) {
   await runOrMarkFailed(flags, task, jobId, root);
   const finished = readJob(root, jobId);
   if (finished) process.stdout.write(renderResult(finished));
-  return 0;
+  return finished && isUnfinished(finished) ? 1 : 0;
 }
 
 if (invokedAsScript(import.meta.url)) {

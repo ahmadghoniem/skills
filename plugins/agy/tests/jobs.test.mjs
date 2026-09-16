@@ -112,6 +112,17 @@ describe('jobs registry', () => {
     expect(mostRecentFinishedJob(repo)?.id).toBe('c-cccc');
   });
 
+  it('resolves a short id only within this repository, never a collision in another repo', () => {
+    const other = '/tmp/some-other-repo-path';
+    createJob({ id: 'unrelated-task-z9k2', repoPath: other, prompt: 'p', model: 'm' });
+
+    // Nothing with this suffix exists in `repo`, only in `other`.
+    expect(resolveJob(repo, 'z9k2').job).toBeNull();
+    expect(resolveJob(repo, 'z9k2').error).toBeNull();
+    // The same query resolves fine when asked from the repo that owns it.
+    expect(resolveJob(other, 'z9k2').job?.id).toBe('unrelated-task-z9k2');
+  });
+
   it('keys job files by the repo hash, not the raw path', () => {
     createJob({ id: 'h1-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
     const dir = jobsDir(repo);
@@ -187,6 +198,34 @@ describe('jobs registry', () => {
 
   it('readJob returns null for a genuinely unknown id', () => {
     expect(readJob(repo, 'totally-unknown-id')).toBeNull();
+  });
+
+  it('marks a running record orphaned once both its pids are gone', async () => {
+    const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
+    const deadPid = child.pid;
+    await new Promise((resolve) => child.on('close', resolve));
+
+    createJob({ id: 'orphan1-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
+    updateJob(repo, 'orphan1-aaaa', { pid: deadPid, cliPid: deadPid });
+
+    expect(readJob(repo, 'orphan1-aaaa')?.status).toBe('orphaned');
+    expect(listJobs(repo).find((j) => j.id === 'orphan1-aaaa')?.status).toBe('orphaned');
+    expect(findRunningJobs(repo)).toEqual([]);
+  });
+
+  it('does not mark a record orphaned before it has captured a pid', () => {
+    // createJob writes status:'running' with no pid yet; pid and cliPid land
+    // in later updateJob calls. A record read in that window has no pid bits
+    // to check and must not be misread as gone.
+    createJob({ id: 'nopid1-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
+    expect(readJob(repo, 'nopid1-aaaa')?.status).toBe('running');
+    expect(findRunningJobs(repo).map((j) => j.id)).toEqual(['nopid1-aaaa']);
+  });
+
+  it('leaves a running record alone while its wrapper pid is still live', () => {
+    createJob({ id: 'live2-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
+    updateJob(repo, 'live2-aaaa', { pid: process.pid });
+    expect(readJob(repo, 'live2-aaaa')?.status).toBe('running');
   });
 
   it('updateJob writes a completion sentinel only on a terminal status', () => {

@@ -19,6 +19,9 @@ can be wrong while agy still calls it done. Three rules govern all of them:
 3. **Never infer a pass or fail from them.** The plugin reports facts; a ⚠ line
    is information, not a judgement.
 
+`delegate.mjs` exits 1 when the run did not finish. That is a fact about the run, not a
+verdict on the work; the ⚠ lines say why.
+
 ## What the plugin can emit
 
 Every warning kind the renderer produces is registered here. `WARNING_IDS` in
@@ -29,8 +32,11 @@ Every warning kind the renderer produces is registered here. `WARNING_IDS` in
 | :--- | :--- | :--- |
 | `agy-status` | `⚠ agy status: <status> (write-up present)` | agy's own verdict, verbatim. Not a pass/fail: agy can report `ERROR` on runs that worked and `SUCCESS` on runs that did not. The parenthetical says only whether agy returned a write-up. Check `git diff` yourself for what changed. |
 | `exit` | `⚠ exit N` | The process exit code. Independent of the line above; a good report with a stray non-zero exit is still a good report. |
-| `stderr` | `⚠ agy produced no result. Its stderr:` | agy never started (unauthenticated, unknown `--model`, rejected flag, or spawn failure). Fires only when there is neither write-up nor status. The indented lines show the tail of stderr to indicate the fix: log in again, re-run `/agy:setup`, or wait. |
+| `stderr` | `⚠ agy wrote to stderr:` | Everything agy wrote to stderr (last 20 lines), on any run. agy is silent on stderr when nothing went wrong, so this carries startup failures (not signed in, unknown `--model`, rejected flag, spawn failure), its own timeout notice, background-task notes and network errors. Read it before the `error` line: on a 1.2.2 timeout it is the only record. |
 | `tool-errors` | `⚠ N tool calls failed during the run — reported, not judged:` | Tools that failed while the run continued. Shows whether verification steps failed during a run reported as `SUCCESS`. Deduped and capped at three. |
+| `compaction` | `⚠ agy compacted its context N time(s) during this run; check the diff against the brief` | agy replaced the conversation so far with a summary and kept going. Work after a compaction is where agy is most likely to redo something or drift from the brief; the summary does not always carry every earlier decision. |
+| `denied` | `⚠ agy skipped N action(s) it was not allowed to take:` | Tool actions agy refused to run for permission reasons, listed underneath. The plugin passes `--dangerously-skip-permissions`, so this should never fire; if it does, agy skipped work silently and the run is incomplete whatever its status says. |
 | `agy-error` | `⚠ <agy's error>` | agy's own error text, first line first. A long tail is truncated with a count; the full text is in the job log. |
 | `watchdog` | `⚠ watchdog killed the run` | The print timeout plus 60s of grace elapsed and the plugin killed the process tree. The write-up, if any, is partial. |
-| `resume` | `⚠ this run can be resumed where it stopped: /agy:resume <id>` | Fires alongside the watchdog line when the conversation id was captured on the `init` event. Re-dispatching the brief instead is an alternative if the run diverged before the timeout. |
+| `timeout` | `⚠ agy hit its print timeout after <duration>; the output is partial` | agy 1.1.28+ stops itself at `--print-timeout` and returns whatever it has, with status `SUCCESS` and exit 0 — nothing else marks this. `<duration>` is agy's own Go duration token (`15s`, `1h0m0s`), verbatim. |
+| `resume` | `⚠ this run can be resumed where it stopped: /agy:resume <id>` | The run ended before agy finished (agy's timeout, the watchdog, a dropped connection, a quota error) and agy kept the conversation. Resuming keeps what agy already read and changed; a fresh dispatch starts from zero. Prefer resume unless the run had clearly gone wrong before it stopped. |

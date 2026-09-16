@@ -82,6 +82,8 @@ export function parseEvents(text) {
  * @property {unknown} usage
  * @property {number} toolCalls
  * @property {{tool: string, message: string}[]} toolErrors
+ * @property {number} compactions
+ * @property {string[]|undefined} deniedActions
  */
 
 /**
@@ -106,12 +108,20 @@ export function summariseEvents(events) {
   let error = null;
   /** @type {number|undefined} */
   let durationSeconds;
+  /** @type {string[]|undefined} */
+  let deniedActions;
   /** @type {unknown} */
   let usage;
   // Total tool steps during the run, successful or failed.
   let toolCalls = 0;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];
+  // agy replaces the conversation so far with a summary once it grows large.
+  // Every fixture carries one `checkpoint` step before any real work, right
+  // after `user_input`; only count a `checkpoint` once work has actually
+  // started, or a clean run's opening checkpoint would count as one.
+  let sawWork = false;
+  let compactions = 0;
 
   for (const ev of events ?? []) {
     if (ev == null || typeof ev !== 'object') continue;
@@ -134,6 +144,9 @@ export function summariseEvents(events) {
       if (!conversationId && typeof su.conversation_id === 'string') {
         conversationId = su.conversation_id;
       }
+      if (su.step_type === 'tool' || su.step_type === 'agent_response') sawWork = true;
+      else if (su.step_type === 'checkpoint' && sawWork) compactions += 1;
+
       if (su.step_type === 'tool') {
         toolCalls += 1;
         const info = su.tool_info;
@@ -164,6 +177,9 @@ export function summariseEvents(events) {
       else if (r.error != null) error = String(r.error);
       if (typeof r.duration_seconds === 'number') durationSeconds = r.duration_seconds;
       if (r.usage != null) usage = r.usage;
+      if (Array.isArray(r.denied_actions) && r.denied_actions.length) {
+        deniedActions = r.denied_actions;
+      }
     }
   }
 
@@ -179,5 +195,7 @@ export function summariseEvents(events) {
     usage,
     toolCalls,
     toolErrors,
+    compactions,
+    deniedActions,
   };
 }

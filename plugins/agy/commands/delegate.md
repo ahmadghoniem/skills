@@ -50,5 +50,10 @@ has already tokenised argv, drop `--arg-string` and pass argv after a leading
 
 !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
 
-After a job that changed code, review the diff yourself before telling the user it
-is done.
+A non-zero exit from `delegate.mjs` means the run did not finish, not that agy's work is
+wrong. Read the ⚠ lines. If a `/agy:resume` line is offered, resume rather than
+re-dispatching.
+
+After a job that changed code, read `git diff` for the files the brief named and run the
+verification command the brief gave. Do not run the repository's whole test suite over a
+slice.
