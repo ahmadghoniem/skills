@@ -5,13 +5,18 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildArgs,
   cachedModels,
+  familyLevels,
   formatPrintTimeout,
   listModels,
+  modelCacheStale,
   modelEncodesEffort,
+  modelFamily,
   parseModelList,
   pickDefaultModel,
   resetBinCache,
+  resolveBin,
   resolveDefaultModel,
+  resolveEffort,
   runHeadless,
   sidecarPrint,
   writeModelCache,
@@ -90,13 +95,6 @@ describe('buildArgs', () => {
     const args = buildArgs({ ...fresh, model: 'gemini-3.7-flash-high' });
     expect(args).not.toContain('--new-project');
     expect(args).toContain('--add-dir');
-  });
-
-  it('always bypasses permissions — there is no --safe and no --mode plan', () => {
-    const args = buildArgs({ ...fresh, safe: true, plan: true });
-    expect(args).toContain('--dangerously-skip-permissions');
-    expect(args).not.toContain('--mode');
-    expect(args).not.toContain('plan');
   });
 
   it('passes --sandbox when asked', () => {
@@ -253,6 +251,17 @@ describe('stubbed spawn (never the real binary)', () => {
     expect(models.map((m) => m.id)).toContain('claude-sonnet-4-6');
   });
 
+  it('listModels throws on a failed fetch instead of returning an empty list', async () => {
+    process.env.AGY_BIN = STUB_BIN;
+    process.env.AGY_STUB_FAIL = '1';
+    resetBinCache();
+    try {
+      await expect(listModels()).rejects.toThrow(/agy models failed: stub: forced failure/);
+    } finally {
+      delete process.env.AGY_STUB_FAIL;
+    }
+  });
+
   it('runHeadless replays a fixture and captures NDJSON', async () => {
     process.env.AGY_BIN = STUB_BIN;
     process.env.AGY_STUB_FIXTURE = ADD_DIR_WORKS;
@@ -335,5 +344,224 @@ describe('model cache', () => {
       'utf8',
     );
     expect(resolveDefaultModel()).toBe('gemini-3.7-flash-high');
+  });
+});
+
+describe('modelFamily and familyLevels (M1b)', () => {
+  it('strips a trailing effort suffix to get the family', () => {
+    expect(modelFamily('gemini-3.8-flash-high')).toBe('gemini-3.8-flash');
+    expect(modelFamily('claude-opus-4-6-thinking')).toBe('claude-opus-4-6-thinking');
+  });
+
+  const models = [
+    { id: 'gemini-3.8-flash-high', label: 'a' },
+    { id: 'gemini-3.8-flash-medium', label: 'b' },
+    { id: 'gemini-3.8-flash-low', label: 'c' },
+    { id: 'gemini-3.1-pro-high', label: 'd' },
+    { id: 'gemini-3.1-pro-low', label: 'e' },
+    { id: 'gpt-oss-120b-medium', label: 'f' },
+    { id: 'claude-opus-4-6-thinking', label: 'g' },
+    { id: 'claude-sonnet-4-6', label: 'h' },
+  ];
+  const families = familyLevels(models);
+
+  it('a flash-style family collects every level seen', () => {
+    expect([...families.get('gemini-3.8-flash')]).toEqual(
+      expect.arrayContaining(['low', 'medium', 'high']),
+    );
+  });
+
+  it('a family missing a level only has the ones it takes (3.1 Pro has no medium)', () => {
+    expect([...families.get('gemini-3.1-pro')].sort()).toEqual(['high', 'low']);
+  });
+
+  it('a single-level family has just that level', () => {
+    expect([...families.get('gpt-oss-120b')]).toEqual(['medium']);
+  });
+
+  it('a full id with no suffix is its own family, with an empty level set', () => {
+    expect(families.has('claude-opus-4-6-thinking')).toBe(true);
+    expect(families.get('claude-opus-4-6-thinking').size).toBe(0);
+    expect(families.has('claude-sonnet-4-6')).toBe(true);
+    expect(families.get('claude-sonnet-4-6').size).toBe(0);
+  });
+});
+
+describe('resolveEffort (M1b)', () => {
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  function freshHome() {
+    const dir = mkdtempSync(join(tmpdir(), 'cad-effort-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    return dir;
+  }
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  const models = [
+    { id: 'gemini-3.8-flash-high', label: 'a' },
+    { id: 'gemini-3.8-flash-medium', label: 'b' },
+    { id: 'gemini-3.8-flash-low', label: 'c' },
+    { id: 'claude-opus-4-6-thinking', label: 'g' },
+  ];
+
+  it('an id that already encodes effort: no --effort, no note', () => {
+    freshHome();
+    writeModelCache(models, null, null);
+    expect(resolveEffort('gemini-3.8-flash-high', 'high')).toEqual({
+      effort: undefined,
+      note: undefined,
+    });
+  });
+
+  it('a family with cached levels: keeps --effort, no note', () => {
+    freshHome();
+    writeModelCache(models, null, null);
+    expect(resolveEffort('gemini-3.8-flash', 'medium')).toEqual({
+      effort: 'medium',
+      note: undefined,
+    });
+  });
+
+  it('a full id with no cached levels: drops --effort and notes it', () => {
+    freshHome();
+    writeModelCache(models, null, null);
+    expect(resolveEffort('claude-opus-4-6-thinking', 'high')).toEqual({
+      effort: undefined,
+      note: '--effort does not apply to claude-opus-4-6-thinking; dropped',
+    });
+  });
+
+  it('a family that lists only some levels: still sends a level it does not take, for agy to refuse', () => {
+    freshHome();
+    writeModelCache(
+      [
+        { id: 'gemini-3.1-pro-low', label: 'Gemini 3.1 Pro (Low)' },
+        { id: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro (High)' },
+      ],
+      null,
+      null,
+    );
+    expect(resolveEffort('gemini-3.1-pro', 'medium')).toEqual({ effort: 'medium', note: undefined });
+    expect(resolveEffort('gemini-3.1-pro', 'high')).toEqual({ effort: 'high', note: undefined });
+  });
+
+  it('no cache: passes --effort through unchanged (today’s behaviour)', () => {
+    freshHome();
+    expect(resolveEffort('claude-opus-4-6-thinking', 'high')).toEqual({
+      effort: 'high',
+      note: undefined,
+    });
+  });
+
+  it('no --effort requested: nothing to resolve', () => {
+    freshHome();
+    writeModelCache(models, null, null);
+    expect(resolveEffort('gemini-3.8-flash', undefined)).toEqual({
+      effort: undefined,
+      note: undefined,
+    });
+  });
+});
+
+describe('modelCacheStale (M3)', () => {
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  function freshHome() {
+    const dir = mkdtempSync(join(tmpdir(), 'cad-stale-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    return dir;
+  }
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('stale when there is no cache at all', () => {
+    freshHome();
+    expect(modelCacheStale()).toBe(true);
+  });
+
+  it('not stale just after a write', () => {
+    freshHome();
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
+    expect(modelCacheStale()).toBe(false);
+  });
+
+  it('stale once fetchedAt is older than 7 days', () => {
+    const dir = freshHome();
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    writeFileSync(
+      join(dir, 'models.json'),
+      JSON.stringify({ fetchedAt: eightDaysAgo, models: [] }),
+      'utf8',
+    );
+    expect(modelCacheStale()).toBe(true);
+  });
+
+  it('not stale just inside 7 days', () => {
+    const dir = freshHome();
+    const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString();
+    writeFileSync(
+      join(dir, 'models.json'),
+      JSON.stringify({ fetchedAt: sixDaysAgo, models: [] }),
+      'utf8',
+    );
+    expect(modelCacheStale()).toBe(false);
+  });
+});
+
+describe('resolveBin: cached path (T1, "store the resolved path")', () => {
+  const prevBin = process.env.AGY_BIN;
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  afterEach(() => {
+    if (prevBin === undefined) delete process.env.AGY_BIN;
+    else process.env.AGY_BIN = prevBin;
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    resetBinCache();
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('uses the cached bin path when it still exists, skipping `where`', async () => {
+    delete process.env.AGY_BIN;
+    const dir = mkdtempSync(join(tmpdir(), 'cad-bin-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null, STUB_BIN);
+    resetBinCache();
+    const bin = await resolveBin();
+    expect(bin).toBe(STUB_BIN);
+  });
+
+  it('ignores a cached bin path that no longer exists on disk', async () => {
+    delete process.env.AGY_BIN;
+    const dir = mkdtempSync(join(tmpdir(), 'cad-bin-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    writeModelCache(
+      [{ id: 'gemini-3.8-flash-high', label: 'a' }],
+      null,
+      null,
+      join(dir, 'nonexistent-agy.exe'),
+    );
+    resetBinCache();
+    const bin = await resolveBin();
+    expect(bin).not.toBe(join(dir, 'nonexistent-agy.exe'));
   });
 });

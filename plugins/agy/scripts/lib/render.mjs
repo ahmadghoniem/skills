@@ -1,9 +1,11 @@
 // Presentation shared by the foreground dispatch and `/agy:result`, so the
 // write-up you see when a job finishes and the one you fetch later cannot drift.
 //
-// Default output is agy's own report. Status, exit code, and working tree
-// modifications remain separate facts that can raise individual warning lines
-// rather than being collapsed into a single pass/fail verdict.
+// Default output is agy's own report. Status and exit code are separate facts
+// that can raise individual warning lines rather than being collapsed into a
+// single pass/fail verdict.
+
+import { cachedModels } from './agy.mjs'; // no cycle: agy.mjs does not import render.mjs
 
 /** Beyond this many distinct tool failures the list stops being readable. */
 const TOOL_ERROR_LIMIT = 3;
@@ -22,29 +24,21 @@ function firstLine(message) {
   return String(message ?? '').split('\n')[0].trim();
 }
 
-export const WANDER_WARNING =
-  'agy reported file changes but the working tree is unchanged — the writes\n' +
-  '  probably landed in ~/.gemini/antigravity-cli/scratch instead of the repo.';
-
-/**
- * @typedef {Object} GitFile
- * @property {string} status
- * @property {string} path
- */
-
 /**
  * @typedef {Object} ResultView
  * @property {string} id
+ * @property {string|undefined} [status]
  * @property {string|null|undefined} agyStatus
  * @property {number|null|undefined} exitCode
- * @property {boolean} [gitRepo]
- * @property {GitFile[]} [gitFiles]
  * @property {string|null|undefined} error
  * @property {number|undefined} durationSeconds
  * @property {string|undefined} conversationId
  * @property {string|undefined} summary
- * @property {boolean} [claimedFileChanges]
  * @property {boolean} [killed]
+ * @property {boolean} [timedOut]
+ * @property {string} [timedOutAfter]
+ * @property {number} [compactions]
+ * @property {string[]} [deniedActions]
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
@@ -62,29 +56,24 @@ export const WARNING_IDS = Object.freeze([
   "exit",
   "stderr",
   "tool-errors",
+  "compaction",
+  "denied",
   "agy-error",
   "watchdog",
+  "timeout",
   "resume",
-  "wander",
 ]);
 
 /**
- * Report whether a write-up exists and the git status file delta count
- * to disambiguate non-SUCCESS statuses without judging the run.
- * File count is omitted outside a git repository.
+ * Report whether a write-up exists, to disambiguate non-SUCCESS statuses
+ * without judging the run.
  *
  * @param {ResultView} job
  * @returns {string}
  */
 function statusContext(job) {
-  const bits = [];
   const hasReport = job.summary != null && String(job.summary).trim() !== '';
-  bits.push(hasReport ? 'write-up present' : 'no write-up');
-  if (job.gitRepo !== false) {
-    const n = job.gitFiles?.length ?? 0;
-    bits.push(`${n} file${n === 1 ? '' : 's'} changed`);
-  }
-  return ` (${bits.join(', ')})`;
+  return hasReport ? ' (write-up present)' : ' (no write-up)';
 }
 
 /**
@@ -93,6 +82,27 @@ function statusContext(job) {
  * @property {string} line     the ⚠ line, without its marker
  * @property {string[]} [detail] indented continuation lines
  */
+
+/**
+ * Whether the run ended before agy finished: the plugin's own record says so
+ * (`failed`, `cancelled`, `orphaned`), the watchdog killed it, agy hit its own
+ * print timeout, or agy's own status says `ERROR`. One definition shared by
+ * the resume offer, the exit code, and the watchdog/timeout lines — they used
+ * to diverge.
+ *
+ * @param {ResultView} job
+ * @returns {boolean}
+ */
+export function isUnfinished(job) {
+  return (
+    job.status === 'failed' ||
+    job.status === 'cancelled' ||
+    job.status === 'orphaned' ||
+    Boolean(job.killed) ||
+    Boolean(job.timedOut) ||
+    String(job.agyStatus ?? '').toUpperCase() === 'ERROR'
+  );
+}
 
 /**
  * The anomalies for a finished job, in the order they are printed. Exported for
@@ -115,15 +125,15 @@ export function anomalies(job) {
     out.push({ id: 'exit', line: `exit ${job.exitCode}` });
   }
 
-  // When agy produces neither a write-up nor a status event, display stderr
-  // to surface initialisation failures (e.g. auth, unknown flags, spawn errors).
-  // Runs with a write-up suppress stderr to avoid noisy warnings.
-  const saidNothing = (job.summary == null || String(job.summary).trim() === '') && !status;
+  // agy is silent on stderr when nothing went wrong, so any output there is
+  // worth showing: initialisation failures, its own timeout notice,
+  // background-task notes, and network errors on a run that did return a
+  // status.
   const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
-  if (saidNothing && stderrTail.length > 0) {
+  if (stderrTail.length > 0) {
     out.push({
       id: 'stderr',
-      line: 'agy produced no result. Its stderr:',
+      line: 'agy wrote to stderr:',
       detail: [...stderrTail],
     });
   }
@@ -154,13 +164,46 @@ export function anomalies(job) {
     });
   }
 
+  // Information about the run, not friction, so it is not filed as a
+  // papercut. It matters because work after a compaction is where agy is
+  // most likely to redo something or drift from the brief.
+  const compactions = typeof job.compactions === 'number' ? job.compactions : 0;
+  if (compactions > 0) {
+    out.push({
+      id: 'compaction',
+      line: `agy compacted its context ${compactions} time${compactions === 1 ? '' : 's'} during this run; check the diff against the brief`,
+    });
+  }
+
+  // Empty on every run the plugin makes, since it passes
+  // `--dangerously-skip-permissions`. Kept as a guard: if agy ever does skip a
+  // tool action, the caller sees which one instead of a silent gap.
+  const denied = Array.isArray(job.deniedActions) ? job.deniedActions : [];
+  if (denied.length > 0) {
+    out.push({
+      id: 'denied',
+      line: `agy skipped ${denied.length} action${denied.length === 1 ? '' : 's'} it was not allowed to take:`,
+      detail: denied.map((d) => `  ${d}`),
+    });
+  }
+
   if (job.error != null && String(job.error).length > 0) {
-    const errLines = String(job.error).split('\n');
-    // Error messages can be long; display the first line and truncate details.
-    const extras = errLines.slice(1);
-    const detail = extras.slice(0, ERROR_TAIL_LIMIT);
-    if (extras.length > ERROR_TAIL_LIMIT) {
-      detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
+    const errText = String(job.error);
+    const errLines = errText.split('\n');
+    let detail;
+    if (/invalid model selection/i.test(errText)) {
+      // agy's own message names display labels ("Gemini 3.8 Flash (High)"),
+      // which cannot be passed back to `--model`; the cache is the source of
+      // truth for ids that can.
+      const models = cachedModels() ?? [];
+      detail = ['Valid ids:', ...models.map((m) => `  ${m.id}`)];
+    } else {
+      // Error messages can be long; display the first line and truncate details.
+      const extras = errLines.slice(1);
+      detail = extras.slice(0, ERROR_TAIL_LIMIT);
+      if (extras.length > ERROR_TAIL_LIMIT) {
+        detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
+      }
     }
     out.push({ id: 'agy-error', line: errLines[0], detail });
   }
@@ -172,18 +215,21 @@ export function anomalies(job) {
     });
   }
 
-  // Offer resume command when a watchdog-killed run captured a conversation id.
-  if (job.killed && job.conversationId) {
+  if (job.timedOut) {
+    out.push({
+      id: 'timeout',
+      line: `agy hit its print timeout after ${job.timedOutAfter ?? 'its limit'}; the output is partial`,
+    });
+  }
+
+  // Offer resume whenever the run ended before agy finished and kept a
+  // conversation to continue, whatever stopped it (agy's own timeout, the
+  // watchdog, a dropped connection, a quota error) — not only a watchdog kill.
+  if (isUnfinished(job) && job.conversationId) {
     out.push({
       id: 'resume',
       line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,
     });
-  }
-
-  // Checked only inside a git repository.
-  const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
-  if (noGitChanges && job.claimedFileChanges) {
-    out.push({ id: 'wander', line: WANDER_WARNING });
   }
 
   return out;

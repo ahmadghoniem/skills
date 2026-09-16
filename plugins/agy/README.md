@@ -23,33 +23,32 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 
 - **`/agy:delegate <task>`** — run a task via agy. Claude runs it under a backgrounded Bash call and announces completion without polling.
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). Also reaps job records left at `running` if the parent process died.
+- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). A job whose processes are already gone reads as `orphaned`, and nothing is killed.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
-- **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also the only writer of the model cache and the recorded `agy --version`.
+- **`/agy:setup`** — health-check the CLI: resolved binary, version, live model list. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
+- **`/agy:update`** — run `agy update` and print the changelog entries newer than the old version, for Claude to check against the plugin's workarounds.
 - **`/agy:papercut`** — record one friction point by hand, for `/agy:kaizen` to read later.
 - **`/agy:kaizen`** — read the friction log, cluster what keeps recurring, and agree on fixes.
-
-Plus an **`agy-runner`** agent that shapes a task into a self-contained brief and dispatches it.
 
 ### `/agy:delegate`
 
 ```bash
 /agy:delegate "Add retry-on-429 to src/api/client.ts. Verify with: pnpm test api"
 /agy:delegate "Replace every getUser( call with fetchUser( across src/. Verify with: pnpm typecheck"
-/agy:delegate --model gemini-3.7-pro-high --timeout 1800 "the hard one"
+/agy:delegate --model gemini-3.1-pro --effort high --timeout 1800 "the hard one"
 ```
 
-The plugin automatically selects the newest `flash` model from `agy models` at the chosen `--effort` (`medium` by default). Claude prompts for a model only when requested in the prompt.
+The plugin automatically selects the newest `flash` model from the cached `agy models` list at the chosen `--effort` (`medium` by default). A long brief goes in a file: Claude writes it to `~/.cad/briefs/` and passes `--prompt-file`.
 
 | Flag | Effect |
 | --- | --- |
-| `--model <id>` | Pin a model from the live `agy models` list. Omit it and the newest flash at the chosen `--effort` is used. |
-| `--effort <level>` | Sent only when the model id does not already end in `-low` / `-medium` / `-high`. |
-| `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 900 (15m); watchdog is that plus 60s. |
+| `--prompt-file <path>` | Read the brief from a file instead of the command line. Not combined with an inline task. |
+| `--model <id>` | A model family (`gemini-3.1-pro`) or a full id (`gemini-3.8-flash-high`) from `agy models`. Omit it and the newest flash at the chosen `--effort` is used. |
+| `--effort <level>` | Sent with a family. Dropped, with a note at dispatch, when the id already encodes effort or the model takes no levels. A level the family lacks is refused by agy, which names the ones it has. |
+| `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 3600 (60m); watchdog is that plus 60s. |
 | `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
 | `--conversation <uuid>` | Resume a specific conversation. |
-| `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. |
+| `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. The plugin never falls back to it. |
 
 Job names look like `add-retry-to-fetchuser-a7f3` and resolve by full name, unique prefix, or the 4-char suffix alone.
 
@@ -67,23 +66,28 @@ The warnings below fire on runs agy reports as finished:
 | --- | --- |
 | `⚠ agy status: ERROR` | agy's own verdict. Fires routinely on runs whose files landed correctly. |
 | `⚠ exit 1` | The process exit code. Independent of the above — they disagree in both directions. |
-| `⚠ agy produced no result. Its stderr:` | agy never started (unauthenticated, unknown `--model`, rejected flag, spawn failure). Fires only when there is no write-up and no status. The tail indicates the cause. |
+| `⚠ agy wrote to stderr:` | The last 20 lines agy wrote to stderr, on any run. agy is silent there when nothing went wrong, so this carries startup failures, its timeout notice and network errors. |
 | `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
-| `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; the full text is in the job log. |
+| `⚠ agy compacted its context N times` | agy summarised the conversation mid-run. Work after a compaction is where it most often drifts from the brief. |
+| `⚠ agy skipped N actions it was not allowed to take` | Permission denials. Should never fire, since the plugin bypasses permissions. |
+| `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; on an unknown model, the valid ids are listed instead. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
-| `⚠ agy reported file changes but the working tree is unchanged` | The writes went to `~/.gemini/antigravity-cli/scratch`. The work is not in your repo. |
+| `⚠ agy hit its print timeout after 1h0m0s` | agy stopped itself at its own limit and returned partial output, still reporting `SUCCESS`. |
+| `⚠ this run can be resumed where it stopped` | The run ended before agy finished and kept its conversation. |
 
-`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, preloaded into `agy-runner` and included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
+`delegate.mjs` exits 1 when the run did not finish. That is a fact about the run, not a verdict on the work.
+
+`plugins/agy/skills/output-contract/contract.md` documents this table for the orchestrator, included in `/agy:delegate` and `/agy:result`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
 
 ## The friction log
 
 Every run ending in an actionable `⚠` warning appends a row to
-`~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, and `resume`
-are excluded because they fire on successful runs.
+`~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, `compaction`,
+`denied` and `resume` are excluded: they describe the run rather than friction, and most
+fire on runs that worked.
 
-Two additional sources are recorded manually via `/agy:papercut`: `narrated`
-quotes agy's report when blocked, and `orchestrator` records brief failures
-(expected outcome, actual result, and the failing clause).
+One additional source is recorded manually via `/agy:papercut`: `narrated`
+quotes agy's report when blocked.
 
 All entries record what occurred without diagnosing why. Analysis is deferred
 to `/agy:kaizen` across aggregated clusters in a separate session.

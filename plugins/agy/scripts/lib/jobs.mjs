@@ -8,12 +8,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { killTree } from './killtree.mjs';
+import { isPidGone, killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, pluginHome } from './paths.mjs';
 import { jobName } from './slug.mjs';
 
 /**
- * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
+ * @typedef {'running'|'done'|'failed'|'cancelled'|'orphaned'} JobStatus
  */
 
 /**
@@ -34,16 +34,17 @@ import { jobName } from './slug.mjs';
  * @property {string} rawLogPath
  * @property {string} agyLogPath
  * @property {string} promptPath
+ * @property {string=} briefPath
  * @property {string=} summary
  * @property {string[]=} stderrTail
  * @property {{tool: string, message: string}[]=} toolErrors
  * @property {string|null=} error
  * @property {number=} durationSeconds
- * @property {boolean=} gitRepo
- * @property {Array<{status: string, path: string}>=} gitBefore
- * @property {Array<{status: string, path: string}>=} gitFiles
- * @property {boolean=} claimedFileChanges
  * @property {boolean=} killed
+ * @property {boolean=} timedOut
+ * @property {string=} timedOutAfter
+ * @property {number=} compactions
+ * @property {string[]=} deniedActions
  * @property {boolean=} sandbox
  */
 
@@ -208,6 +209,30 @@ export function jobDonePath(repoPath, id) {
 }
 
 /**
+ * A `running` record whose wrapper died without writing a final record (the
+ * Claude session closed, or a subagent's background task was stopped) stays
+ * `running` forever otherwise. Mark it `orphaned` once both pids it captured
+ * are gone.
+ *
+ * `createJob` writes `status: 'running'` with no `pid` yet; `pid` arrives in
+ * `runAndRecord`'s first `updateJob` and `cliPid` on spawn, so a record read
+ * in that window has no pids and must not be marked orphaned — a record
+ * without a pid bit is "not started yet", not "gone".
+ *
+ * @param {JobRecord} record
+ * @returns {JobRecord}
+ */
+function withOrphanCheck(record) {
+  if (record.status !== 'running') return record;
+  const hasPid = typeof record.pid === 'number';
+  if (!hasPid) return record;
+  const pidGone = isPidGone(record.pid);
+  const cliGone = typeof record.cliPid !== 'number' || isPidGone(record.cliPid);
+  if (pidGone && cliGone) return { ...record, status: 'orphaned' };
+  return record;
+}
+
+/**
  * @param {string} file
  * @returns {JobRecord|null}
  */
@@ -215,7 +240,9 @@ function readJobFile(file) {
   try {
     const raw = readFileSync(file, 'utf8');
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') return parsed;
+    if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') {
+      return withOrphanCheck(parsed);
+    }
     return null;
   } catch {
     return null;
@@ -234,16 +261,11 @@ export function readJob(repoPath, id) {
 }
 
 /**
- * Collect every job record under the plugin home.
- *
- * @returns {JobRecord[]}
- */
-function allJobs() {
-  return repoJobDirs().flatMap(readJobsIn);
-}
-
-/**
- * Resolve a job by full name, unique prefix, or 4-char suffix.
+ * Resolve a job by full name, unique prefix, or 4-char suffix — within this
+ * repository only. A full `<id>.json` file name still resolves across
+ * repositories, via `locateJobFile`'s cross-repo scan, since that is a
+ * request for one specific job rather than a short id that could collide
+ * with another repository's job.
  *
  * @param {string} repoPath
  * @param {string} query
@@ -256,9 +278,7 @@ export function resolveJob(repoPath, query) {
   const exact = readJob(repoPath, q);
   if (exact) return { job: exact, error: null };
 
-  const localHit = matchQuery(listJobs(repoPath), q);
-  if (localHit.job || localHit.error) return localHit;
-  return matchQuery(allJobs(), q);
+  return matchQuery(listJobs(repoPath), q);
 }
 
 /**
@@ -352,19 +372,19 @@ export function pruneOlderThanDays(repoPath, days = 30) {
 /**
  * @param {string} repoPath
  * @param {string} id
- * @param {number} [graceMs]
+ * @param {number} [taskkillTimeoutMs]
  * @returns {Promise<JobRecord|null>}
  */
-export async function cancelJob(repoPath, id, graceMs = 5_000) {
+export async function cancelJob(repoPath, id, taskkillTimeoutMs = 5_000) {
   const resolved = resolveJob(repoPath, id);
   const job = resolved.job;
   if (!job) return null;
   if (job.status !== 'running') return job;
   if (typeof job.cliPid === 'number') {
-    await killTree(job.cliPid, { graceMs });
+    await killTree(job.cliPid, { taskkillTimeoutMs });
   }
   if (typeof job.pid === 'number') {
-    await killTree(job.pid, { graceMs });
+    await killTree(job.pid, { taskkillTimeoutMs });
   }
   return updateJob(job.repoPath, job.id, {
     status: 'cancelled',
@@ -386,12 +406,4 @@ export function findRunningJobs(repoPath) {
  */
 export function mostRecentFinishedJob(repoPath) {
   return listJobs(repoPath).find((j) => j.status !== 'running') ?? null;
-}
-
-/**
- * @param {string} repoPath
- * @returns {JobRecord|null}
- */
-export function mostRecentJob(repoPath) {
-  return listJobs(repoPath)[0] ?? null;
 }

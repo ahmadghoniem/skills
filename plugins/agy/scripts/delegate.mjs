@@ -1,17 +1,21 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
   WATCHDOG_GRACE_SEC,
   buildArgs,
+  cachedModels,
   cachedToolVersion,
-  modelEncodesEffort,
+  familyLevels,
+  modelCacheStale,
+  refreshModelCache,
   resolveDefaultModel,
+  resolveEffort,
   runHeadless,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
-import { isDirty, isRepo, porcelain, porcelainDelta, repoRoot } from './lib/git.mjs';
+import { repoRoot } from './lib/git.mjs';
 import {
   agyLogPath,
   createJob,
@@ -24,7 +28,7 @@ import {
 } from './lib/jobs.mjs';
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { anomalies, renderResult } from './lib/render.mjs';
+import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
@@ -34,11 +38,38 @@ const DEFAULT_EFFORT = 'medium';
 
 const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--no-git-check] [--conversation <uuid>] [--continue] <task...>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+
+/**
+ * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief
+ * reaches agy without going through the command line. Claude writes the file
+ * with its Write tool; this only reads it back.
+ *
+ * @param {unknown} spec
+ * @returns {string}
+ */
+function readPromptFile(spec) {
+  if (spec === true || spec === '') {
+    throw new Error('--prompt-file needs a path.');
+  }
+  const path = String(spec);
+  let raw;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `could not read --prompt-file ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const text = raw.trim();
+  if (text.length === 0) {
+    throw new Error(`prompt file is empty: ${path}`);
+  }
+  return text;
+}
 
 function parseFlags(argv) {
   const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
-  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
   const conversation =
     typeof flags['conversation'] === 'string' && flags['conversation'].trim()
       ? String(flags['conversation']).trim()
@@ -49,16 +80,32 @@ function parseFlags(argv) {
     model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
     timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
-    noGitCheck,
     sandbox: flags['sandbox'] === true,
     help: flags['help'] === true,
     conversation,
     continueLatest,
+    // `undefined` = flag absent; `true` = bare `--prompt-file` with no value
+    // (a usage error, caught in main); otherwise the path as given.
+    promptFile: flags['prompt-file'],
   };
 }
 
 function isResume(flags) {
   return Boolean(flags.conversation || flags.continueLatest);
+}
+
+/**
+ * Whether `model` is a known family or full id in `models` — either key of
+ * `familyLevels(models)`, since a family and a full id with no levels are
+ * both stored as keys with possibly-empty sets.
+ *
+ * @param {string|undefined} model
+ * @param {import('./lib/agy.mjs').ModelInfo[]|null} models
+ * @returns {boolean}
+ */
+function isModelCached(model, models) {
+  if (!model || !Array.isArray(models)) return false;
+  return familyLevels(models).has(model) || models.some((m) => m.id === model);
 }
 
 /**
@@ -71,24 +118,17 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const absPrompt = resolvePath(promptPath(root, jobId));
   writeFileSync(absPrompt, prompt, 'utf8');
 
-  const git = await isRepo(root);
-  /** @type {import('./lib/git.mjs').GitFile[]} */
-  let before = [];
-  if (git) {
-    before = (await porcelain(root)) ?? [];
-  }
-
-  const effort =
-    flags.effort && !modelEncodesEffort(flags.model) ? flags.effort : undefined;
+  // `main` already resolved `flags.effort` via `resolveEffort` (M1b): it is
+  // undefined here whenever it should not be sent.
+  const effort = flags.effort;
 
   updateJob(root, jobId, {
     pid: process.pid,
     model: flags.model ?? '',
     effort,
     promptPath: absPrompt,
-    gitRepo: git,
-    gitBefore: before,
     sandbox: flags.sandbox || undefined,
+    briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });
 
   const args = buildArgs({
@@ -127,11 +167,22 @@ async function runAndRecord(flags, prompt, jobId, root) {
   });
 
   const summary = summariseEvents(result.events);
-  const gitFiles = git ? porcelainDelta(before, (await porcelain(root)) ?? []) : [];
 
-  // Mark failed if killed or exited non-zero without emitting a result event.
-  // Native exit code and agy status can disagree on completed runs.
-  const neverStarted = summary.status == null && result.exitCode !== 0;
+  // agy 1.1.28+ stops itself at the print timeout and returns partial output
+  // with status SUCCESS and exit 0 — the only trace is this stderr line.
+  const timeoutLine = (result.stderr ?? []).find((l) =>
+    /^\[agy\] print timeout after \S+ with turn in progress/.test(l),
+  );
+  const timedOut = Boolean(timeoutLine);
+  const timedOutAfter = timeoutLine ? /after (\S+)/.exec(timeoutLine)[1] : undefined;
+
+  // Mark failed if killed, if agy exited non-zero without emitting a result
+  // event (spawn failure), or if agy did no work at all (status ERROR with no
+  // conversation id — an unknown model, a rejected flag). Native exit code and
+  // agy status can otherwise disagree on completed runs.
+  const neverStarted =
+    (summary.status == null && result.exitCode !== 0) ||
+    (String(summary.status).toUpperCase() === 'ERROR' && !summary.conversationId);
   const pluginStatus = result.killed || neverStarted ? 'failed' : 'done';
   updateJob(root, jobId, {
     status: pluginStatus,
@@ -143,14 +194,15 @@ async function runAndRecord(flags, prompt, jobId, root) {
     durationSeconds: summary.durationSeconds,
     conversationId: summary.conversationId,
     model: summary.model ?? flags.model ?? '',
-    gitRepo: git,
-    gitFiles,
-    claimedFileChanges: summary.claimedFileChanges,
     killed: result.killed || undefined,
+    timedOut: timedOut || undefined,
+    timedOutAfter,
     // Persisted so `/agy:result <id>` matches foreground output; omitted when
     // empty.
     stderrTail: result.stderr?.length ? result.stderr : undefined,
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
+    compactions: summary.compactions || undefined,
+    deniedActions: summary.deniedActions?.length ? summary.deniedActions : undefined,
   });
 
   // Sole write site for detected papercuts. `/agy:result` evaluates anomalies
@@ -165,11 +217,8 @@ async function runAndRecord(flags, prompt, jobId, root) {
       jobId,
       conversationId: summary.conversationId,
       toolCalls: summary.toolCalls,
-      filesChanged: git ? gitFiles.length : undefined,
       agyStatus: summary.status,
       exitCode: result.exitCode,
-      writeTargets: summary.writeTargets,
-      scratchPaths: summary.scratchPaths,
       toolErrors: summary.toolErrors,
       stderrTail: result.stderr,
     });
@@ -211,25 +260,29 @@ export async function main(rawArgv) {
     return 0;
   }
 
-  const prompt = flags.positional.join(' ').trim();
+  let prompt = flags.positional.join(' ').trim();
+  if (flags.promptFile !== undefined) {
+    if (prompt.length > 0) {
+      process.stderr.write(
+        'Error: pass the task either on the command line or via --prompt-file, not both.\n',
+      );
+      return 2;
+    }
+    try {
+      prompt = readPromptFile(flags.promptFile);
+    } catch (err) {
+      process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
   if (!prompt && !isResume(flags)) {
     process.stderr.write('Error: no task description provided.\n');
     process.stderr.write(USAGE);
     return 2;
   }
 
-  if (!(await isRepo(process.cwd())) && !flags.noGitCheck) {
-    process.stderr.write(
-      'Error: current directory is not a git repository. Pass --no-git-check to override.\n',
-    );
-    return 2;
-  }
   const root = await repoRoot(process.cwd());
   pruneOlderThanDays(root, 30);
-
-  if (await isDirty(root)) {
-    process.stderr.write('Warning: working tree is dirty. agy will see the uncommitted changes.\n');
-  }
 
   // Resolve default model from cache. Omitted on resume because
   // `--conversation` preserves the initial model (e.g. pro), avoiding
@@ -238,16 +291,45 @@ export async function main(rawArgv) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }
 
+  // M3, trigger 2: a model named today must not be rejected by a week-old
+  // cache. Refresh once, before the run starts, when it is not cached yet.
+  if (flags.model && !isResume(flags) && !isModelCached(flags.model, cachedModels())) {
+    await refreshModelCache().catch(() => {});
+  }
+
+  // M1b: `--model` may be a family (`gemini-3.8-flash`) or a full id; decide
+  // whether `--effort` travels with it from the now-fresh cache, and note it
+  // at dispatch time when it is dropped.
+  const { effort: resolvedEffort, note } = resolveEffort(flags.model, flags.effort);
+  flags.effort = resolvedEffort;
+
   const jobId = uniqueJobName(root, prompt || 'continue');
   const task = prompt || 'Continue from where you left off.';
 
   createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
-  process.stdout.write(`agy \`${jobId}\`\n\n`);
+  const noteSuffix = note ? ` (note: ${note})` : '';
+  process.stdout.write(`agy \`${jobId}\`${noteSuffix}\n\n`);
 
   await runOrMarkFailed(flags, task, jobId, root);
   const finished = readJob(root, jobId);
+
+  // M3, trigger 3: refresh right away on a rejected model, so the `Valid
+  // ids:` list M2 prints from `renderResult` below is current.
+  if (finished && /invalid model selection/i.test(String(finished.error ?? ''))) {
+    await refreshModelCache().catch(() => {});
+  }
+
   if (finished) process.stdout.write(renderResult(finished));
-  return 0;
+  const code = finished && isUnfinished(finished) ? 1 : 0;
+
+  // M3, trigger 1: weekly, after the output above is written, and before
+  // returning — never a detached process. Swallowed so a failed refresh
+  // cannot change the exit code.
+  if (modelCacheStale()) {
+    await refreshModelCache().catch(() => {});
+  }
+
+  return code;
 }
 
 if (invokedAsScript(import.meta.url)) {

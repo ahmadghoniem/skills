@@ -1,6 +1,6 @@
 {
   "name": "claude-agy-delegate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Use the Antigravity CLI from Claude Code to delegate coding tasks.",
   "type": "module",
   "license": "MIT",
@@ -29,7 +29,9 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "vitest run --config evals/vitest.config.mjs",
+    "eval:live": "set AGY_EVAL_LIVE=1&& vitest run --config evals/vitest.config.mjs"
   },
   "devDependencies": {
     "vitest": "^2.1.8"

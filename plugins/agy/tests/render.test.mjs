@@ -1,16 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { WANDER_WARNING, anomalies, renderResult } from '../scripts/lib/render.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { writeModelCache } from '../scripts/lib/agy.mjs';
+import { anomalies, isUnfinished, renderResult } from '../scripts/lib/render.mjs';
 
 describe('renderResult', () => {
   const base = {
     id: 'add-retry-to-fetchuser-a7f3',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
-    gitFiles: [
-      { status: 'M', path: 'src/api/user.ts' },
-      { status: 'A', path: 'src/api/user.test.ts' },
-    ],
     durationSeconds: 102,
     conversationId: 'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
     summary: 'Added retry to fetchUser and a covering test.\n',
@@ -41,29 +40,6 @@ describe('renderResult', () => {
     expect(out).toContain('\u26a0 agy status: ERROR');
   });
 
-  it('measures the ERROR so a blip is distinguishable from a dead run', () => {
-    // The case that motivated this: a provider stream interrupted in the last
-    // second of a run whose work had already landed.
-    expect(renderResult({ ...base, agyStatus: 'ERROR' })).toContain(
-      '\u26a0 agy status: ERROR (write-up present, 2 files changed)',
-    );
-    // And the case it must not read the same as.
-    expect(
-      renderResult({ ...base, agyStatus: 'ERROR', summary: '', gitFiles: [] }),
-    ).toContain('\u26a0 agy status: ERROR (no write-up, 0 files changed)');
-  });
-
-  it('singularises one file and omits the count outside a repo', () => {
-    expect(
-      renderResult({ ...base, agyStatus: 'ERROR', gitFiles: [{ status: 'M', path: 'a.ts' }] }),
-    ).toContain('(write-up present, 1 file changed)');
-    // Outside a repo there is no tree to compare against, so `0 files changed`
-    // would be a claim rather than a measurement.
-    expect(
-      renderResult({ ...base, agyStatus: 'ERROR', gitRepo: false, gitFiles: [] }),
-    ).toContain('\u26a0 agy status: ERROR (write-up present)');
-  });
-
   it('raises a non-zero exit independently of agy status', () => {
     const out = renderResult({ ...base, agyStatus: 'SUCCESS', exitCode: 1 });
     expect(out).toContain('\u26a0 exit 1');
@@ -88,37 +64,14 @@ describe('renderResult', () => {
       ...base,
       agyStatus: 'ERROR',
       exitCode: 1,
-      gitFiles: [],
       error:
         'permission check failed for command "echo SHELLOK": user denied permission to run command:\necho SHELLOK',
       summary: '',
-      claimedFileChanges: false,
     });
     expect(out).toContain(
-      '\u26a0 permission check failed for command "echo SHELLOK": user denied permission to run command:',
+      '⚠ permission check failed for command "echo SHELLOK": user denied permission to run command:',
     );
     expect(out).toContain('echo SHELLOK');
-  });
-
-  it('warns when the report claims writes but the working tree is unchanged', () => {
-    const out = renderResult({
-      ...base,
-      gitFiles: [],
-      claimedFileChanges: true,
-      summary: 'Created [touched.txt](file:///C:/tmp/touched.txt) containing `OK`.\n',
-    });
-    expect(out).toContain(WANDER_WARNING);
-    expect(out).toContain('antigravity-cli/scratch');
-  });
-
-  it('does not cry wander outside a git repo, where there is no tree to compare', () => {
-    const out = renderResult({
-      ...base,
-      gitRepo: false,
-      gitFiles: [],
-      claimedFileChanges: true,
-    });
-    expect(out).not.toContain(WANDER_WARNING);
   });
 
   it('reports a watchdog kill', () => {
@@ -126,24 +79,73 @@ describe('renderResult', () => {
     expect(out).toContain('\u26a0 watchdog killed the run');
   });
 
-  it('offers a resume only on a killed run that captured a conversation id', () => {
+  it('reports agy’s own print timeout, with its Go duration token verbatim', () => {
+    const out = renderResult({ ...base, timedOut: true, timedOutAfter: '1h0m0s' });
+    expect(out).toContain(
+      '⚠ agy hit its print timeout after 1h0m0s; the output is partial',
+    );
+  });
+
+  it('offers a resume on a killed run that captured a conversation id', () => {
     const killed = renderResult({ ...base, killed: true });
     expect(killed).toContain(
       '\u26a0 this run can be resumed where it stopped: /agy:resume add-retry-to-fetchuser-a7f3',
     );
 
-    // A run that finished has nothing to resume, however it ended.
-    expect(renderResult({ ...base, agyStatus: 'ERROR', exitCode: 1 })).not.toContain(
-      '/agy:resume',
-    );
     // No id captured means the line would point at nothing.
     expect(renderResult({ ...base, killed: true, conversationId: undefined })).not.toContain(
       '/agy:resume',
     );
   });
 
+  it('offers a resume on every ending that can be resumed, not only a watchdog kill', () => {
+    // agy's own timeout stops the run before the watchdog almost ever gets
+    // the chance, and a dropped connection or quota error both end with agy
+    // status ERROR. All three still have a conversation worth continuing.
+    expect(renderResult({ ...base, timedOut: true, timedOutAfter: '15s' })).toContain(
+      '/agy:resume',
+    );
+    expect(renderResult({ ...base, agyStatus: 'ERROR', exitCode: 0 })).toContain('/agy:resume');
+    expect(renderResult({ ...base, agyStatus: 'ERROR', exitCode: 1 })).toContain('/agy:resume');
+  });
+
+  it('does not offer resume for a never-started run: no conversation id', () => {
+    expect(
+      renderResult({
+        id: 'x-8888',
+        status: 'failed',
+        agyStatus: 'ERROR',
+        exitCode: 1,
+        summary: '',
+        conversationId: undefined,
+      }),
+    ).not.toContain('/agy:resume');
+  });
+
   it('says so when agy returned nothing at all', () => {
     expect(renderResult({ ...base, summary: '' })).toBe('(agy returned no report)\n');
+  });
+});
+
+describe('isUnfinished', () => {
+  it('is true for each plugin status that means the run did not complete', () => {
+    expect(isUnfinished({ id: 'x', status: 'failed' })).toBe(true);
+    expect(isUnfinished({ id: 'x', status: 'cancelled' })).toBe(true);
+    expect(isUnfinished({ id: 'x', status: 'orphaned' })).toBe(true);
+  });
+
+  it('is true when the watchdog killed the run or agy hit its own timeout', () => {
+    expect(isUnfinished({ id: 'x', status: 'done', killed: true })).toBe(true);
+    expect(isUnfinished({ id: 'x', status: 'done', timedOut: true })).toBe(true);
+  });
+
+  it('is true when agy itself reports status ERROR, even with plugin status done', () => {
+    expect(isUnfinished({ id: 'x', status: 'done', agyStatus: 'ERROR' })).toBe(true);
+  });
+
+  it('is false for a done run with a clean agy status', () => {
+    expect(isUnfinished({ id: 'x', status: 'done', agyStatus: 'SUCCESS' })).toBe(false);
+    expect(isUnfinished({ id: 'x', status: 'done', agyStatus: null })).toBe(false);
   });
 });
 
@@ -154,16 +156,13 @@ describe('anomalies', () => {
         id: 'x',
         agyStatus: 'SUCCESS',
         exitCode: 0,
-        gitRepo: true,
-        gitFiles: [{ status: 'M', path: 'a.ts' }],
         summary: 'done',
-        claimedFileChanges: true,
       }),
     ).toEqual([]);
   });
 
   it('treats a missing status as unremarkable rather than a failure', () => {
-    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0, gitRepo: false })).toEqual([]);
+    expect(anomalies({ id: 'x', agyStatus: null, exitCode: 0 })).toEqual([]);
   });
 });
 
@@ -172,8 +171,6 @@ describe('tool failures during a run', () => {
     id: 'x-1111',
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    gitRepo: true,
-    gitFiles: [{ status: 'M', path: 'src/a.ts' }],
     summary: 'Fixed the failing test.\n',
   };
 
@@ -242,14 +239,15 @@ describe('stderr when agy produced no result', () => {
       stderrTail: ['authentication required', 'run `agy login`'],
     });
     expect(out).toContain('⚠ exit 1');
-    expect(out).toContain('agy produced no result. Its stderr:');
+    expect(out).toContain('agy wrote to stderr:');
     expect(out).toContain('  authentication required');
     expect(out).toContain('  run `agy login`');
   });
 
-  it('stays silent when agy DID produce a write-up', () => {
-    // A working run that happened to write to stderr must not gain a line —
-    // that noise is exactly what the quiet-by-default contract suppresses.
+  it('shows the stderr tail even on a run that also produced a write-up', () => {
+    // 1.2.2 moved its own timeout notice and network errors onto stderr for
+    // runs that do return a status and a report. Hiding stderr whenever a
+    // write-up exists would hide exactly those lines.
     const out = renderResult({
       id: 'x-3333',
       agyStatus: 'SUCCESS',
@@ -257,22 +255,9 @@ describe('stderr when agy produced no result', () => {
       summary: 'Done.\n',
       stderrTail: ['warning: something chatty'],
     });
-    expect(out).toBe('Done.\n');
-  });
-
-  it('stays silent when agy reported a status, even a failing one', () => {
-    // A real ERROR result already explains itself through `error`; the stderr
-    // dump is reserved for the case where nothing else can speak.
-    const out = renderResult({
-      id: 'x-4444',
-      agyStatus: 'ERROR',
-      exitCode: 1,
-      summary: '',
-      error: 'the actual reason',
-      stderrTail: ['some unrelated chatter'],
-    });
-    expect(out).not.toContain('produced no result');
-    expect(out).toContain('the actual reason');
+    expect(out).toContain('Done.');
+    expect(out).toContain('⚠ agy wrote to stderr:');
+    expect(out).toContain('  warning: something chatty');
   });
 
   it('names the spawn failure instead of a bare exit 127', () => {
@@ -313,7 +298,124 @@ describe('long agy errors', () => {
     // The status line carries its measured context; that is disambiguation, not
     // a fourth fact folded into the first three.
     expect(out).toBe(
-      '⚠ agy status: ERROR (no write-up, 0 files changed)\n⚠ exit 1\n⚠ one line only\n',
+      '⚠ agy status: ERROR (no write-up)\n⚠ exit 1\n⚠ one line only\n',
     );
+  });
+});
+
+describe('invalid model selection (M2)', () => {
+  const prevHome = process.env.CAD_HOME;
+  /** @type {string[]} */
+  const dirs = [];
+
+  function freshHome() {
+    const dir = mkdtempSync(join(tmpdir(), 'cad-render-'));
+    dirs.push(dir);
+    process.env.CAD_HOME = dir;
+    return dir;
+  }
+
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.CAD_HOME;
+    else process.env.CAD_HOME = prevHome;
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('replaces the detail with the cached ids instead of agy’s display labels', () => {
+    freshHome();
+    writeModelCache(
+      [
+        { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
+        { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+      ],
+      null,
+      null,
+    );
+    const out = renderResult({
+      id: 'x-9999',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error:
+        'invalid model selection (--model "not-a-model" --effort ""): model not recognized',
+    });
+    expect(out).toContain('⚠ invalid model selection');
+    expect(out).toContain('  Valid ids:');
+    expect(out).toContain('    gemini-3.8-flash-high');
+    expect(out).toContain('    claude-opus-4-6-thinking');
+    // Not agy's own display labels — those cannot be passed back to --model.
+    expect(out).not.toContain('(High)');
+  });
+
+  it('is case-insensitive and matches anywhere in the error text', () => {
+    freshHome();
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
+    const out = renderResult({
+      id: 'x-8888',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'Invalid Model Selection: nope',
+    });
+    expect(out).toContain('  Valid ids:');
+    expect(out).toContain('    gemini-3.8-flash-high');
+  });
+
+  it('falls back to an empty list when there is no cache, rather than throwing', () => {
+    freshHome();
+    const out = renderResult({
+      id: 'x-7777',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error: 'invalid model selection: nope',
+    });
+    expect(out).toContain('  Valid ids:');
+  });
+});
+
+describe('compaction and denied lines', () => {
+  const base = {
+    id: 'audit-the-router-9x2a',
+    agyStatus: 'SUCCESS',
+    exitCode: 0,
+    conversationId: 'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
+    summary: 'Done.\n',
+  };
+
+  it('says how many times agy compacted its context', () => {
+    expect(renderResult({ ...base, compactions: 2 })).toContain(
+      '⚠ agy compacted its context 2 times during this run; check the diff against the brief',
+    );
+  });
+
+  it('singularises one compaction', () => {
+    expect(renderResult({ ...base, compactions: 1 })).toContain('compacted its context 1 time ');
+  });
+
+  it('stays silent when nothing was compacted', () => {
+    expect(renderResult({ ...base, compactions: 0 })).toBe('Done.\n');
+    expect(renderResult(base)).toBe('Done.\n');
+  });
+
+  it('lists the actions agy was not allowed to take', () => {
+    const out = renderResult({ ...base, deniedActions: ['run_command: rm -rf build'] });
+    expect(out).toContain('⚠ agy skipped 1 action it was not allowed to take:');
+    expect(out).toContain('run_command: rm -rf build');
+  });
+
+  it('stays silent when agy denied nothing, which is every run under --dangerously-skip-permissions', () => {
+    expect(renderResult({ ...base, deniedActions: [] })).toBe('Done.\n');
+  });
+
+  it('prints compaction before denied, and both before the error line', () => {
+    const ids = anomalies({
+      ...base,
+      agyStatus: 'ERROR',
+      error: 'nope',
+      compactions: 1,
+      deniedActions: ['write_file: /etc/hosts'],
+    }).map((a) => a.id);
+    expect(ids).toEqual(['agy-status', 'compaction', 'denied', 'agy-error', 'resume']);
   });
 });

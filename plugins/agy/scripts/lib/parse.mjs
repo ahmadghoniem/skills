@@ -69,46 +69,6 @@ export function parseEvents(text) {
   return events;
 }
 
-const SCRATCH_RE = /antigravity-cli[\\/]+scratch/i;
-
-/**
- * Detect whether agy's response claims file creation or modification
- * (matched by file:// links or modification verbs near filenames).
- *
- * @param {string} response
- * @returns {boolean}
- */
-export function claimsFileChanges(response) {
-  const text = String(response ?? '');
-  if (text.length === 0) return false;
-  if (/file:\/\//i.test(text)) return true;
-  if (/\bcreated the file\b/i.test(text)) return true;
-  if (/\bcreated\b/i.test(text) && /\[[^\]]+\]\(/i.test(text)) return true;
-  if (/\b(created|wrote|modified|updated)\b/i.test(text) && /\.[a-z0-9]{1,8}\b/i.test(text)) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Pull a filesystem path out of a tool_info.parameters object. PascalCase
- * keys are tool-specific: write_to_file → TargetFile, view_file →
- * AbsolutePath, find_by_name → SearchDirectory.
- *
- * @param {Record<string, unknown>|undefined} params
- * @returns {string[]}
- */
-export function toolParamPaths(params) {
-  if (params == null || typeof params !== 'object') return [];
-  /** @type {string[]} */
-  const out = [];
-  for (const key of ['TargetFile', 'AbsolutePath', 'SearchDirectory']) {
-    const v = params[key];
-    if (typeof v === 'string' && v.length > 0) out.push(v);
-  }
-  return out;
-}
-
 /**
  * @typedef {Object} RunSummary
  * @property {string|undefined} conversationId
@@ -121,10 +81,10 @@ export function toolParamPaths(params) {
  * @property {number|undefined} durationSeconds
  * @property {unknown} usage
  * @property {number} toolCalls
+ * @property {string|undefined} lastTool
  * @property {{tool: string, message: string}[]} toolErrors
- * @property {string[]} scratchPaths
- * @property {string[]} writeTargets
- * @property {boolean} claimedFileChanges
+ * @property {number} compactions
+ * @property {string[]|undefined} deniedActions
  */
 
 /**
@@ -149,16 +109,22 @@ export function summariseEvents(events) {
   let error = null;
   /** @type {number|undefined} */
   let durationSeconds;
+  /** @type {string[]|undefined} */
+  let deniedActions;
   /** @type {unknown} */
   let usage;
   // Total tool steps during the run, successful or failed.
   let toolCalls = 0;
+  /** @type {string|undefined} */
+  let lastTool;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];
-  /** @type {string[]} */
-  const scratchPaths = [];
-  /** @type {string[]} */
-  const writeTargets = [];
+  // agy replaces the conversation so far with a summary once it grows large.
+  // Every fixture carries one `checkpoint` step before any real work, right
+  // after `user_input`; only count a `checkpoint` once work has actually
+  // started, or a clean run's opening checkpoint would count as one.
+  let sawWork = false;
+  let compactions = 0;
 
   for (const ev of events ?? []) {
     if (ev == null || typeof ev !== 'object') continue;
@@ -181,19 +147,13 @@ export function summariseEvents(events) {
       if (!conversationId && typeof su.conversation_id === 'string') {
         conversationId = su.conversation_id;
       }
+      if (su.step_type === 'tool' || su.step_type === 'agent_response') sawWork = true;
+      else if (su.step_type === 'checkpoint' && sawWork) compactions += 1;
+
       if (su.step_type === 'tool') {
         toolCalls += 1;
+        if (typeof su.tool_name === 'string') lastTool = su.tool_name;
         const info = su.tool_info;
-        const params = info != null && typeof info === 'object' ? info.parameters : undefined;
-        const paths = toolParamPaths(
-          params != null && typeof params === 'object' ? /** @type {Record<string, unknown>} */ (params) : undefined,
-        );
-        for (const p of paths) {
-          if (SCRATCH_RE.test(p)) scratchPaths.push(p);
-        }
-        if (su.tool_name === 'write_to_file' && typeof params?.TargetFile === 'string') {
-          writeTargets.push(params.TargetFile);
-        }
 
         // Record tool failures, including undocumented binary `state: "ERROR"`,
         // to surface failed verification steps during runs marked SUCCESS.
@@ -221,6 +181,9 @@ export function summariseEvents(events) {
       else if (r.error != null) error = String(r.error);
       if (typeof r.duration_seconds === 'number') durationSeconds = r.duration_seconds;
       if (r.usage != null) usage = r.usage;
+      if (Array.isArray(r.denied_actions) && r.denied_actions.length) {
+        deniedActions = r.denied_actions;
+      }
     }
   }
 
@@ -235,9 +198,9 @@ export function summariseEvents(events) {
     durationSeconds,
     usage,
     toolCalls,
+    lastTool,
     toolErrors,
-    scratchPaths,
-    writeTargets,
-    claimedFileChanges: claimsFileChanges(response),
+    compactions,
+    deniedActions,
   };
 }

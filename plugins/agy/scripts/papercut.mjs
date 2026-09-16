@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-// Records manually authored papercuts (`narrated` or `orchestrator`).
-// `delegate.mjs` logs `detected` anomalies automatically.
-//
-//   narrated      Quotes agy's closing report on blocking issues.
-//   orchestrator  Records brief defects: expected outcome, actual outcome, failing clause.
-//
-// Both record observations rather than diagnoses; `/agy:kaizen` clusters and analyzes them.
+// Records a manually authored papercut: what agy's closing report said got in
+// its way, quoted rather than diagnosed. `delegate.mjs` logs `detected`
+// anomalies automatically; `/agy:kaizen` clusters both.
 import { readFileSync } from 'node:fs';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
@@ -14,13 +10,10 @@ import { cachedToolVersion } from './lib/agy.mjs';
 import { jobsDir } from './lib/paths.mjs';
 import { readJob } from './lib/jobs.mjs';
 
-const USAGE = `Usage: /agy:papercut --source <narrated|orchestrator> --text "<what went wrong>"
+const USAGE = `Usage: /agy:papercut --source narrated --text "<what went wrong>"
                     [--fix "<what would have prevented it>"]
                     [--severity warn|info] [--job <job-id>]
                     [--quote "<the delegatee's own words>"]
-                    [--brief-excerpt "<the failing clause of the brief>"]
-                    [--expected "<what the brief asked for>"]
-                    [--got "<what came back>"]
 `;
 
 /**
@@ -36,8 +29,8 @@ export async function main(rawArgv) {
   }
 
   const source = typeof flags.source === 'string' ? flags.source.trim() : '';
-  if (source !== 'narrated' && source !== 'orchestrator') {
-    process.stderr.write('Error: --source must be `narrated` or `orchestrator`.\n');
+  if (source !== 'narrated') {
+    process.stderr.write('Error: --source must be `narrated`.\n');
     process.stderr.write(USAGE);
     return 2;
   }
@@ -61,13 +54,6 @@ export async function main(rawArgv) {
   /** @type {Record<string, unknown>} */
   const evidence = {};
   if (typeof flags.quote === 'string' && flags.quote.trim()) evidence.quote = flags.quote.trim();
-  if (typeof flags['brief-excerpt'] === 'string' && flags['brief-excerpt'].trim()) {
-    evidence.briefExcerpt = flags['brief-excerpt'].trim();
-  }
-  if (typeof flags.expected === 'string' && flags.expected.trim()) {
-    evidence.expected = flags.expected.trim();
-  }
-  if (typeof flags.got === 'string' && flags.got.trim()) evidence.got = flags.got.trim();
 
   const severity = flags.severity === 'info' ? 'info' : 'warn';
 
@@ -82,7 +68,6 @@ export async function main(rawArgv) {
     repo: root,
     jobId: job ? job.id : undefined,
     conversationId: typeof job?.conversationId === 'string' ? job.conversationId : undefined,
-    filesChanged: Array.isArray(job?.gitFiles) ? job.gitFiles.length : undefined,
     text,
     fix: typeof flags.fix === 'string' && flags.fix.trim() ? flags.fix.trim() : undefined,
     evidence: Object.keys(evidence).length ? evidence : undefined,

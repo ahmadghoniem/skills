@@ -58,25 +58,20 @@ describe('detectedCuts', () => {
     repo: 'C:\\repo',
     jobId: 'job-abcd',
     toolCalls: 47,
-    filesChanged: 0,
     agyStatus: 'SUCCESS',
     exitCode: 0,
-    writeTargets: ['src/a.mjs'],
-    scratchPaths: ['~/.gemini/antigravity-cli/scratch/a.mjs'],
   };
 
-  it('turns a wander into one cut carrying the scratch paths', async () => {
+  it('turns a stderr warning into one cut', async () => {
     const { detectedCuts } = await lib();
     const cuts = detectedCuts(
-      [{ id: 'wander', line: 'agy reported file changes but the working tree is unchanged — x\n  y' }],
+      [{ id: 'stderr', line: 'agy produced no result. Its stderr:\n  auth required' }],
       ctx,
     );
     expect(cuts).toHaveLength(1);
     expect(cuts[0].source).toBe('detected');
-    expect(cuts[0].warningId).toBe('wander');
+    expect(cuts[0].warningId).toBe('stderr');
     expect(cuts[0].toolCalls).toBe(47);
-    expect(cuts[0].filesChanged).toBe(0);
-    expect(cuts[0].evidence.scratchPaths).toEqual(ctx.scratchPaths);
     // Only the first line: the second is the same fact restated for the reader.
     expect(cuts[0].text).not.toContain('\n');
   });
@@ -119,7 +114,7 @@ describe('the log itself', () => {
   // that a fix did not work.
   it('gives repeat occurrences distinct ids', async () => {
     const { appendPapercut, readPapercuts } = await lib();
-    const cut = { source: 'detected', severity: 'warn', tool: 'agy', text: 'same', warningId: 'wander' };
+    const cut = { source: 'detected', severity: 'warn', tool: 'agy', text: 'same', warningId: 'stderr' };
     appendPapercut({ ...cut, ts: '2026-09-03T00:00:00Z' });
     appendPapercut({ ...cut, ts: '2026-09-04T00:00:00Z' });
     const ids = readPapercuts().map((c) => c.id);

@@ -14,13 +14,17 @@
     "url": "https://github.com/ahmadghoniem/skills.git"
   },
   "homepage": "https://github.com/ahmadghoniem/skills",
-  "engines": { "node": ">=18.18" },
+  "engines": {
+    "node": ">=18.18"
+  },
   "scripts": {
     "test": "npm run test:cursor && npm run test:grok && npm run test:agy",
     "test:cursor": "npm --prefix plugins/cursor test",
     "test:grok": "npm --prefix plugins/grok test",
     "test:agy": "npm --prefix plugins/agy test",
     "install:all": "npm --prefix plugins/cursor ci && npm --prefix plugins/grok ci && npm --prefix plugins/agy ci",
-    "validate": "claude plugin validate . --strict"
+    "validate": "claude plugin validate . --strict",
+    "eval:agy": "npm --prefix plugins/agy run eval",
+    "eval:agy:live": "npm --prefix plugins/agy run eval:live"
   }
 }

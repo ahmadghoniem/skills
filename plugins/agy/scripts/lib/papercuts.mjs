@@ -39,10 +39,10 @@ export const pluginVersion = (() => {
  * @type {Readonly<Record<string, {severity: 'warn'|'info'}>>}
  */
 export const DETECTED_WARNINGS = Object.freeze({
-  wander: { severity: 'warn' },
   stderr: { severity: 'warn' },
   'agy-error': { severity: 'warn' },
   watchdog: { severity: 'warn' },
+  timeout: { severity: 'warn' },
   'tool-errors': { severity: 'info' },
 });
 
@@ -50,7 +50,7 @@ export const DETECTED_WARNINGS = Object.freeze({
  * @typedef {Object} Papercut
  * @property {string} id
  * @property {string} ts
- * @property {'detected'|'narrated'|'orchestrator'} source
+ * @property {'detected'|'narrated'|'resolution'} source   old logs may also hold 'orchestrator'
  * @property {'warn'|'info'} severity
  * @property {string} tool
  * @property {string} [toolVersion]
@@ -60,7 +60,6 @@ export const DETECTED_WARNINGS = Object.freeze({
  * @property {string} [jobId]
  * @property {string} [conversationId]
  * @property {number} [toolCalls]
- * @property {number} [filesChanged]
  * @property {string} [warningId] which ⚠ line produced this, for detected rows
  * @property {string} text
  * @property {string} [fix]
@@ -138,16 +137,6 @@ export function readPapercuts() {
 function evidenceFor(warningId, anomaly, ctx) {
   /** @type {Record<string, unknown>} */
   const ev = { agyStatus: ctx.agyStatus ?? null, exitCode: ctx.exitCode ?? null };
-  if (warningId === 'wander') {
-    // `scratchPaths` are where agy actually wrote — the difference between a
-    // false claim and a misrouted one, which take different fixes.
-    if (Array.isArray(ctx.writeTargets) && ctx.writeTargets.length) {
-      ev.writeTargets = ctx.writeTargets.slice(0, 10);
-    }
-    if (Array.isArray(ctx.scratchPaths) && ctx.scratchPaths.length) {
-      ev.scratchPaths = ctx.scratchPaths.slice(0, 10);
-    }
-  }
   if (warningId === 'tool-errors' && Array.isArray(ctx.toolErrors)) {
     ev.toolErrors = ctx.toolErrors.slice(0, 5);
   }
@@ -185,7 +174,6 @@ export function detectedCuts(anomalyList, ctx) {
       jobId: ctx.jobId || undefined,
       conversationId: ctx.conversationId || undefined,
       toolCalls: typeof ctx.toolCalls === 'number' ? ctx.toolCalls : undefined,
-      filesChanged: typeof ctx.filesChanged === 'number' ? ctx.filesChanged : undefined,
       warningId: a.id,
       text: a.line.split('\n')[0].trim(),
       evidence: evidenceFor(a.id, a, ctx),

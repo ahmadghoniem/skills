@@ -24,21 +24,21 @@ export function isPidGone(pid) {
  * Exit code 128 indicates process not found; stderr is localised.
  *
  * @param {number} pid
- * @param {{ graceMs?: number }} [opts]
+ * @param {{ taskkillTimeoutMs?: number }} [opts]
  * @returns {Promise<'killed'|'already-gone'|'failed'>}
  */
-export async function killTree(pid, { graceMs = 5000 } = {}) {
+export async function killTree(pid, { taskkillTimeoutMs = 5000 } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return 'failed';
-  const budget = Number.isFinite(graceMs) && graceMs > 0 ? graceMs : 5000;
+  const budget = Number.isFinite(taskkillTimeoutMs) && taskkillTimeoutMs > 0 ? taskkillTimeoutMs : 5000;
   return killWindows(pid, budget);
 }
 
 /**
  * @param {number} pid
- * @param {number} graceMs
+ * @param {number} taskkillTimeoutMs
  * @returns {Promise<'killed'|'already-gone'|'failed'>}
  */
-function killWindows(pid, graceMs) {
+function killWindows(pid, taskkillTimeoutMs) {
   const taskkillPath = join(process.env.WINDIR || 'C:\\Windows', 'System32', 'taskkill.exe');
   const args = ['/PID', String(pid), '/T', '/F'];
   const options = {
@@ -82,7 +82,7 @@ function killWindows(pid, graceMs) {
           // noop
         }
         finish('failed');
-      }, graceMs);
+      }, taskkillTimeoutMs);
     }
   });
 }

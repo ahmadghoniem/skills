@@ -23,10 +23,6 @@ proposing anything:
 
 - Read the cluster's evidence rows. They exist so you can judge a cut without
   re-running the delegation — a re-run costs quota and often does not reproduce.
-- Check `toolCalls` against `filesChanged`. A run that took forty tool calls to
-  change one file went wrong somewhere even if agy reported SUCCESS, and a
-  cluster where every cut has that shape is usually a brief problem, not a tool
-  problem: the delegatee could not tell what "done" meant, so it kept looking.
 - Check the `toolVersion` spread. A cluster that only appears at one version is
   a tool regression to work around. One spread across versions is ours.
 - Read any "Recurred after a recorded fix" section first. Those are fixes that
