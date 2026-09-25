@@ -223,6 +223,67 @@ export async function usage(days) {
   return u;
 }
 
+// ---------- usage limit ----------
+// How much further the usage limit goes once `saved` tokens leave every request.
+// Replays the last `days` of transcripts: each API call either read its prefix from
+// the prompt cache or wrote it, and the saved tokens would have been read or written
+// the same way. Token kinds are weighted by API price (input 1, cache write 1.25 or 2,
+// cache read 0.1, output 5), on the assumption that plan limits weigh them alike.
+
+export async function stretch(saved, days = 30) {
+  const cutoff = Date.now() - days * 864e5;
+  const root = join(CLAUDE_DIR, 'projects');
+  const seen = new Set();
+  let total = 0, cut = 0, calls = 0, turns = 0, turnContext = 0;
+  if (!existsSync(root)) return null;
+  for (const { p, mtime } of walk(root)) {
+    if (mtime < cutoff) continue;
+    for await (const line of createInterface({ input: createReadStream(p) })) {
+      if (!line.includes('"usage"')) continue;
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      const m = e.message, u = m?.usage;
+      if (e.type !== 'assistant' || !u || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
+      seen.add(m.id);
+      const cc = u.cache_creation ?? {};
+      const w1 = cc.ephemeral_1h_input_tokens ?? (u.cache_creation ? 0 : u.cache_creation_input_tokens ?? 0);
+      const w5 = cc.ephemeral_5m_input_tokens ?? 0;
+      const read = u.cache_read_input_tokens ?? 0;
+      total += (u.input_tokens ?? 0) + 1.25 * w5 + 2 * w1 + 0.1 * read + 5 * (u.output_tokens ?? 0);
+      cut += read >= saved ? 0.1 * saved : 2 * saved;
+      calls++;
+      if (m.stop_reason === 'end_turn' && !e.isSidechain) { turns++; turnContext += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + read; }
+    }
+  }
+  if (!total) return null;
+  // A prompt suggestion reads the whole context once per turn; the CLI does not log
+  // them, so this is an upper bound.
+  return { days, calls, share: cut / total, stretch: total / (total - Math.min(cut, total * 0.99)), suggestionShareMax: (0.1 * turnContext) / total };
+}
+
+// ---------- claude.ai skills ----------
+// Synced skills arrive while a session starts, often after the first request, so a
+// capture can miss them. Size their listing lines from the synced folder instead.
+
+function syncedSkills() {
+  const root = join(CLAUDE_DIR, 'skills', 'synced');
+  const out = [];
+  if (!existsSync(root)) return out;
+  for (const acct of readdirSync(root)) {
+    const dir = join(root, acct);
+    if (!statSync(dir).isDirectory()) continue;
+    for (const name of readdirSync(dir)) {
+      const f = join(dir, name, 'SKILL.md');
+      if (name.startsWith('.') || !existsSync(f)) continue;
+      const head = readFileSync(f, 'utf8').split('\n---')[0];
+      // One-line or block (`>` / `|`) YAML description.
+      const m = /^description:[ \t]*(.*)$((?:\n[ \t]+.*)*)/m.exec(head);
+      const desc = (/^[>|]/.test(m?.[1] ?? '') ? m[2] : m?.[1] ?? '').replace(/\s+/g, ' ').trim().replace(/^['"]|['"]$/g, '');
+      out.push({ name, line: `- ${name}: ${desc}` });
+    }
+  }
+  return out;
+}
+
 // ---------- switches ----------
 // Env switches go through --settings: settings.json `env` overrides the process
 // environment. `patch` turns the switch on, `revert` measures what turning it back
@@ -328,6 +389,14 @@ async function report({ days = 90, json = null, estimate = false }) {
     const m = measured[variants.indexOf(w)];
     return { id: w.id, name: w.name, how: w.how, on: w.isOn, windowsOnly: Boolean(w.windows), ...m };
   });
+  const synced = s.syncClaudeAiSkills === false ? [] : syncedSkills();
+  if (synced.length) {
+    const sys = { model: base.req.model, messages: [{ role: 'user', content: 'ok' }], system: [{ type: 'text', text: 'x' }] };
+    const withLines = { ...sys, system: [{ type: 'text', text: 'x\n' + synced.map((k) => k.line).join('\n') }] };
+    const fromFolder = (await count(withLines)) - (await count(sys));
+    const w = switches.find((x) => x.id === 'claude-ai-skills');
+    if (w) { w.saves = Math.max(w.saves ?? 0, fromFolder); w.skills = synced.map((k) => k.name); }
+  }
 
   // Cost of bringing back a denied tool, measured one tool at a time.
   const denied = new Set((s.permissions?.deny ?? []).filter((d) => /^[\w-]+$/.test(d)));
@@ -403,13 +472,16 @@ async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'report') {
     await report({ days: Number(arg(args, '--days', 90)), json: arg(args, '--json'), estimate: args.includes('--estimate') });
+  } else if (cmd === 'stretch') {
+    const r = await stretch(Number(arg(args, '--saved', 0)), Number(arg(args, '--days', 30)));
+    process.stdout.write(r ? JSON.stringify(r, null, 1) + '\n' : 'no transcripts in the window\n');
   } else if (cmd === 'capture') {
     const settings = arg(args, '--settings'); const out = arg(args, '--out');
     const { req } = await capture({ settings: settings ? JSON.parse(settings) : null });
     if (out) writeFileSync(out, JSON.stringify(req));
     else process.stdout.write(JSON.stringify(breakdown(req).map(({ cut, ...i }) => i), null, 1) + '\n');
   } else {
-    process.stdout.write('usage: lean.mjs report [--days 90] [--json out.json] [--estimate] | capture [--out f] [--settings json]\n');
+    process.stdout.write('usage: lean.mjs report [--days 90] [--json out.json] [--estimate] | stretch --saved N [--days 30] | capture [--out f] [--settings json]\n');
     process.exitCode = cmd ? 2 : 0;
   }
 }

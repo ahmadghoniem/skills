@@ -18,12 +18,15 @@ Run from the project the user works in (its `CLAUDE.md` and MCP config count):
 node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" report --days 90 --json "<temp dir>/lean-claude.json"
 ```
 
-Pass `$ARGUMENTS` through. Tell the user it takes about a minute and uses none of their
-usage limits:
-- The request is captured by a local server that answers with an error, so no model runs.
-- Tokens are counted by Anthropic's free `count_tokens` endpoint with the user's own login.
-- If counting fails, the report says "estimate" and figures are within about 10%.
+Pass `$ARGUMENTS` through. Before it runs, tell the user in two sentences that it takes
+about a minute and doesn't touch their usage limits:
+- Claude Code builds a request as usual, but it stays on this machine: a small local
+  server takes it in place of Anthropic's API and answers with an error, so no model
+  runs.
+- Anthropic's token counter (the free `count_tokens` endpoint) does the counting. It
+  counts text without running a model and doesn't count toward usage limits.
 
+If counting fails, the report says "estimate" and figures are within about 10%.
 Keep the JSON; step 5 compares against it.
 
 ## 2. Show where the tokens go
@@ -37,44 +40,52 @@ Take candidates from the JSON. Something used in the last two weeks is not a can
 however expensive; show its usage and let the user decide. Order each group by tokens.
 
 **Tools and switches**
-- **Artifact** (`enableArtifact: false`) removes Artifact plus ArtifactComments and
-  ArtifactData, together the largest item on most setups. It publishes pages to
-  claude.ai. Without it, Claude writes a local HTML file instead.
-- **PowerShell** (Windows only, `CLAUDE_CODE_USE_POWERSHELL_TOOL=0`). A second shell next
-  to Bash. With Git Bash installed, Bash covers the same work and calls
-  `powershell.exe -Command` for Windows-only queries, and two shells make the model pick
-  one on every command. Recommend the switch whenever Git Bash is present, even if the
-  tool was used: its uses were work Bash can do.
+- **Artifact** (`enableArtifact: false`) removes Artifact, ArtifactComments and
+  ArtifactData, together the largest item on most setups. Worth keeping only for
+  someone who often shares pages on claude.ai and uses their comments or stored data.
+  Without it, Claude writes a local HTML file; to share one now and then, Cloudflare
+  Drop (cloudflare.com/drop) turns a dragged-in file into a public link, for an hour or
+  permanently with a free account.
+- **PowerShell** (Windows only, `CLAUDE_CODE_USE_POWERSHELL_TOOL=0`). A second shell
+  next to Bash. With Git Bash installed, Bash does the same work, and when a Windows
+  cmdlet is needed Claude runs it from Bash with `powershell.exe -Command`, so nothing
+  Windows-specific is lost. With both loaded, Claude picks a shell on every command.
+  Recommend it whenever Git Bash is present, even if the tool was used, and say that
+  undoing it is one line.
 - **Cron tools** (`CLAUDE_CODE_DISABLE_CRON=1`). They schedule a prompt inside the
   session ("remind me at 2:30", "run the tests every 10 minutes"); a job fires only
   while Claude is idle and ends with the session. `/loop` stops working.
 - **Other unused tools**: a bare name in `permissions.deny` (`"NotebookEdit"`). Scoped
-  rules (`"Bash(rm:*)"`) remove nothing. Explain what the tool does in one line:
+  rules (`"Bash(rm:*)"`) remove nothing. Explain each in one line:
   - `RemoteTrigger` manages claude.ai routines, sessions that run in the cloud on a
     schedule or on a GitHub event.
   - `PushNotification` sends a desktop notification, and to the phone while Remote
     Control is connected. Its description is the same size either way, so a user with
     `disableRemoteControl: true` pays for phone text they cannot use.
-  - `ListAgents` is needed only to message other sessions by name. Put it as: "only for
-    messaging sessions by name; N calls in 90 days; subagents you spawn work without it".
+  - `ListAgents`: "only for messaging other sessions by name; N calls in the window;
+    subagents you spawn work without it".
   - `DesignSync` syncs a component library with a claude.ai/design project.
+  - `ScheduleWakeup` lets Claude pause and resume itself later; `/loop` uses it.
 - Rank deferred tools last: interactive sessions send only their names.
 - Never suggest denying `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Skill` or
   `ToolSearch`.
 
 **Skills and plugins**
-- Explain the two kinds of skill first. A skill is either model-invoked (listed to the
-  model, which may load it on its own) or user-invoked (typed as `/name`). Many users
-  don't know a skill can be both, or only the second.
-- **Typed, never model-invoked** (`typed > 0`, `modelUses` 0): `skillOverrides`
-  `"user-invocable-only"`. It leaves the model's listing but `/name` still works. This
-  works on built-in skills too (`claude-api`, `code-review`, `init`, …).
+- Explain the two kinds of skill first. Claude reads the name and description of every
+  model-invoked skill on each request, so it takes up context whether it's used or
+  not, and Claude may load it on its own. A user-invoked skill is one the user types as
+  `/name`. A skill can be set to user-invoked only: Claude no longer reads it on every
+  request, and `/name` still works. Many users don't know this setting exists.
+- **Typed, never picked by Claude** (`typed > 0`, `modelUses` 0): `skillOverrides`
+  `"user-invocable-only"`. Works on built-in skills too (`claude-api`, `code-review`,
+  `init`, …).
 - **Never used**: `skillOverrides` `"off"`.
-- **claude.ai skills** (`syncClaudeAiSkills: false`). Skills enabled in the user's
-  claude.ai account sync into Claude Code: Anthropic's docx, pptx, xlsx and pdf skills
-  when file creation is on there, plus any the user added. Each is instructions and
-  helper scripts, not a tool. Without them Claude can still make these files but writes
-  its own script instead of following a tested recipe.
+- **claude.ai skills** (`syncClaudeAiSkills: false`; the switch lists them in
+  `skills`). Skills enabled in the user's claude.ai account sync into Claude Code:
+  Anthropic's docx, pptx, xlsx and pdf skills when file creation is on there, plus any
+  the user added. Each is instructions and helper scripts, not a tool. Without them
+  Claude can still make these files but writes its own script instead of following a
+  tested recipe.
 - **Plugins**: a plugin's skills leave the listing only when the whole plugin is
   disabled (`enabledPlugins`, `"<plugin>@<marketplace>": false`). Suggest that only when
   every part of it (skills, agents, MCP tools) went unused.
@@ -83,15 +94,17 @@ however expensive; show its usage and let the user decide. Order each group by t
 - **Agents**: only files under `~/.claude/agents/` (`userFile: true`) can be deleted.
 
 **Prompt switches**
-- **Short system prompt** (`CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`), usually the largest
-  switch. It keeps the "confirm before hard-to-reverse actions" guidance. It drops the
-  full prompt's guidance on scope and code style: don't add features or abstractions
-  beyond the task, no error handling for cases that can't happen, default to no
-  comments, watch for injection and XSS, test UI changes in a browser, answer
-  exploratory questions briefly before implementing, make independent tool calls in
-  parallel. It also shortens tool descriptions and the built-in git instructions (to
-  about 110 tokens). Say it is the one cut that can change behaviour, and offer a short
-  `~/.claude/rules/` file with the dropped lines the user wants back (about 200 tokens).
+- **Short system prompt** (`CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`). If it saves under 100
+  tokens, the account already gets the short prompt: say so and don't offer it.
+  Otherwise it is usually the largest switch. It keeps the "confirm before
+  hard-to-reverse actions" guidance. It drops the full prompt's guidance on scope and
+  code style: don't add features or abstractions beyond the task, no error handling
+  for cases that can't happen, default to no comments, watch for injection and XSS,
+  test UI changes in a browser, answer exploratory questions briefly before
+  implementing, make independent tool calls in parallel. It also shortens tool
+  descriptions and the built-in git instructions (to about 110 tokens). Say it is the
+  one cut that can change behaviour, and offer a short `~/.claude/rules/` file with the
+  dropped lines the user wants back (about 200 tokens).
 - **Explore/Plan agents** (`CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1`). If they were
   spawned, explain: Explore is a read-only search agent, Plan does plan-mode research,
   and Explore now runs on the main model, so it saves nothing over general-purpose. The
@@ -100,10 +113,14 @@ however expensive; show its usage and let the user decide. Order each group by t
 
 **Background requests**: always suggest the ones that are off, whatever the usage.
 Each re-sends the whole conversation as a side request, which counts against usage;
-the probe cannot measure them.
+the probe cannot see them. Run
+`node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" stretch --saved 0` for the numbers below.
+- `promptSuggestionEnabled: false`: the greyed-out next prompt in the input box. Each
+  one reads the whole context with the main model after a turn. Give
+  `suggestionShareMax` as "up to N% of your usage in the last 30 days" (upper bound:
+  the CLI skips some and doesn't log them).
 - `awaySummaryEnabled: false`: the recap written when the terminal loses focus.
-  `/recap` still works on demand.
-- `promptSuggestionEnabled: false`: the greyed-out next-prompt suggestion.
+  `/recap` still works on demand. On the author's machine recaps were 1.5–2% of usage.
 
 **Do not suggest** `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`. It saves little more than
 `user-invocable-only` and makes every bundled command untypable. Mention it only if
@@ -114,12 +131,18 @@ Report large `CLAUDE.md` and rules files with their size. Never edit them here.
 ## 4. Ask, then apply
 
 Ask with AskUserQuestion, one multi-select question per group: Tools, Skills and
-plugins, Prompt switches, Background requests. Skip empty groups. Each option:
-- label: the change and its saving, `Artifact (−14,152)`
-- description: uses in the window and last use, then what the user loses
+plugins, Prompt switches, Background requests. Skip empty groups. A question takes
+at most 4 options, so bundle items that share a reason into one option:
+- Tools: Artifact · PowerShell · "Unused scheduling: Cron tools, ScheduleWakeup" ·
+  "Other unused tools: RemoteTrigger, DesignSync, PushNotification, …".
+- Skills: "Hide from Claude, keep typable: claude-api, code-review" · "Off, never
+  used: …" · "claude.ai skills" · one option per unused plugin.
 
-A question takes at most 4 options. With more candidates, ask the top 4 and list the
-rest under the question in your message; the user can pick them through "Other".
+Each option:
+- label: the change and its total saving, `Unused scheduling (−3,582)`
+- description: the items with their uses, then what the user loses
+
+If a group still has more than 4 options, ask a second round for the rest.
 
 Apply only what was picked:
 - `~/.claude/settings.json`: read it first and keep every other key. Bare names go in
@@ -129,11 +152,21 @@ Apply only what was picked:
 Changes apply from the next session. Deny rules also apply at once, and changing the
 tool list mid-session re-writes the whole prompt cache once, so suggest a new session.
 
-## 5. Verify
+## 5. Verify and report
 
-Re-run the report and show before and after: the total and each change's actual
-saving. If a change saved nothing, say so and offer to undo it. End with the "Cost of
-turning back on" figures for what was just removed.
+Re-run the report, then run
+`node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" stretch --saved <before − after>`.
+
+Lead with the result in one sentence: "Every request now starts with A tokens instead
+of B: N fewer (P%)." Then:
+- a table of each change and its actual saving, largest first;
+- the usage limit: "Over the last 30 days the removed part was S% of your usage, so the
+  same limit should go about X% further." Say it is an estimate: it assumes plan limits
+  weigh tokens the way API prices do;
+- the background requests turned off, with their share, as a separate line;
+- what turning each change back on costs, from the report's restore table.
+
+If a change saved nothing, say so and offer to undo it.
 
 ## Limits
 
