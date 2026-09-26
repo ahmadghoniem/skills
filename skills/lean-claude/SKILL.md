@@ -107,11 +107,12 @@ never paste one into a shell command, and write settings with the Edit tool.
 **Prompt switches**
 - **Short system prompt** (`CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`). Claude Code picks the
   prompt per model: current Opus models get the short one by default, Sonnet and Haiku
-  the full one. If it saves under 100 tokens, the user's model already has it: say so
-  and don't offer it. If the user already set it and the switch shows `redundant`, tell
-  them plainly: on their current model the setting changes nothing, because the model
-  gets the short prompt anyway; it only matters if they switch to Sonnet or Haiku, so
-  keeping it is harmless.
+  the full one. When the switch shows `modelDefault`, whether it is on or off, don't
+  offer it; tell the user in the overview, in one or two sentences: their model
+  already gets the short prompt, so setting `CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`
+  makes no difference on it; on Sonnet or Haiku it does, saving about `fullCost`
+  tokens per request, so it is worth setting if they use those models. If it is
+  already on, say keeping it costs nothing.
   Otherwise it is usually the largest switch. It keeps the "confirm before
   hard-to-reverse actions" guidance. It drops the full prompt's guidance on scope and
   code style: don't add features or abstractions beyond the task, no error handling

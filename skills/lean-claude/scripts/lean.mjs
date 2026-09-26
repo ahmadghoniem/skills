@@ -570,16 +570,23 @@ async function report({ days = Infinity, json = null, estimate = false }) {
     const v = (await capture({ settings: patch })).req;
     return w.id === 'claude-ai-connectors' ? total - (await count(v)) : baseNoMcp - (await count(noMcp(v)));
   };
+  // Claude Code picks the short prompt per model (current Opus by default, Sonnet and
+  // Haiku not), so the setting may change nothing here: unset and set to 1 give the same
+  // system prompt and built-in tools. Compared as text, since the git snapshot in the
+  // messages can move between two captures. fullCost is what the full prompt adds, which
+  // is roughly what the setting saves on a model that defaults to the full one.
+  const fixed = (r) => JSON.stringify([r.system, (r.tools ?? []).filter((t) => !/^mcp__/.test(t.name))]);
+  const byModel = async (w) => {
+    if (!w.unset) return {};
+    const [unset, set] = await Promise.all([capture({ settings: w.unset }), capture({ settings: w.patch })]);
+    const modelDefault = fixed(unset.req) === fixed(set.req);
+    return { modelDefault, ...(modelDefault && { fullCost: -(await delta(w, w.revert)) }) };
+  };
   const measured = await pool(variants.map((w) => async () => {
-    if (!w.isOn && w.applies(base.req)) return { saves: await delta(w, w.patch) };
+    if (!w.isOn && w.applies(base.req)) return { saves: await delta(w, w.patch), ...(await byModel(w)) };
     if (w.isOn && w.revert) {
       const c = -(await delta(w, w.revert));
-      // Claude Code picks the short prompt per model, so the setting may change nothing:
-      // unset, the system prompt and built-in tools come out identical. (Compared as
-      // text, since the git snapshot in the messages can move between two captures.)
-      const fixed = (r) => JSON.stringify([r.system, (r.tools ?? []).filter((t) => !/^mcp__/.test(t.name))]);
-      const redundant = w.unset ? fixed((await capture({ settings: w.unset })).req) === fixed(base.req) : undefined;
-      return { ...(c > 0 && { restoreCost: c }), ...(redundant !== undefined && { redundant }) };
+      return { ...(c > 0 && { restoreCost: c }), ...(await byModel(w)) };
     }
     return {};
   }), 3);
@@ -642,7 +649,12 @@ function render(o) {
   L.push('', '## Where the tokens go', '', '| Kind | Tokens |', '|---|---:|');
   for (const [k, t] of o.byKind) L.push(`| ${k} | ${n(t)} |`);
   L.push('', '## Switches', '', '| Switch | How | Status | Tokens |', '|---|---|---|---:|');
-  for (const w of o.switches) L.push(`| ${w.name} | \`${w.how}\` | ${w.on ? (w.redundant ? 'on, no effect on this model' : 'on') : 'off'} | ${w.on ? (w.restoreCost != null ? (w.redundant ? `the full prompt would be +${n(w.restoreCost)}` : `+${n(w.restoreCost)} to undo`) : '') : `−${n(w.saves)}`} |`);
+  for (const w of o.switches) {
+    const status = (w.on ? 'on' : 'off') + (w.modelDefault ? ', already the default on this model' : '');
+    const effect = w.modelDefault ? `none here; about −${n(w.fullCost)} on Sonnet or Haiku`
+      : w.on ? (w.restoreCost != null ? `+${n(w.restoreCost)} to undo` : '') : `−${n(w.saves)}`;
+    L.push(`| ${w.name} | \`${w.how}\` | ${status} | ${effect} |`);
+  }
   for (const w of o.unmeasured) L.push(`| ${w.name} | \`${w.how}\` | ${w.on ? 'on' : 'off'} | not measurable |`);
   const cand = (r) => (r.kind === 'tool' || r.kind === 'mcp-tool' ? !r.core && !r.headlessOnly : ['skill', 'agent'].includes(r.kind)) && !r.plugin;
   const table = (title, list, note) => {
