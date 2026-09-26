@@ -336,6 +336,10 @@ export async function stretch(saved, days = Infinity) {
   for (const x of back) x.elsewhere = times.some(([s, ts]) => s !== x.sid && ts.some((v) => v > x.from && v < x.to));
   const extra = (x) => x.tokens * (x.rate - 0.1), sum = (f, l = back) => l.reduce((a, x) => a + f(x), 0);
   const sizes = back.map((x) => x.tokens).sort((a, b) => a - b);
+  // Five-minute writes that expired within the hour: `promptCacheTtl: "1h"` would have
+  // read them instead, at the price of every 5-minute write costing 2 instead of 1.25.
+  const shortGaps = misses.filter((x) => x.rate < 1.5 && x.to - x.from <= 36e5);
+  const oneHourNet = sum((x) => x.tokens * (x.rate - 0.1), shortGaps) - 0.75 * w5All;
   const further = (k) => total[k] / (total[k] - Math.min(cut[k], total[k] * 0.99)) - 1;
   return {
     from: new Date(first).toISOString().slice(0, 10), spanDays: Math.max(1, Math.round((last - first) / 864e5)),
@@ -348,6 +352,7 @@ export async function stretch(saved, days = Infinity) {
       afterOtherSession: back.filter((x) => x.elsewhere).length, medianTokens: sizes[sizes.length >> 1] ?? 0,
       share: sum(extra) / total.price, shareAfterOtherSession: sum(extra, back.filter((x) => x.elsewhere)) / total.price,
       summaryTokens: summary,
+      oneHourTtl: { returns: shortGaps.length, share: oneHourNet / total.price },
       compactFirstShare: sum((x) => Math.max(0, x.tokens * x.rate - 0.1 * x.ctx - 7 * summary)) / total.price,
       largest: [...back].sort((a, b) => extra(b) - extra(a)).slice(0, 3).map((x) => ({
         title: titles[x.sid] ?? null, project: x.project, date: new Date(x.to).toISOString().slice(0, 10),
@@ -451,12 +456,14 @@ function syncedSkills() {
 
 function readJson(p) { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; } }
 const userSettings = () => readJson(join(CLAUDE_DIR, 'settings.json'));
+const claudeJson = () => readJson(process.env.CLAUDE_CONFIG_DIR ? join(CLAUDE_DIR, '.claude.json') : join(homedir(), '.claude.json')) ?? {};
+const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '');
 
 // MCP servers set to `alwaysLoad: true` send every tool schema on every request instead
 // of waiting behind tool search. User and local scope live in ~/.claude.json, project
 // scope in .mcp.json.
 function alwaysLoadServers(cwd) {
-  const cfg = readJson(process.env.CLAUDE_CONFIG_DIR ? join(CLAUDE_DIR, '.claude.json') : join(homedir(), '.claude.json')) ?? {};
+  const cfg = claudeJson();
   const here = resolve(cwd).toLowerCase();
   const local = Object.entries(cfg.projects ?? {}).find(([k]) => resolve(k).toLowerCase() === here)?.[1]?.mcpServers;
   const scopes = { user: cfg.mcpServers, local, project: readJson(join(cwd, '.mcp.json'))?.mcpServers };
@@ -468,7 +475,7 @@ const has = (req, re) => (req.tools ?? []).some((t) => re.test(t.name ?? ''));
 
 const SWITCHES = [
   { id: 'artifact', name: 'Artifact off', how: 'settings enableArtifact: false', on: (s) => s.enableArtifact === false || s.disableArtifact === true, applies: (req) => has(req, /^Artifact/), patch: { enableArtifact: false }, tools: /^Artifact/ },
-  { id: 'simple-prompt', name: 'Short system prompt', how: 'env CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1', on: (s) => envOn(s, 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT'), applies: () => true, patch: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '1' } }, revert: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '0' } } },
+  { id: 'simple-prompt', name: 'Short system prompt', how: 'env CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1', on: (s) => envOn(s, 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT'), applies: () => true, patch: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '1' } }, revert: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '0' } }, unset: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '' } } },
   { id: 'git', name: 'Built-in git instructions off', how: 'settings includeGitInstructions: false', on: (s) => s.includeGitInstructions === false, applies: (req) => has(req, /^Bash$/), patch: { includeGitInstructions: false }, revert: { includeGitInstructions: true } },
   { id: 'powershell', name: 'PowerShell tool off (Windows)', how: 'env CLAUDE_CODE_USE_POWERSHELL_TOOL=0', on: (s) => envOn(s, 'CLAUDE_CODE_USE_POWERSHELL_TOOL', '0'), applies: (req) => process.platform === 'win32' && has(req, /^PowerShell$/), patch: { env: { CLAUDE_CODE_USE_POWERSHELL_TOOL: '0' } }, tools: /^PowerShell$/, windows: true },
   { id: 'cron', name: 'Cron tools off (/loop stops working)', how: 'env CLAUDE_CODE_DISABLE_CRON=1', on: (s) => envOn(s, 'CLAUDE_CODE_DISABLE_CRON'), applies: (req) => has(req, /^Cron/), patch: { env: { CLAUDE_CODE_DISABLE_CRON: '1' } }, tools: /^Cron/ },
@@ -516,6 +523,8 @@ async function report({ days = Infinity, json = null, estimate = false }) {
   const count = async (req) => (exact ? await counting.count(req) : null) ?? Math.round(reqChars(req) * ratio);
   const items = breakdown(base.req);
   const u = await usage(days);
+  // Claude Code's own counters, kept since install: they outlive deleted transcripts.
+  const { skillUsage = {}, pluginUsage = {} } = claudeJson();
 
   const tokens = await pool(items.map((i) => async () => Math.max(0, total - (await count(i.cut(base.req))))));
   const rows = items.map((i, k) => {
@@ -527,6 +536,8 @@ async function report({ days = Infinity, json = null, estimate = false }) {
     if (i.kind === 'skill') {
       const [a, b] = [sk(u.skill), sk(u.typed)];
       Object.assign(r, { modelUses: a?.n ?? 0, typed: b?.n ?? 0, uses: (a?.n ?? 0) + (b?.n ?? 0), sessions: new Set([...(a?.s ?? []), ...(b?.s ?? [])]).size, last: [a?.last ?? '', b?.last ?? ''].sort().pop() });
+      const life = skillUsage[i.name] ?? skillUsage[i.name.split(':').pop()];
+      Object.assign(r, { lifetimeUses: life?.usageCount ?? 0, lifetimeLast: day(life?.lastUsedAt) });
     } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.headlessUses = use?.headless ?? 0; r.last = use?.last ?? ''; }
     if (i.kind === 'agent') r.userFile = existsSync(join(CLAUDE_DIR, 'agents', `${i.name}.md`));
     if (i.kind === 'mcp-instructions') r.uses = Object.entries(u.mcp).filter(([k]) => k.includes(i.name.replace(/\W+/g, '_'))).reduce((a, [, v]) => a + v.n, 0);
@@ -542,6 +553,12 @@ async function report({ days = Infinity, json = null, estimate = false }) {
     const p = (plugins[r.plugin] ??= { name: r.plugin, key: keys.find((k) => k.split('@')[0] === r.plugin) ?? r.plugin, tokens: 0, uses: 0, last: '', parts: 0 });
     p.tokens += r.tokens; p.uses += r.uses ?? 0; p.parts++; if ((r.last ?? '') > p.last) p.last = r.last;
   }
+  // A plugin's lastUsedAt is set on install and on every enable, so it means use only
+  // when the count is above zero.
+  for (const p of Object.values(plugins)) {
+    const life = pluginUsage[p.key];
+    Object.assign(p, { lifetimeUses: life?.usageCount ?? 0, lifetimeLast: life?.usageCount ? day(life.lastUsedAt) : '' });
+  }
 
   const variants = SWITCHES.map((w) => ({ ...w, isOn: w.on(s) }));
   // MCP servers connect at unpredictable moments, so two captures can differ by a whole
@@ -555,7 +572,15 @@ async function report({ days = Infinity, json = null, estimate = false }) {
   };
   const measured = await pool(variants.map((w) => async () => {
     if (!w.isOn && w.applies(base.req)) return { saves: await delta(w, w.patch) };
-    if (w.isOn && w.revert) { const c = -(await delta(w, w.revert)); return c > 0 ? { restoreCost: c } : {}; }
+    if (w.isOn && w.revert) {
+      const c = -(await delta(w, w.revert));
+      // Claude Code picks the short prompt per model, so the setting may change nothing:
+      // unset, the system prompt and built-in tools come out identical. (Compared as
+      // text, since the git snapshot in the messages can move between two captures.)
+      const fixed = (r) => JSON.stringify([r.system, (r.tools ?? []).filter((t) => !/^mcp__/.test(t.name))]);
+      const redundant = w.unset ? fixed((await capture({ settings: w.unset })).req) === fixed(base.req) : undefined;
+      return { ...(c > 0 && { restoreCost: c }), ...(redundant !== undefined && { redundant }) };
+    }
     return {};
   }), 3);
   const switches = variants.filter((w, k) => w.isOn || w.applies(base.req)).map((w) => {
@@ -609,7 +634,7 @@ async function report({ days = Infinity, json = null, estimate = false }) {
 function render(o) {
   const L = [];
   const n = (x) => (x ?? 0).toLocaleString('en-US');
-  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}${r.headlessUses ? `, ${r.headlessUses} headless` : ''}`;
+  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}${r.headlessUses ? `, ${r.headlessUses} headless` : ''}${r.lifetimeUses > (r.uses ?? 0) ? `, ${r.lifetimeUses} since install` : ''}`;
   L.push('# lean-claude report', '');
   L.push(`Every request starts with **${n(o.interactive)} tokens** in an interactive session, ${n(o.total)} in headless mode.`);
   L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: ${o.window.sessions} interactive sessions${o.window.headlessRuns ? ` and ${o.window.headlessRuns} headless runs` : ""}${o.window.from ? ` since ${o.window.from}` : ''}${o.window.days ? ` (--days ${o.window.days})` : ', every transcript on disk'}.`);
@@ -617,7 +642,7 @@ function render(o) {
   L.push('', '## Where the tokens go', '', '| Kind | Tokens |', '|---|---:|');
   for (const [k, t] of o.byKind) L.push(`| ${k} | ${n(t)} |`);
   L.push('', '## Switches', '', '| Switch | How | Status | Tokens |', '|---|---|---|---:|');
-  for (const w of o.switches) L.push(`| ${w.name} | \`${w.how}\` | ${w.on ? 'on' : 'off'} | ${w.on ? (w.restoreCost != null ? `+${n(w.restoreCost)} to undo` : '') : `−${n(w.saves)}`} |`);
+  for (const w of o.switches) L.push(`| ${w.name} | \`${w.how}\` | ${w.on ? (w.redundant ? 'on, no effect on this model' : 'on') : 'off'} | ${w.on ? (w.restoreCost != null ? (w.redundant ? `the full prompt would be +${n(w.restoreCost)}` : `+${n(w.restoreCost)} to undo`) : '') : `−${n(w.saves)}`} |`);
   for (const w of o.unmeasured) L.push(`| ${w.name} | \`${w.how}\` | ${w.on ? 'on' : 'off'} | not measurable |`);
   const cand = (r) => (r.kind === 'tool' || r.kind === 'mcp-tool' ? !r.core && !r.headlessOnly : ['skill', 'agent'].includes(r.kind)) && !r.plugin;
   const table = (title, list, note) => {
