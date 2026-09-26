@@ -142,7 +142,8 @@ function classify(text, loc, add) {
   const body = text.replace(/^<system-reminder>\n?/, '').replace(/<\/system-reminder>\s*$/, '');
   const each = (kind, parts) => { for (const p of parts) add(kind, p.name, p.text, loc); };
   if (body.includes('Codebase and user instructions')) each('instructions', splitBy(body, /^Contents of (.+?) \(/));
-  else if (body.startsWith('The following skills are available')) each('skill', splitBy(body, /^- (.+?):(?: |$)/));
+  // A skill over the listing budget appears as a bare "- name", with no colon.
+  else if (body.startsWith('The following skills are available')) each('skill', splitBy(body, /^- ([\w.:/@-]+?)(?::(?: |$)|$)/));
   else if (body.startsWith('Available agent types')) each('agent', splitBy(body, /^- (.+?):(?: |$)/));
   else if (body.includes('# MCP Server Instructions')) each('mcp-instructions', splitBy(body, /^## (.+)$/));
   else if (/deferred tools/i.test(body.slice(0, 200))) add('deferred-tool-list', 'names of deferred tools', text, loc);
@@ -154,7 +155,7 @@ function classify(text, loc, add) {
 
 export function breakdown(req) {
   const items = [];
-  const add = (kind, name, text, loc) => items.push({ kind, name, chars: text.length, cut: (r) => withoutText(r, loc, text) });
+  const add = (kind, name, text, loc) => items.push({ kind, name, chars: text.length, ...(kind === 'skill' && { listing: text.trim() }), cut: (r) => withoutText(r, loc, text) });
   (req.system ?? []).forEach((s, b) => {
     const text = typeof s === 'string' ? s : s.text ?? '';
     const loc = { sys: true, b };
@@ -538,6 +539,7 @@ async function report({ days = Infinity, json = null, estimate = false }) {
       Object.assign(r, { modelUses: a?.n ?? 0, typed: b?.n ?? 0, uses: (a?.n ?? 0) + (b?.n ?? 0), sessions: new Set([...(a?.s ?? []), ...(b?.s ?? [])]).size, last: [a?.last ?? '', b?.last ?? ''].sort().pop() });
       const life = skillUsage[i.name] ?? skillUsage[i.name.split(':').pop()];
       Object.assign(r, { lifetimeUses: life?.usageCount ?? 0, lifetimeLast: day(life?.lastUsedAt) });
+      if (i.listing === `- ${i.name}`) r.nameOnly = true;
     } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.headlessUses = use?.headless ?? 0; r.last = use?.last ?? ''; }
     if (i.kind === 'agent') r.userFile = existsSync(join(CLAUDE_DIR, 'agents', `${i.name}.md`));
     if (i.kind === 'mcp-instructions') r.uses = Object.entries(u.mcp).filter(([k]) => k.includes(i.name.replace(/\W+/g, '_'))).reduce((a, [, v]) => a + v.n, 0);
@@ -621,6 +623,22 @@ async function report({ days = Infinity, json = null, estimate = false }) {
   const interactive = total - rows.filter((r) => r.headlessOnly).reduce((a, r) => a + r.tokens, 0)
     - deferredRows.reduce((a, r) => a + r.tokens, 0) + deferredRows.reduce((a, r) => a + Math.ceil((r.name.length + 1) / CHARS_PER_TOKEN), 0);
 
+  // The skill listing has a character budget (1% of the context window by default).
+  // Over it, the least-used skills are listed by name only, and removing a skill mostly
+  // hands its room to them, so the skill total drops by less than the per-skill figures.
+  // A skill set to name-only in skillOverrides is listed that way on purpose.
+  const overrides = s.skillOverrides ?? {};
+  const nameOnly = rows.filter((r) => r.nameOnly).map((r) => r.name);
+  const skillListing = { nameOnly, overBudget: nameOnly.some((k) => (overrides[k] ?? overrides[k.split(':').pop()]) !== 'name-only') };
+  // The same skill installed twice (a copy in ~/.claude/skills and one in a plugin, say)
+  // is listed twice under different names; one copy can go with nothing lost.
+  const byText = {};
+  for (const i of items.filter((x) => x.kind === 'skill')) {
+    const desc = i.listing.replace(/^- [^:\n]+:\s*/, '');
+    if (desc && desc !== i.listing) (byText[desc] ??= []).push(i.name);
+  }
+  const duplicateSkills = Object.values(byText).filter((g) => g.length > 1).map((names) => ({ names, tokens: rows.find((r) => r.kind === 'skill' && r.name === names[1])?.tokens ?? 0 }));
+
   const out = {
     version: base.headers['user-agent'] ?? '', model: base.req.model, counting: exact ? 'exact (count_tokens)' : `estimate (${CHARS_PER_TOKEN} chars/token)`,
     total, interactive, platform: process.platform, window: { days: Number.isFinite(days) ? days : null, from: u.from, sessions: u.sessionIds.size, headlessRuns: u.headlessIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
@@ -632,7 +650,7 @@ async function report({ days = Infinity, json = null, estimate = false }) {
       return { ...m, tools: tools.length, tokens: tools.reduce((a, r) => a + r.tokens, 0), uses: tools.reduce((a, r) => a + (r.uses ?? 0), 0) };
     }),
     switches, unmeasured: UNMEASURED.map((w) => ({ id: w.id, name: w.name, how: w.how, on: w.on(s) })),
-    restore, skillOverrides: s.skillOverrides ?? {},
+    restore, skillOverrides: overrides, skillListing, duplicateSkills,
   };
   if (json) writeFileSync(json, JSON.stringify(out, null, 2));
   process.stdout.write(render(out));
@@ -671,6 +689,11 @@ function render(o) {
   if (o.alwaysLoad.length) {
     L.push('', '## MCP servers loaded in full', '', 'Set to `alwaysLoad: true`, so their tools skip tool search and go out in full on every request.', '', '| Server | Scope | Tools | Tokens | Uses |', '|---|---|---:|---:|---:|');
     for (const m of o.alwaysLoad) L.push(`| ${m.name} | ${m.scope} | ${m.tools} | ${n(m.tokens)} | ${m.uses} |`);
+  }
+  if (o.skillListing.overBudget) L.push('', '## Skill listing over budget', '', `Claude Code caps the skill listing (skillListingBudgetFraction, 1% of the context window by default). ${o.skillListing.nameOnly.length} skills are listed by name only: ${o.skillListing.nameOnly.join(', ')}. Removing other skills gives their descriptions back before it saves tokens.`);
+  if (o.duplicateSkills.length) {
+    L.push('', '## Skills listed twice', '', '| Names | Tokens per extra copy |', '|---|---:|');
+    for (const d of o.duplicateSkills) L.push(`| ${d.names.join(', ')} | ${n(d.tokens)} |`);
   }
   if (o.restore.length) {
     L.push('', '## Cost of turning back on', '', '| Tool | Tokens | Removed by |', '|---|---:|---|');

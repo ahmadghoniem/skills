@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Four standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
+Five standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -48,6 +48,7 @@ claude plugin update kit    # and cursor, grok, agy
 | [align-intent](./skills/align-intent/SKILL.md) | Reads the files behind a vague request, rephrases what it now understands, surfaces competing readings, and stops before editing. ([more](./skills/align-intent/README.md)) |
 | [snapshot](./skills/snapshot/SKILL.md) | Writes one brief of the current session to `%TEMP%`, for the next session to pick up. ([more](./skills/snapshot/README.md)) |
 | [recall](./skills/recall/SKILL.md) | Orients the fresh session on the brief the last `/clear` injected. |
+| [lean-claude](./skills/lean-claude/SKILL.md) | Measures what every Claude Code request carries (tools, skills, agents, MCP, instructions), joins it with how often your transcripts used each piece, and applies the cuts you pick. ([more](./skills/lean-claude/README.md)) |
 
 `snapshot` and `recall` are two halves of one loop: `/snapshot` → `/clear` → `/recall`. The `/clear` step needs a `SessionStart` hook, which the plugin cannot wire for you; see [skills/snapshot/README.md](./skills/snapshot/README.md).
 

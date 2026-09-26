@@ -88,6 +88,15 @@ never paste one into a shell command, and write settings with the Edit tool.
   `"user-invocable-only"`. Works on built-in skills too (`claude-api`, `code-review`,
   `init`, …).
 - **Never used**: `skillOverrides` `"off"`.
+- **Listed twice** (`duplicateSkills`): the same skill installed in two places, say
+  `~/.claude/skills/` and a plugin, is listed under both names. Removing one copy
+  loses nothing; keep the one the user types.
+- **Listing over budget** (`skillListing.overBudget`): Claude Code caps the skill
+  listing at 1% of the context window, and past that lists the least-used skills by
+  name only (`skillListing.nameOnly`), so Claude can't tell when to use them. Say so.
+  Cutting skills then mostly gives those descriptions back, so the tokens saved are
+  less than the per-skill figures until the listing fits; say that too, and give the
+  measured figure from step 5.
 - **claude.ai skills** (`syncClaudeAiSkills: false`; the switch lists them in
   `skills`). Skills enabled in the user's claude.ai account sync into Claude Code:
   Anthropic's docx, pptx, xlsx and pdf skills when file creation is on there, plus any
@@ -183,7 +192,8 @@ at most 4 questions.
 - Prompt switches and background requests: one option each.
 
 Fill the first call with Tools and Skills questions, then ask the rest in a second
-call. Skip empty groups.
+call. Skip empty groups. Say once, in the first question, that every change is a line
+in settings or frontmatter and can be undone by asking.
 
 Each option:
 - label: the change and its saving, `DesignSync (−3,322)`
@@ -212,7 +222,9 @@ of B: N fewer (P%)." Then:
   plan limits weigh cached tokens, so the range covers cache reads counted free, at API
   price, and at full price;
 - the background requests turned off, with their share, as a separate line;
-- what turning each change back on costs, from the report's restore table;
+- what turning each change back on costs, from the report's restore table, and one
+  line saying you can undo any of them if the user asks;
+- how to see it themselves: `/context` in a new session shows the same split;
 - tips, last. A cache tip from `cacheExpiry`, if its `share` is 1% or more. Claude Code keeps a
   conversation cached for `ttlMinutes`; the first message after that writes the whole
   conversation again, at 12 to 20 times the cost of reading it from the cache. Make
