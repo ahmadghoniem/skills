@@ -8,7 +8,8 @@ disable-model-invocation: true
 Every request re-sends the system prompt, tool definitions, skill and agent listings,
 MCP instructions and instruction files. A piece that is never used still costs its
 tokens on every turn. Find those pieces, explain each one, and cut the ones the user
-picks. Whenever you mention something that can be cut, give its token cost.
+picks. Whenever you mention something that can be cut, give its token cost and its
+share of the interactive per-request total: `18,476 (41%)`.
 
 ## 1. Measure
 
@@ -38,7 +39,9 @@ session by name (`ListAgents` calls). Don't count spawned subagents here: `Agent
 ## 3. Pick the candidates
 
 Take candidates from the JSON. Something used in the last two weeks is not a candidate,
-however expensive; show its usage and let the user decide. Order each group by tokens.
+however expensive; show its usage and let the user decide. A tool with `headlessUses`
+is not unused: scripts that run `claude -p` call it, and a deny rule would break them.
+Order each group by tokens.
 
 **Tools and switches**
 - **Artifact** (`enableArtifact: false`) removes Artifact, ArtifactComments and
@@ -91,11 +94,16 @@ however expensive; show its usage and let the user decide. Order each group by t
   every part of it (skills, agents, MCP tools) went unused.
 - **MCP servers and claude.ai connectors**: an unused server costs its tools and its
   instructions. `disableClaudeAiConnectors: true` removes all claude.ai connectors.
+  A server in `alwaysLoad` sends every tool in full on every request instead of
+  loading them through tool search. Unless its tools are used in most sessions,
+  suggest removing `alwaysLoad` from its config, with the tokens it costs.
 - **Agents**: only files under `~/.claude/agents/` (`userFile: true`) can be deleted.
 
 **Prompt switches**
-- **Short system prompt** (`CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`). If it saves under 100
-  tokens, the account already gets the short prompt: say so and don't offer it.
+- **Short system prompt** (`CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`). Claude Code picks the
+  prompt per model: current Opus models get the short one by default, Sonnet and Haiku
+  the full one. If it saves under 100 tokens, the user's model already has it: say so
+  and don't offer it.
   Otherwise it is usually the largest switch. It keeps the "confirm before
   hard-to-reverse actions" guidance. It drops the full prompt's guidance on scope and
   code style: don't add features or abstractions beyond the task, no error handling
@@ -145,22 +153,6 @@ the probe cannot see them. Run
 - `awaySummaryEnabled: false`: the recap written when the terminal loses focus.
   `/recap` still works on demand. On the author's machine recaps were 1.5–2% of usage.
 
-**An extra, next to the background requests: a batch-edit tool.** It adds a small
-script and a rule rather than removing anything, so offer it as a suggestion, and only
-when `editScripts.scripts` is at least `spanDays` (about one a day or more) and `editScripts.patches` is 0. When Claude
-makes several literal edits it often writes a one-off Python or Node script for them
-(`s.replace(old, new)`, then a write). Justify it from `editScripts`, in this order:
-- "Claude wrote N edit scripts since <from> and F failed: X%, against Y% for
-  the Edit tool" (Y from `editsFailed / edits`).
-- A script that fails halfway can leave some files changed and others not, and the
-  failed script, its error and the retry all stay in the conversation.
-- A small tool that checks every edit before writing any file makes a failed batch
-  change nothing, and the edits are written as plain SEARCH/REPLACE blocks with no
-  script around them.
-- Tokens are the smaller gain: about S% of usage (`share`), already net of the
-  ~130-token rule. Say so plainly.
-Ticking it means Claude writes the tool now, in this session, from the spec in step 4.
-
 **Do not suggest** `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`. It saves little more than
 `user-invocable-only` and makes every bundled command untypable. Mention it only if
 the user asks.
@@ -179,42 +171,20 @@ at most 4 questions.
   one option per unused plugin. The description lists every skill with its own
   saving (`run −264 · update-config −235 · …`). End the question with: "To keep
   one of them, pick the option and name the skill in Other."
-- Prompt switches, background requests and the batch-edit tool: one option each; the tool
-  goes in the same question as the background requests.
+- Prompt switches and background requests: one option each.
 
 Fill the first call with Tools and Skills questions, then ask the rest in a second
 call. Skip empty groups.
 
 Each option:
 - label: the change and its saving, `DesignSync (−3,322)`
-- description: its uses, counted in sessions ("used in 3 of 161 sessions, 41 calls";
+- description: its uses, counted in sessions ("used in 6 of your 162 sessions, 41 calls";
   "You've never used claude.ai/design sync"), what it does, and what the user loses
 
 Apply only what was picked:
 - `~/.claude/settings.json`: read it first and keep every other key. Bare names go in
   `permissions.deny`, env switches in `env`, other keys at the top level.
 - Skill frontmatter and agent files: edit in place.
-- Batch-edit tool: write `~/.claude/scripts/apply-patch.mjs`, a dependency-free Node
-  script, to this spec:
-  - reads a patch from stdin, or from `--file <path>`: `*** Update: <path>` followed by
-    `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks, plus `*** Create: <path>`
-    with the new file's text;
-  - every SEARCH must match exactly once; all blocks, in all files, are checked in
-    memory before any file is written; on a failure it names the file and block,
-    writes nothing, and exits 1;
-  - keeps CRLF line endings and a BOM; writes to a temp file and renames it.
-  Test it on a temp directory: one patch that applies, and one with a bad block that
-  must leave every file untouched. Then write `~/.claude/rules/apply-patch.md`:
-
-  ```markdown
-  ## Batch edits
-  For literal edits in one or several files, run
-  `node ~/.claude/scripts/apply-patch.mjs <<'PATCH'` instead of writing a Python or
-  Node replace script: `*** Update: <path>`, then SEARCH/REPLACE blocks. It checks
-  every block before writing, so a failed patch changes nothing. For regex, JSON or
-  line-range edits use sed, a script or Edit.
-  ```
-  On Windows add: "Patches over about 5 KB go in a file, passed with `--file <path>`."
 
 Changes apply from the next session. Deny rules also apply at once, and changing the
 tool list mid-session re-writes the whole prompt cache once, so suggest a new session.
@@ -234,7 +204,7 @@ of B: N fewer (P%)." Then:
   price, and at full price;
 - the background requests turned off, with their share, as a separate line;
 - what turning each change back on costs, from the report's restore table;
-- tips, last, from `cacheExpiry`, if its `share` is 1% or more. Claude Code keeps a
+- tips, last. A cache tip from `cacheExpiry`, if its `share` is 1% or more. Claude Code keeps a
   conversation cached for `ttlMinutes`; the first message after that writes the whole
   conversation again, at 12 to 20 times the cost of reading it from the cache. Make
   it about the user's own sessions:
@@ -253,6 +223,25 @@ of B: N fewer (P%)." Then:
     - "Coming back to something unrelated? `/clear` instead."
   - the trade-off, one line: a compacted conversation keeps a summary, not every
     detail, so skip it when exact earlier output still matters.
+- a batch-edit tip, from `editScripts`, when `scripts` is at least `spanDays` (about
+  one a day or more) and `patches` is 0. Only suggest it; don't write anything.
+  - what happened: "When I make several edits at once, I often write a one-off Python
+    or Node script instead of calling the Edit tool once per change: N scripts since
+    <from>, about R edits in all (`replacements`). That's a fair shortcut: one call
+    instead of R Edit calls, many of them in separate turns."
+  - the catch: "F of those scripts failed (X%, against Y% for the Edit tool; Y from
+    `editsFailed / edits`). A script that fails halfway can leave some files changed
+    and others not, and the failed script, its error and the retry all stay in the
+    conversation."
+  - the fix and its size: "A small batch-edit tool keeps the one-call shortcut and
+    checks every edit before touching any file, so a failed batch changes nothing. It
+    would have saved about S% of your usage (`share`, net of the rule it needs)."
+  - the prompt, for whenever they want it: "Write me a dependency-free Node script at
+    ~/.claude/scripts/apply-patch.mjs that applies SEARCH/REPLACE blocks to one or
+    more files. Check every block first and write nothing if any SEARCH doesn't match
+    exactly once. Keep CRLF line endings and BOMs. Test it with a good patch and a bad
+    one, then add a short rule in ~/.claude/rules/ telling you to use it instead of
+    Python or Node replace scripts."
 
 If a change saved nothing, say so and offer to undo it.
 

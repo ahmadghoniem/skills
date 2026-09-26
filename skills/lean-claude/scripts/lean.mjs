@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CHARS_PER_TOKEN = 3.5;
@@ -193,39 +193,47 @@ function* walk(dir) {
   }
 }
 
+// A subagent's transcript sits in <session>/subagents/ and counts toward its parent.
+const sessionOf = (p) => (basename(dirname(p)) === 'subagents' ? basename(dirname(dirname(p))) : basename(p, '.jsonl'));
+
 export async function usage(days) {
   const cutoff = Date.now() - days * 864e5;
-  const u = { tool: {}, skill: {}, typed: {}, agent: {}, mcp: {}, sessions: 0, sessionIds: new Set(), deferred: new Set(), deferredAt: 0, from: null };
-  // Each item keeps the sessions it was used in: 41 calls in one session and one call
-  // in each of 41 sessions argue differently for keeping it.
-  const bump = (m, k, ts, sid) => { const e = (m[k] ??= { n: 0, last: '', s: new Set() }); e.n++; e.s.add(sid); if (ts > e.last) e.last = ts; };
+  const u = { tool: {}, skill: {}, typed: {}, agent: {}, mcp: {}, sessions: 0, sessionIds: new Set(), headlessIds: new Set(), deferred: new Set(), deferredAt: 0, from: null };
+  // Each item keeps the interactive sessions it was used in: 41 calls in one session and
+  // one call in each of 41 sessions argue differently for keeping it. Headless runs
+  // (`claude -p`, the SDK) are counted apart: a script that needs a tool still needs it.
+  const bump = (m, k, ts, sid, headless) => {
+    const e = (m[k] ??= { n: 0, last: '', s: new Set(), headless: 0 });
+    e.n++; if (headless) e.headless++; else e.s.add(sid);
+    if (ts > e.last) e.last = ts;
+  };
   const root = join(CLAUDE_DIR, 'projects');
   if (!existsSync(root)) return u;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
     u.sessions++;
-    // A subagent's transcript sits in <session>/subagents/ and counts toward its parent.
-    const sid = /[\/]subagents[\/]/.test(p) ? basename(dirname(dirname(p))) : basename(p, '.jsonl');
-    u.sessionIds.add(sid);
+    const sid = sessionOf(p);
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('tool_use') && !line.includes('command-name') && !line.includes('deferred_tools_delta')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
       const ts = String(e.timestamp ?? '').slice(0, 10);
       if (ts && Date.parse(ts) < cutoff) continue;
+      const headless = String(e.entrypoint ?? '').startsWith('sdk');
+      (headless ? u.headlessIds : u.sessionIds).add(sid);
       if (ts && (!u.from || ts < u.from)) u.from = ts;
       if (e.attachment?.type === 'deferred_tools_delta' && Date.parse(e.timestamp) > u.deferredAt) {
         u.deferredAt = Date.parse(e.timestamp); u.deferred = new Set(e.attachment.addedNames ?? []);
       }
       const content = e.message?.content;
-      const typed = (s) => { for (const m of s.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) bump(u.typed, m[1], ts, sid); };
+      const typed = (s) => { for (const m of s.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) bump(u.typed, m[1], ts, sid, headless); };
       if (typeof content === 'string') { typed(content); continue; }
       for (const b of Array.isArray(content) ? content : []) {
         if (b.type === 'text' && b.text?.includes('<command-name>')) typed(b.text);
         if (b.type !== 'tool_use') continue;
-        bump(u.tool, b.name, ts, sid);
-        if (b.name === 'Skill' && b.input?.skill) bump(u.skill, b.input.skill, ts, sid);
-        if (b.name === 'Agent' || b.name === 'Task') bump(u.agent, b.input?.subagent_type || 'general-purpose', ts, sid);
-        const m = /^mcp__(.+?)__/.exec(b.name); if (m) bump(u.mcp, m[1], ts, sid);
+        bump(u.tool, b.name, ts, sid, headless);
+        if (b.name === 'Skill' && b.input?.skill) bump(u.skill, b.input.skill, ts, sid, headless);
+        if (b.name === 'Agent' || b.name === 'Task') bump(u.agent, b.input?.subagent_type || 'general-purpose', ts, sid, headless);
+        const m = /^mcp__(.+?)__/.exec(b.name); if (m) bump(u.mcp, m[1], ts, sid, headless);
       }
     }
   }
@@ -242,7 +250,7 @@ export async function usage(days) {
 
 const WEIGHTS = { price: 0.1, readsFree: 0, readsFull: 1 };
 const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
-const PATCH_RULE_TOKENS = 130; // the apply-patch rule step 4 installs, loaded on every request
+const PATCH_RULE_TOKENS = 130; // the rule a batch-edit tool needs, loaded on every request
 
 export async function stretch(saved, days = Infinity) {
   const cutoff = Date.now() - days * 864e5;
@@ -255,7 +263,7 @@ export async function stretch(saved, days = Infinity) {
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
     let replies = 0, prev = null, compactAt = 0;
-    const sid = /[\/]subagents[\/]/.test(p) ? basename(dirname(dirname(p))) : basename(p, '.jsonl');
+    const sid = sessionOf(p);
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('"usage"') && !line.includes('compact_boundary') && !line.includes('"ai-title"')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
@@ -266,16 +274,23 @@ export async function stretch(saved, days = Infinity) {
         continue;
       }
       const m = e.message, u = m?.usage;
-      if (e.type !== 'assistant' || !u || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
+      // <synthetic> entries are placeholders Claude Code writes for errors, not requests.
+      if (e.type !== 'assistant' || !u || m.model === '<synthetic>' || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
       seen.add(m.id);
       const cc = u.cache_creation ?? {};
       const w1 = cc.ephemeral_1h_input_tokens ?? (u.cache_creation ? 0 : u.cache_creation_input_tokens ?? 0);
       const w5 = cc.ephemeral_5m_input_tokens ?? 0;
       const read = u.cache_read_input_tokens ?? 0;
       const input = u.input_tokens ?? 0, output = u.output_tokens ?? 0, written = u.cache_creation_input_tokens ?? 0;
+      // The removed tokens sit at the front of the prompt, so the cache read covers them
+      // first, then the cache write, then plain input. A request smaller than the cut
+      // (a side request, a small subagent) only ever carried what it carried.
+      const fromRead = Math.min(saved, read), fromWrite = Math.min(saved - fromRead, written);
+      const fromInput = Math.min(saved - fromRead - fromWrite, input);
+      const writeRate = written ? (1.25 * w5 + 2 * w1) / written : 2;
       for (const [k, r] of Object.entries(WEIGHTS)) {
         total[k] += input + 1.25 * w5 + 2 * w1 + r * read + 5 * output;
-        cut[k] += read >= saved ? r * saved : 2 * saved;
+        cut[k] += r * fromRead + writeRate * fromWrite + fromInput;
       }
       ruleUnit += read >= PATCH_RULE_TOKENS ? 0.1 : 2;
       w1All += w1; w5All += w5;
@@ -355,12 +370,22 @@ const SCRIPT = /\b(python3?|py|node)\b[^\n]*(<<|-c\s|-e\s)/;
 const WRITES = /write_text\(|writeFileSync\(|\.write\(|open\([^)]*['"]w/;
 const LITERAL = /\.replace\(\s*(?:[rbu]?'|[rbu]?"|`|old|a\b|s\b|find|search|before)/;
 const REGEX = /re\.sub\(|re\.compile|\.replace\(\s*\/|replaceAll\(\s*\//;
-const FAILED = /Traceback|AssertionError|SyntaxError|Error:|not found|NOT FOUND|no match|Exit code [1-9]/;
-const literals = (s) => [...s.matchAll(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\[\s\S]|[^`])*`|"(?:\.|[^"\n])*"|'(?:\.|[^'\n])*'/g)]
+const EXITED = /Exit code [1-9]/;
+const SCRIPT_ERROR = /Traceback|AssertionError|SyntaxError|syntax error|unexpected EOF/;
+const OTHER_ERROR = /Error:|not found|NOT FOUND|no match/;
+// Failures that aren't the script's: no interpreter, or a test or build chained after it.
+const NO_INTERPRETER = /Python was not found|command not found|is not recognized/;
+const CHAINED = /(&&|;|\|\|)\s*(npm|pnpm|yarn|bun|npx|pytest|tsc|git|cargo|make|node --test)\b/;
+const failedScript = (cmd, res, out) => {
+  if (!res || NO_INTERPRETER.test(out)) return false;
+  if (SCRIPT_ERROR.test(out)) return true;
+  return (res.is_error === true || EXITED.test(out)) && OTHER_ERROR.test(out) && !CHAINED.test(cmd.split('\n').slice(-3).join('\n'));
+};
+const literals = (s) => [...s.matchAll(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\n])*"|'(?:\\.|[^'\n])*'/g)]
   .reduce((a, m) => a + (m[0].length >= 20 ? m[0].length : 0), 0);
 
 async function editScripts(cutoff, total, ruleCost) {
-  const r = { scripts: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
+  const r = { scripts: 0, replacements: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
   let cost = 0;
   for (const { p, mtime } of walk(join(CLAUDE_DIR, 'projects'))) {
     if (mtime < cutoff) continue;
@@ -384,10 +409,12 @@ async function editScripts(cutoff, total, ruleCost) {
       if (/apply-patch/.test(cmd)) { r.patches++; continue; }
       if (!SCRIPT.test(cmd) || !WRITES.test(cmd) || !LITERAL.test(cmd) || REGEX.test(cmd)) continue;
       r.scripts++;
+      // Each replace() is an edit the Edit tool would have taken one call for.
+      r.replacements += cmd.split('.replace(').length - 1;
       // written once as output, cached, then read on every later request
       const later = calls.filter((x) => x > t).length, carry = (tok) => 7 * tok + 0.1 * tok * later;
       cost += carry(Math.max(0, cmd.length - literals(cmd) - 120) / CHARS_PER_TOKEN);
-      if (res && (res.is_error === true || FAILED.test(out))) { r.failed++; cost += carry((cmd.length + out.length) / CHARS_PER_TOKEN); }
+      if (failedScript(cmd, res, out)) { r.failed++; cost += carry((cmd.length + out.length) / CHARS_PER_TOKEN); }
     }
   }
   return { ...r, share: Math.max(0, cost - ruleCost) / total };
@@ -424,6 +451,18 @@ function syncedSkills() {
 
 function readJson(p) { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; } }
 const userSettings = () => readJson(join(CLAUDE_DIR, 'settings.json'));
+
+// MCP servers set to `alwaysLoad: true` send every tool schema on every request instead
+// of waiting behind tool search. User and local scope live in ~/.claude.json, project
+// scope in .mcp.json.
+function alwaysLoadServers(cwd) {
+  const cfg = readJson(process.env.CLAUDE_CONFIG_DIR ? join(CLAUDE_DIR, '.claude.json') : join(homedir(), '.claude.json')) ?? {};
+  const here = resolve(cwd).toLowerCase();
+  const local = Object.entries(cfg.projects ?? {}).find(([k]) => resolve(k).toLowerCase() === here)?.[1]?.mcpServers;
+  const scopes = { user: cfg.mcpServers, local, project: readJson(join(cwd, '.mcp.json'))?.mcpServers };
+  return Object.entries(scopes).flatMap(([scope, servers]) => Object.entries(servers ?? {})
+    .filter(([, v]) => v?.alwaysLoad === true).map(([name]) => ({ name, scope, prefix: `mcp__${name.replace(/[^a-zA-Z0-9_-]/g, '_')}__` })));
+}
 const envOn = (s, k, v = '1') => s.env?.[k] === v;
 const has = (req, re) => (req.tools ?? []).some((t) => re.test(t.name ?? ''));
 
@@ -488,7 +527,7 @@ async function report({ days = Infinity, json = null, estimate = false }) {
     if (i.kind === 'skill') {
       const [a, b] = [sk(u.skill), sk(u.typed)];
       Object.assign(r, { modelUses: a?.n ?? 0, typed: b?.n ?? 0, uses: (a?.n ?? 0) + (b?.n ?? 0), sessions: new Set([...(a?.s ?? []), ...(b?.s ?? [])]).size, last: [a?.last ?? '', b?.last ?? ''].sort().pop() });
-    } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.last = use?.last ?? ''; }
+    } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.headlessUses = use?.headless ?? 0; r.last = use?.last ?? ''; }
     if (i.kind === 'agent') r.userFile = existsSync(join(CLAUDE_DIR, 'agents', `${i.name}.md`));
     if (i.kind === 'mcp-instructions') r.uses = Object.entries(u.mcp).filter(([k]) => k.includes(i.name.replace(/\W+/g, '_'))).reduce((a, [, v]) => a + v.n, 0);
     if (i.kind === 'tool' || i.kind === 'mcp-tool') { r.deferred = u.deferred.has(i.name); r.core = CORE_TOOLS.has(i.name); r.headlessOnly = HEADLESS_ONLY.has(i.name); }
@@ -552,10 +591,14 @@ async function report({ days = Infinity, json = null, estimate = false }) {
 
   const out = {
     version: base.headers['user-agent'] ?? '', model: base.req.model, counting: exact ? 'exact (count_tokens)' : `estimate (${CHARS_PER_TOKEN} chars/token)`,
-    total, interactive, platform: process.platform, window: { days: Number.isFinite(days) ? days : null, from: u.from, sessions: u.sessionIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
+    total, interactive, platform: process.platform, window: { days: Number.isFinite(days) ? days : null, from: u.from, sessions: u.sessionIds.size, headlessRuns: u.headlessIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
     byKind: Object.entries(rows.reduce((a, r) => ((a[r.kind] = (a[r.kind] ?? 0) + r.tokens), a), {})).sort((a, b) => b[1] - a[1]),
     rows: rows.sort((a, b) => b.tokens - a.tokens),
     plugins: Object.values(plugins).sort((a, b) => b.tokens - a.tokens),
+    alwaysLoad: alwaysLoadServers(process.cwd()).map(({ prefix, ...m }) => {
+      const tools = rows.filter((r) => r.kind === 'mcp-tool' && r.name.startsWith(prefix));
+      return { ...m, tools: tools.length, tokens: tools.reduce((a, r) => a + r.tokens, 0), uses: tools.reduce((a, r) => a + (r.uses ?? 0), 0) };
+    }),
     switches, unmeasured: UNMEASURED.map((w) => ({ id: w.id, name: w.name, how: w.how, on: w.on(s) })),
     restore, skillOverrides: s.skillOverrides ?? {},
   };
@@ -566,10 +609,10 @@ async function report({ days = Infinity, json = null, estimate = false }) {
 function render(o) {
   const L = [];
   const n = (x) => (x ?? 0).toLocaleString('en-US');
-  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}`;
+  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}${r.headlessUses ? `, ${r.headlessUses} headless` : ''}`;
   L.push('# lean-claude report', '');
   L.push(`Every request starts with **${n(o.interactive)} tokens** in an interactive session, ${n(o.total)} in headless mode.`);
-  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: ${o.window.sessions} sessions${o.window.from ? ` since ${o.window.from}` : ''}${o.window.days ? ` (--days ${o.window.days})` : ', every transcript on disk'}.`);
+  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: ${o.window.sessions} interactive sessions${o.window.headlessRuns ? ` and ${o.window.headlessRuns} headless runs` : ""}${o.window.from ? ` since ${o.window.from}` : ''}${o.window.days ? ` (--days ${o.window.days})` : ', every transcript on disk'}.`);
   if (!o.deferredKnown) L.push('No transcript showed which tools are deferred, so the interactive figure equals the headless one.');
   L.push('', '## Where the tokens go', '', '| Kind | Tokens |', '|---|---:|');
   for (const [k, t] of o.byKind) L.push(`| ${k} | ${n(t)} |`);
@@ -587,6 +630,10 @@ function render(o) {
   if (o.plugins.length) {
     L.push('', '## Plugins', '', '| Plugin | Key | Tokens | Parts | Uses | Last used |', '|---|---|---:|---:|---:|---|');
     for (const p of o.plugins) L.push(`| ${p.name} | ${p.key} | ${n(p.tokens)} | ${p.parts} | ${used(p)} | ${p.last} |`);
+  }
+  if (o.alwaysLoad.length) {
+    L.push('', '## MCP servers loaded in full', '', 'Set to `alwaysLoad: true`, so their tools skip tool search and go out in full on every request.', '', '| Server | Scope | Tools | Tokens | Uses |', '|---|---|---:|---:|---:|');
+    for (const m of o.alwaysLoad) L.push(`| ${m.name} | ${m.scope} | ${m.tools} | ${n(m.tokens)} | ${m.uses} |`);
   }
   if (o.restore.length) {
     L.push('', '## Cost of turning back on', '', '| Tool | Tokens | Removed by |', '|---|---:|---|');
