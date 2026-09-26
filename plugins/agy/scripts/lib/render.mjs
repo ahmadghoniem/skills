@@ -39,6 +39,7 @@ function firstLine(message) {
  * @property {string} [timedOutAfter]
  * @property {number} [compactions]
  * @property {string[]} [deniedActions]
+ * @property {string[]} [readOnlyWrites] `git status` lines that appeared during a `--read-only` run
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
@@ -47,7 +48,7 @@ function firstLine(message) {
  * Every warning kind this module can emit, in the order they are printed.
  *
  * Machine-readable list of warning ids in print order, documented in
- * `skills/output-contract/contract.md` and verified by `tests/contract.test.mjs`.
+ * `contract.md` at the plugin root and verified by `tests/contract.test.mjs`.
  *
  * @type {readonly string[]}
  */
@@ -58,6 +59,7 @@ export const WARNING_IDS = Object.freeze([
   "tool-errors",
   "compaction",
   "denied",
+  "read-only",
   "agy-error",
   "watchdog",
   "timeout",
@@ -84,11 +86,17 @@ function statusContext(job) {
  */
 
 /**
+ * agy 1.2.6+ exits 3 when a turn ends on a model or agent API error, even
+ * after streaming part of a response, and prints an `AGY_ERROR: {...}` line.
+ */
+const AGY_API_ERROR_EXIT = 3;
+
+/**
  * Whether the run ended before agy finished: the plugin's own record says so
  * (`failed`, `cancelled`, `orphaned`), the watchdog killed it, agy hit its own
- * print timeout, or agy's own status says `ERROR`. One definition shared by
- * the resume offer, the exit code, and the watchdog/timeout lines — they used
- * to diverge.
+ * print timeout, agy's own status says `ERROR`, or agy exited on an API error.
+ * One definition shared by the resume offer, the exit code, and the
+ * watchdog/timeout lines — they used to diverge.
  *
  * @param {ResultView} job
  * @returns {boolean}
@@ -100,7 +108,8 @@ export function isUnfinished(job) {
     job.status === 'orphaned' ||
     Boolean(job.killed) ||
     Boolean(job.timedOut) ||
-    String(job.agyStatus ?? '').toUpperCase() === 'ERROR'
+    String(job.agyStatus ?? '').toUpperCase() === 'ERROR' ||
+    job.exitCode === AGY_API_ERROR_EXIT
   );
 }
 
@@ -187,14 +196,24 @@ export function anomalies(job) {
     });
   }
 
+  const written = Array.isArray(job.readOnlyWrites) ? job.readOnlyWrites : [];
+  if (written.length > 0) {
+    out.push({
+      id: 'read-only',
+      line: 'this read-only run changed files in the workspace:',
+      detail: written.map((f) => `  ${f}`),
+    });
+  }
+
   if (job.error != null && String(job.error).length > 0) {
     const errText = String(job.error);
     const errLines = errText.split('\n');
     let detail;
-    if (/invalid model selection/i.test(errText)) {
+    if (/invalid model selection/i.test(errText) && /not recognized/i.test(errText)) {
       // agy's own message names display labels ("Gemini 3.8 Flash (High)"),
       // which cannot be passed back to `--model`; the cache is the source of
-      // truth for ids that can.
+      // truth for ids that can. An `--effort` mismatch is not about the id,
+      // and agy's message already names the levels the model has.
       const models = cachedModels() ?? [];
       detail = ['Valid ids:', ...models.map((m) => `  ${m.id}`)];
     } else {

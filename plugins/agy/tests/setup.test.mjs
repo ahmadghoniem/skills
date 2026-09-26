@@ -1,4 +1,4 @@
-// Integration tests for setup.mjs's `--print-models` (M1b): a family/levels
+// Integration tests for setup.mjs's `--print-models`: a family/levels
 // table read from the cache, falling back to a live fetch only when there is
 // no cache yet.
 import { mkdtempSync, rmSync } from 'node:fs';

@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--read-only] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -20,7 +20,7 @@ This command prints one (`add-retry-to-fetchuser-a7f3`). `/agy:result` takes it.
 
 agy has no conversation context. Everything the task depends on goes in the brief.
 Write for a fast executor working from a contract, not a collaborator you can correct
-mid-run. Do not pre-read the repo to write it: name the files and let agy read them.
+mid-run.
 
 Every brief has these sections, in this order:
 
@@ -37,8 +37,7 @@ Then a short **Guardrails** block: do not commit; do not delete files outside th
 not rename public APIs unless asked; do not touch lockfiles unless the task is about
 dependencies; if a pre-existing test already fails, report it, do not fix it.
 
-Point at files rather than pasting them. A spec that already lives in the repo is a path
-in the brief, not a copy.
+A spec that already lives in the repo is a path in the brief, not a copy.
 
 One dispatch per coherent slice. Run at most three agy jobs at once.
 
@@ -52,8 +51,7 @@ Models agy accepts right now (family, then the effort levels it takes):
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
 
-Pass `--model <family> --effort <level>`, or a full id such as `gemini-3.8-flash-high` with
-no `--effort`. A model with no levels ignores `--effort`; the plugin drops it and says so.
+Pass `--model <family> --effort <level>`, or a full id from that list with no `--effort`. agy rejects a level the model does not have, and its error names the ones it has.
 
 ## Run it
 
@@ -75,19 +73,15 @@ no `--effort`. A model with no levels ignores `--effort`; the plugin drops it an
 | `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
 | `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 3600 (60m); the watchdog is that plus 60s grace. |
-| `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
+| `--read-only` | For analysis and research whose answer comes back in agy's report. agy gets no file-writing tools; its shell commands still run, and any file they change is listed in a ⚠ line. A job that must write a file, even outside the repo, runs without it: writing a long file through the shell cost one eval run 40 minutes. |
+| `--sandbox` | Restricts terminal commands only. Use `--read-only` to keep the repo unchanged. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
-| `--continue` | Resume agy's most recent conversation. Machine-wide, so it may belong to another repository. Only when you pass it yourself; the plugin never falls back to it. |
+| `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |
 
 ## Reading the output
 
-!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
-
-A non-zero exit from `delegate.mjs` means the run did not finish, not that agy's work is
-wrong: agy reports `ERROR` on runs it retried and completed, such as a run that hit
-`UNAVAILABLE (code 503)` once. Read the ⚠ lines.
+!`cat "${CLAUDE_PLUGIN_ROOT}/contract.md"`
 
 After a job that changed code, read `git diff` for the files the brief named and run the
 verification command the brief gave. Do not run the repository's whole test suite over a
-slice. Check the diff first even when a `/agy:resume` line is offered. Resume only if the
-work is missing, and prefer resume to a new dispatch.
+slice.

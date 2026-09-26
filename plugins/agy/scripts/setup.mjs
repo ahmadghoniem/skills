@@ -4,7 +4,6 @@ import {
   cachedModels,
   familyLevels,
   listModels,
-  modelEncodesEffort,
   readAccountDefaultLabel,
   refreshModelCache,
   resolveBin,
@@ -21,7 +20,7 @@ const LEVEL_ORDER = ['low', 'medium', 'high'];
 
 /**
  * Format one family's levels for the table: a comma-joined list, or `none`
- * when the family's ids carry no effort suffix at all (the Claude models).
+ * when the family's ids carry no effort suffix at all.
  *
  * @param {Set<string>} levels
  * @returns {string}
@@ -92,18 +91,10 @@ async function baseCheck() {
   }
   const defaultLabel = readAccountDefaultLabel();
   // One writer among several: `delegate.mjs`'s weekly, cache-miss, and
-  // rejected-model refreshes (M3) also call `writeModelCache`. Dispatch reads
+  // rejected-model refreshes also call `writeModelCache`. Dispatch reads
   // this cache without fetching.
   writeModelCache(models, defaultLabel, versionText, bin);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
-  lines.push('- models:');
-  for (const m of models) {
-    const bits = [];
-    if (defaultLabel && m.label === defaultLabel) bits.push('account default');
-    if (modelEncodesEffort(m.id)) bits.push('effort in id');
-    const suffix = bits.length ? ` (${bits.join(', ')})` : '';
-    lines.push(`  - \`${m.id}\` — ${m.label}${suffix}`);
-  }
   process.stdout.write(lines.join('\n') + '\n');
   return 0;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
   WATCHDOG_GRACE_SEC,
@@ -8,10 +8,10 @@ import {
   cachedModels,
   cachedToolVersion,
   familyLevels,
+  installAgent,
   modelCacheStale,
   refreshModelCache,
   resolveDefaultModel,
-  resolveEffort,
   runHeadless,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
@@ -29,6 +29,8 @@ import {
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
 import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
+import { run } from './lib/run.mjs';
+import { latestRelease, updateNotice } from './update.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
@@ -36,9 +38,24 @@ import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
 // default unless overridden by `--effort`.
 const DEFAULT_EFFORT = 'medium';
 
-const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
+const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue', 'read-only'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--read-only] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+
+/**
+ * `git status` lines, untracked files included, or null outside a git repo.
+ *
+ * @param {string} root
+ * @returns {Promise<Set<string>|null>}
+ */
+async function workspaceState(root) {
+  const res = await run('git', ['status', '--porcelain', '--untracked-files=all'], {
+    cwd: root,
+    timeoutMs: 10_000,
+  });
+  if (res.exitCode !== 0) return null;
+  return new Set(res.stdout.split('\n').filter((l) => l.trim()));
+}
 
 /**
  * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief
@@ -81,6 +98,7 @@ function parseFlags(argv) {
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
     timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
     sandbox: flags['sandbox'] === true,
+    readOnly: flags['read-only'] === true,
     help: flags['help'] === true,
     conversation,
     continueLatest,
@@ -118,15 +136,25 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const absPrompt = resolvePath(promptPath(root, jobId));
   writeFileSync(absPrompt, prompt, 'utf8');
 
-  // `main` already resolved `flags.effort` via `resolveEffort` (M1b): it is
-  // undefined here whenever it should not be sent.
+  // `buildArgs` drops `--effort` when the model id already encodes a level.
+  // Any other mismatch goes to agy, whose error names the levels the model has.
   const effort = flags.effort;
+
+  // A resumed conversation keeps the agent it started with.
+  // `CAD_AGY_AGENT=default` runs agy's own agent, for comparing the two.
+  const agent =
+    isResume(flags) || process.env.CAD_AGY_AGENT === 'default'
+      ? undefined
+      : flags.readOnly ? 'agy-delegate-readonly' : 'agy-delegate';
+  if (agent) installAgent(agent);
+  const before = flags.readOnly ? await workspaceState(root) : null;
 
   updateJob(root, jobId, {
     pid: process.pid,
     model: flags.model ?? '',
     effort,
     promptPath: absPrompt,
+    readOnly: flags.readOnly || undefined,
     sandbox: flags.sandbox || undefined,
     briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });
@@ -138,6 +166,10 @@ async function runAndRecord(flags, prompt, jobId, root) {
     logFile: agyLogPath(root, jobId),
     model: flags.model,
     effort,
+    agent,
+    readFirst: agent
+      ? ['AGENTS.md', 'CLAUDE.md'].map((f) => join(root, f)).filter((p) => existsSync(p))
+      : undefined,
     sandbox: flags.sandbox,
     conversationId: flags.conversation,
     continueLatest: flags.continueLatest && !flags.conversation,
@@ -167,6 +199,9 @@ async function runAndRecord(flags, prompt, jobId, root) {
   });
 
   const summary = summariseEvents(result.events);
+
+  const after = before ? await workspaceState(root) : null;
+  const readOnlyWrites = after ? [...after].filter((l) => !before.has(l)) : [];
 
   // agy 1.1.28+ stops itself at the print timeout and returns partial output
   // with status SUCCESS and exit 0 — the only trace is this stderr line.
@@ -203,6 +238,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
     compactions: summary.compactions || undefined,
     deniedActions: summary.deniedActions?.length ? summary.deniedActions : undefined,
+    readOnlyWrites: readOnlyWrites.length ? readOnlyWrites : undefined,
   });
 
   // Sole write site for detected papercuts. `/agy:result` evaluates anomalies
@@ -291,38 +327,35 @@ export async function main(rawArgv) {
     flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
   }
 
-  // M3, trigger 2: a model named today must not be rejected by a week-old
-  // cache. Refresh once, before the run starts, when it is not cached yet.
+  // A model named today must not be rejected by a week-old cache. Refresh
+  // once, before the run starts, when it is not cached yet.
   if (flags.model && !isResume(flags) && !isModelCached(flags.model, cachedModels())) {
     await refreshModelCache().catch(() => {});
   }
 
-  // M1b: `--model` may be a family (`gemini-3.8-flash`) or a full id; decide
-  // whether `--effort` travels with it from the now-fresh cache, and note it
-  // at dispatch time when it is dropped.
-  const { effort: resolvedEffort, note } = resolveEffort(flags.model, flags.effort);
-  flags.effort = resolvedEffort;
+  // Once a day, alongside the run, so no dispatch waits on GitHub.
+  const release = latestRelease().catch(() => null);
 
   const jobId = uniqueJobName(root, prompt || 'continue');
   const task = prompt || 'Continue from where you left off.';
 
   createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
-  const noteSuffix = note ? ` (note: ${note})` : '';
-  process.stdout.write(`agy \`${jobId}\`${noteSuffix}\n\n`);
+  process.stdout.write(`agy \`${jobId}\`\n\n`);
 
   await runOrMarkFailed(flags, task, jobId, root);
   const finished = readJob(root, jobId);
 
-  // M3, trigger 3: refresh right away on a rejected model, so the `Valid
-  // ids:` list M2 prints from `renderResult` below is current.
+  // Refresh right away on a rejected model, so the `Valid ids:` list
+  // `renderResult` prints below is current.
   if (finished && /invalid model selection/i.test(String(finished.error ?? ''))) {
     await refreshModelCache().catch(() => {});
   }
 
   if (finished) process.stdout.write(renderResult(finished));
+  process.stdout.write(updateNotice(await release, cachedToolVersion()));
   const code = finished && isUnfinished(finished) ? 1 : 0;
 
-  // M3, trigger 1: weekly, after the output above is written, and before
+  // Weekly, after the output above is written, and before
   // returning — never a detached process. Swallowed so a failed refresh
   // cannot change the exit code.
   if (modelCacheStale()) {

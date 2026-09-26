@@ -16,7 +16,6 @@ import {
   resetBinCache,
   resolveBin,
   resolveDefaultModel,
-  resolveEffort,
   runHeadless,
   sidecarPrint,
   writeModelCache,
@@ -347,7 +346,7 @@ describe('model cache', () => {
   });
 });
 
-describe('modelFamily and familyLevels (M1b)', () => {
+describe('modelFamily and familyLevels', () => {
   it('strips a trailing effort suffix to get the family', () => {
     expect(modelFamily('gemini-3.8-flash-high')).toBe('gemini-3.8-flash');
     expect(modelFamily('claude-opus-4-6-thinking')).toBe('claude-opus-4-6-thinking');
@@ -387,91 +386,7 @@ describe('modelFamily and familyLevels (M1b)', () => {
   });
 });
 
-describe('resolveEffort (M1b)', () => {
-  const prevHome = process.env.CAD_HOME;
-  /** @type {string[]} */
-  const dirs = [];
-
-  function freshHome() {
-    const dir = mkdtempSync(join(tmpdir(), 'cad-effort-'));
-    dirs.push(dir);
-    process.env.CAD_HOME = dir;
-    return dir;
-  }
-
-  afterEach(() => {
-    if (prevHome === undefined) delete process.env.CAD_HOME;
-    else process.env.CAD_HOME = prevHome;
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-  });
-
-  const models = [
-    { id: 'gemini-3.8-flash-high', label: 'a' },
-    { id: 'gemini-3.8-flash-medium', label: 'b' },
-    { id: 'gemini-3.8-flash-low', label: 'c' },
-    { id: 'claude-opus-4-6-thinking', label: 'g' },
-  ];
-
-  it('an id that already encodes effort: no --effort, no note', () => {
-    freshHome();
-    writeModelCache(models, null, null);
-    expect(resolveEffort('gemini-3.8-flash-high', 'high')).toEqual({
-      effort: undefined,
-      note: undefined,
-    });
-  });
-
-  it('a family with cached levels: keeps --effort, no note', () => {
-    freshHome();
-    writeModelCache(models, null, null);
-    expect(resolveEffort('gemini-3.8-flash', 'medium')).toEqual({
-      effort: 'medium',
-      note: undefined,
-    });
-  });
-
-  it('a full id with no cached levels: drops --effort and notes it', () => {
-    freshHome();
-    writeModelCache(models, null, null);
-    expect(resolveEffort('claude-opus-4-6-thinking', 'high')).toEqual({
-      effort: undefined,
-      note: '--effort does not apply to claude-opus-4-6-thinking; dropped',
-    });
-  });
-
-  it('a family that lists only some levels: still sends a level it does not take, for agy to refuse', () => {
-    freshHome();
-    writeModelCache(
-      [
-        { id: 'gemini-3.1-pro-low', label: 'Gemini 3.1 Pro (Low)' },
-        { id: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro (High)' },
-      ],
-      null,
-      null,
-    );
-    expect(resolveEffort('gemini-3.1-pro', 'medium')).toEqual({ effort: 'medium', note: undefined });
-    expect(resolveEffort('gemini-3.1-pro', 'high')).toEqual({ effort: 'high', note: undefined });
-  });
-
-  it('no cache: passes --effort through unchanged (today’s behaviour)', () => {
-    freshHome();
-    expect(resolveEffort('claude-opus-4-6-thinking', 'high')).toEqual({
-      effort: 'high',
-      note: undefined,
-    });
-  });
-
-  it('no --effort requested: nothing to resolve', () => {
-    freshHome();
-    writeModelCache(models, null, null);
-    expect(resolveEffort('gemini-3.8-flash', undefined)).toEqual({
-      effort: undefined,
-      note: undefined,
-    });
-  });
-});
-
-describe('modelCacheStale (M3)', () => {
+describe('modelCacheStale', () => {
   const prevHome = process.env.CAD_HOME;
   /** @type {string[]} */
   const dirs = [];
@@ -563,5 +478,31 @@ describe('resolveBin: cached path (T1, "store the resolved path")', () => {
     resetBinCache();
     const bin = await resolveBin();
     expect(bin).not.toBe(join(dir, 'nonexistent-agy.exe'));
+  });
+});
+
+describe('buildArgs: custom agent and convention files', () => {
+  const fresh = { addDir: ADD_DIR, promptPath: PROMPT };
+
+  it('passes --agent on a fresh dispatch', () => {
+    const args = buildArgs({ ...fresh, agent: 'agy-delegate' });
+    expect(args[args.indexOf('--agent') + 1]).toBe('agy-delegate');
+  });
+
+  // A resumed conversation keeps the agent it started with.
+  it('drops --agent on resume', () => {
+    const args = buildArgs({ promptPath: PROMPT, conversationId: 'abc', agent: 'agy-delegate' });
+    expect(args).not.toContain('--agent');
+  });
+
+  it('names the convention files in --print, before the task', () => {
+    const rules = 'C:\repo\AGENTS.md';
+    const args = buildArgs({ ...fresh, readFirst: [rules] });
+    expect(args.at(-1)).toBe(`--print=${sidecarPrint(PROMPT, [rules])}`);
+    expect(args.at(-1).indexOf(rules)).toBeLessThan(args.at(-1).indexOf(PROMPT));
+  });
+
+  it('leaves --print unchanged when the repo has none', () => {
+    expect(sidecarPrint(PROMPT, [])).toBe(sidecarPrint(PROMPT));
   });
 });

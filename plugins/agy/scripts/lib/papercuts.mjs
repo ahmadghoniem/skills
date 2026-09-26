@@ -1,5 +1,6 @@
 // The friction log. One JSON object per line in `~/.cad/papercuts.jsonl`,
-// append-only, machine-wide. This module records; `/agy:kaizen` diagnoses.
+// append-only, machine-wide. This module records and groups; `/agy:update`
+// reviews the open clusters against each new agy release.
 //
 // Rows copy their evidence rather than pointing at the job record:
 // `pruneOlderThanDays` runs on every dispatch and permanently deletes every
@@ -43,6 +44,7 @@ export const DETECTED_WARNINGS = Object.freeze({
   'agy-error': { severity: 'warn' },
   watchdog: { severity: 'warn' },
   timeout: { severity: 'warn' },
+  'read-only': { severity: 'warn' },
   'tool-errors': { severity: 'info' },
 });
 
@@ -199,4 +201,87 @@ export function recordDetected(anomalyList, ctx) {
     // Logging must never fail a run.
   }
   return n;
+}
+
+/**
+ * A cut's cluster key: the id of the ⚠ line that produced it, or — for the
+ * hand-written rows, which have no machine id — where it came from.
+ *
+ * @param {Record<string, unknown>} cut
+ * @returns {string}
+ */
+function clusterKey(cut) {
+  if (typeof cut.warningId === 'string' && cut.warningId) return cut.warningId;
+  return typeof cut.source === 'string' ? cut.source : 'unknown';
+}
+
+/**
+ * @param {Record<string, unknown>} cut
+ * @returns {string}
+ */
+function formatCut(cut) {
+  const bits = [`  \`${cut.id}\``, String(cut.ts ?? '').slice(0, 10)];
+  if (cut.toolVersion) bits.push(String(cut.toolVersion));
+  if (typeof cut.toolCalls === 'number') bits.push(`${cut.toolCalls} calls`);
+  const out = [bits.join('  '), `      ${String(cut.text ?? '').trim()}`];
+  if (cut.fix) out.push(`      fix: ${String(cut.fix).trim()}`);
+  const ev = cut.evidence;
+  if (ev && typeof ev === 'object') {
+    const keys = Object.keys(ev).filter((k) => k !== 'agyStatus' && k !== 'exitCode');
+    for (const k of keys.slice(0, 3)) {
+      const v = /** @type {Record<string, unknown>} */ (ev)[k];
+      const rendered = Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; ') : String(v);
+      out.push(`      ${k}: ${rendered.slice(0, 200)}`);
+    }
+  }
+  return out.join('\n');
+}
+
+/**
+ * The open cuts, grouped by cluster, largest first, plus the clusters that
+ * came back after a recorded fix. Empty string when nothing is open.
+ *
+ * @param {Record<string, unknown>[]} [all]
+ * @returns {string}
+ */
+export function formatOpenPapercuts(all = readPapercuts()) {
+  const closed = new Set(all.map((c) => c.resolves).filter((r) => typeof r === 'string' && r));
+  const open = all.filter((c) => !c.resolves && !closed.has(String(c.id)));
+  if (open.length === 0) return '';
+
+  /** @type {Map<string, Record<string, unknown>[]>} */
+  const clusters = new Map();
+  for (const c of open) {
+    const k = clusterKey(c);
+    if (!clusters.has(k)) clusters.set(k, []);
+    clusters.get(k).push(c);
+  }
+
+  const ordered = [...clusters.entries()].sort((a, b) => b[1].length - a[1].length);
+  const out = [`${open.length} open papercut${open.length === 1 ? '' : 's'} in ${ordered.length} cluster${ordered.length === 1 ? '' : 's'}:`, ''];
+  for (const [key, cuts] of ordered) {
+    cuts.sort((a, b) => (String(a.ts) < String(b.ts) ? 1 : -1));
+    const sources = [...new Set(cuts.map((c) => c.source))].join('/');
+    const versions = [...new Set(cuts.map((c) => c.toolVersion).filter(Boolean))];
+    const span = versions.length ? `, ${versions.join(' ')}` : '';
+    out.push(`## ${key} — ${cuts.length}× (${sources}${span})`);
+    for (const c of cuts) out.push(formatCut(c));
+    out.push('');
+  }
+
+  // Recurrence after a resolution is the only feedback this loop has.
+  const reappeared = [];
+  for (const [key, cuts] of ordered) {
+    const fixes = all.filter(
+      (c) => c.resolves && all.some((o) => o.id === c.resolves && clusterKey(o) === key),
+    );
+    if (!fixes.length) continue;
+    const lastFix = fixes.map((c) => String(c.ts)).sort().at(-1);
+    const after = cuts.filter((c) => String(c.ts) > lastFix);
+    if (after.length) reappeared.push(`  ${key}: ${after.length} new since the ${lastFix.slice(0, 10)} fix`);
+  }
+  if (reappeared.length) {
+    out.push('Recurred after a recorded fix — the fix did not hold:', ...reappeared, '');
+  }
+  return out.join('\n');
 }

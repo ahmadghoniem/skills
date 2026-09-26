@@ -112,14 +112,14 @@ async function scenarioEffort() {
   const env = makeRepo();
   try {
     const dump = join(env.dir, 'argv.json');
-    await runScript('delegate.mjs', ['--model', 'claude-opus-4-6-thinking', '--effort', 'high', 'task'], {
+    await runScript('delegate.mjs', ['--model', 'gemini-3.8-flash-high', '--effort', 'low', 'task'], {
       cwd: env.repo,
       env: { CAD_HOME: env.cadHome, AGY_BIN: REPLAY_STUB, AGY_REPLAY: join(REPLAY_DIR, CLEAN), AGY_REPLAY_ARGV: dump },
     });
     // No dump means the script never reached agy: grade it as a fail instead of
     // letting JSON.parse abort every other check in this suite.
     const argv = JSON.parse(spawnSync(process.execPath, ['-e', `const f=require('fs');const p=${JSON.stringify(dump)};process.stdout.write(f.existsSync(p)?f.readFileSync(p,'utf8'):'[]')`], { encoding: 'utf8' }).stdout || '[]');
-    grade('effort', 'claude-opus-4-6-thinking --effort high', !argv.includes('--effort'), `argv has --effort: ${argv.includes('--effort')}`);
+    grade('effort', 'gemini-3.8-flash-high --effort low', !argv.includes('--effort'), `argv has --effort: ${argv.includes('--effort')}`);
   } finally {
     env.cleanup();
   }

@@ -303,7 +303,7 @@ describe('long agy errors', () => {
   });
 });
 
-describe('invalid model selection (M2)', () => {
+describe('invalid model selection', () => {
   const prevHome = process.env.CAD_HOME;
   /** @type {string[]} */
   const dirs = [];
@@ -355,10 +355,25 @@ describe('invalid model selection (M2)', () => {
       agyStatus: 'ERROR',
       exitCode: 1,
       summary: '',
-      error: 'Invalid Model Selection: nope',
+      error: 'Invalid Model Selection: nope is Not Recognized',
     });
     expect(out).toContain('  Valid ids:');
     expect(out).toContain('    gemini-3.8-flash-high');
+  });
+
+  it('keeps agy’s own text for an --effort mismatch, which already names the levels', () => {
+    freshHome();
+    writeModelCache([{ id: 'gemini-3.1-pro-high', label: 'a' }], null, null);
+    const out = renderResult({
+      id: 'x-6666',
+      agyStatus: 'ERROR',
+      exitCode: 1,
+      summary: '',
+      error:
+        'invalid model selection (--model "gemini-3.1-pro" --effort "medium"): gemini-3.1-pro has no "medium" effort (available: low, high)',
+    });
+    expect(out).toContain('(available: low, high)');
+    expect(out).not.toContain('Valid ids:');
   });
 
   it('falls back to an empty list when there is no cache, rather than throwing', () => {
@@ -368,9 +383,25 @@ describe('invalid model selection (M2)', () => {
       agyStatus: 'ERROR',
       exitCode: 1,
       summary: '',
-      error: 'invalid model selection: nope',
+      error: 'invalid model selection: nope not recognized',
     });
     expect(out).toContain('  Valid ids:');
+  });
+});
+
+describe('agy API errors', () => {
+  it('offers resume on exit 3, the code agy uses when a turn ends on an API error', () => {
+    const out = renderResult({
+      id: 'x-5555',
+      agyStatus: 'SUCCESS',
+      exitCode: 3,
+      conversationId: 'c1',
+      summary: 'partial report',
+      stderrTail: ['AGY_ERROR: {"short_error":"UNAVAILABLE"}'],
+    });
+    expect(out).toContain('⚠ exit 3');
+    expect(out).toContain('AGY_ERROR: {"short_error":"UNAVAILABLE"}');
+    expect(out).toContain('⚠ this run can be resumed where it stopped: /agy:resume x-5555');
   });
 });
 
@@ -417,5 +448,19 @@ describe('compaction and denied lines', () => {
       deniedActions: ['write_file: /etc/hosts'],
     }).map((a) => a.id);
     expect(ids).toEqual(['agy-status', 'compaction', 'denied', 'agy-error', 'resume']);
+  });
+});
+
+describe('read-only runs', () => {
+  const base = { id: 'j', status: 'done', agyStatus: 'SUCCESS', exitCode: 0, summary: 'report' };
+
+  it('lists the files a read-only run changed', () => {
+    const out = renderResult({ ...base, readOnly: true, readOnlyWrites: ['?? notes.txt'] });
+    expect(out).toContain('⚠ this read-only run changed files in the workspace:');
+    expect(out).toContain('?? notes.txt');
+  });
+
+  it('stays clean when nothing changed', () => {
+    expect(renderResult({ ...base, readOnly: true })).toBe('report\n');
   });
 });

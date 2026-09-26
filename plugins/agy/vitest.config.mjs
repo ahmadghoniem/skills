@@ -5,5 +5,6 @@ export default defineConfig({
     globals: false,
     include: ['tests/**/*.test.mjs'],
     testTimeout: 15_000,
+    env: { CAD_RELEASE_CHECK: 'off' },
   },
 });

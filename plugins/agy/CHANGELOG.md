@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.3.0 (agy 1.2.11)
+
+Checked against agy 1.2.11.
+
+### Added
+
+- **Two custom agy agents.** Fresh dispatches run `agy-delegate`; `--read-only` runs
+  `agy-delegate-readonly`, which has no file-writing tools. `delegate.mjs` installs them
+  into `~/.gemini/config/agents/` when missing or changed, since `--agent` with an unknown
+  name silently runs the default agent. The first call drops from 13.1k to 10.4k input tokens.
+- **A `read-only` warning.** Shell commands still run under `--read-only`, so the plugin
+  compares `git status` before and after the run and lists what changed.
+- **An update notice.** `/agy:delegate` checks GitHub for the latest agy release once a
+  day, alongside the run, and ends its output with a line when one is newer than the
+  installed agy. agy's own auto-update stays off.
+
+### Changed
+
+- **`/agy:update` reviews the papercuts.** It prints the open clusters after the changelog
+  (also when agy is already current) and refreshes the model cache after an update.
+  `--resolve` moves to `/agy:papercut`.
+- **`/agy:setup` no longer lists the models.** `/agy:delegate` already embeds the family
+  table, and the weekly refresh keeps the cache current.
+
+- **`/agy:update` reads the upstream changelog.** `agy changelog` in 1.2.11 still stopped at
+  1.2.2, so the update reported nothing new. It now reads the CHANGELOG.md in
+  `google-antigravity/antigravity-cli` and falls back to `agy changelog`. Both header shapes
+  (`## 1.2.11`, `1.2.2:`) parse.
+- **`/agy:update` waits up to 15 minutes for the download.** The 120 s limit killed a 2m50s
+  download of the ~200 MB binary. The command now runs the script as a background Bash call
+  instead of a `!` preamble, which Claude Code moves to the background after 120 s anyway.
+- **Exit 3 counts as unfinished.** agy 1.2.6+ exits 3 when a turn ends on a model or agent API
+  error, including after a partial response; the run now gets the resume offer.
+- **The `Valid ids:` list shows only for an unknown model**, not for an `--effort` mismatch,
+  where agy's own message already names the levels the model has.
+- **Docs: `--continue` is per workspace since agy 1.2.1**, not machine-wide. Verified: from a
+  second directory it resumed that directory's conversation, not the newer one elsewhere.
+- **Docs: an `ERROR` status no longer implies a run agy retried and completed.** Since 1.2.1
+  agy retries transient API errors in-process, so `ERROR` is a run that ended on an error; the
+  diff still comes first, since work before the error stays in the tree.
+
+### Removed
+
+- **`/agy:kaizen`.** agy releases about four times a week, so reviewing the papercuts on
+  each update replaces the separate review. The `--all`, `--kind` and `--since` filters go
+  with it.
+- **The `output-contract` skill.** Its only automatic consumer was the retired `agy-runner`
+  agent, and Claude never invoked it; the commands include the contract directly. The text
+  moves to `contract.md` at the plugin root, and Claude's skill listing loses about 52 tokens
+  per request.
+- **`resolveEffort` and its dispatch note.** It dropped `--effort` for models that take no
+  levels (the Claude models agy offers). agy now refuses the mismatch with an error that names
+  the levels the model has, so the plugin no longer special-cases those models. `--effort` is
+  still dropped when the model id already encodes a level.
+
 ## 0.2.0
 
 ### Removed

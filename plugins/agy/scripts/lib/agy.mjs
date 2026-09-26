@@ -3,6 +3,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync }
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
 import { modelCachePath } from './paths.mjs';
@@ -59,38 +60,6 @@ export function familyLevels(models) {
 }
 
 /**
- * Decide whether `--effort` should accompany `--model M`, using the cached
- * model list to tell a bare family (`gemini-3.8-flash`, which takes
- * `--effort`) from a full id with no levels (`claude-opus-4-6-thinking`,
- * which agy refuses `--effort` on).
- *
- * - `M` already encodes a level: no `--effort` (today's behaviour).
- * - `M` is a family with cached levels: keep `--effort` when the family lists
- *   that level, otherwise drop it and return a note naming the levels it has.
- * - `M` is a full id with no cached levels: drop `--effort` and return a note.
- * - No cache, or `M` not found in it: today's behaviour (pass `effort`
- *   through unchanged and let agy respond).
- *
- * @param {string|undefined} model
- * @param {string|undefined} effort
- * @returns {{ effort: string|undefined, note: string|undefined }}
- */
-export function resolveEffort(model, effort) {
-  if (!effort || modelEncodesEffort(model)) return { effort: undefined, note: undefined };
-  const models = cachedModels();
-  if (!model || models == null) return { effort, note: undefined };
-  const levels = familyLevels(models).get(model);
-  if (levels === undefined) return { effort, note: undefined };
-  if (levels.size === 0) {
-    return { effort: undefined, note: `--effort does not apply to ${model}; dropped` };
-  }
-  // A level the family lacks (`gemini-3.1-pro` has no medium) is still sent:
-  // agy requires `--effort` for that family, so dropping it is refused too,
-  // and agy's own error names the levels it has.
-  return { effort, note: undefined };
-}
-
-/**
  * Format seconds as a Go duration for `--print-timeout` (`15m`, `1m30s`, `45s`).
  *
  * @param {number} seconds
@@ -112,11 +81,36 @@ export function formatPrintTimeout(seconds) {
  * which is outside the directory passed to `--add-dir`, and agy reads it
  * anyway.
  *
+ * A custom agent does not load the repository's AGENTS.md or CLAUDE.md, so
+ * the ones that exist are named here; asking agy to look for them instead
+ * costs a failed tool call per missing file.
+ *
  * @param {string} absPromptPath
+ * @param {string[]} [readFirst] absolute paths of convention files to read first
  * @returns {string}
  */
-export function sidecarPrint(absPromptPath) {
-  return SIDECAR_INSTRUCTION.replace('%PATH%', absPromptPath);
+export function sidecarPrint(absPromptPath, readFirst = []) {
+  const task = SIDECAR_INSTRUCTION.replace('%PATH%', absPromptPath);
+  if (readFirst.length === 0) return task;
+  return `First read ${readFirst.join(' and ')}: this repository's rules, which you follow. ${task}`;
+}
+
+/**
+ * Copy one of the plugin's agy agents (`agy-agents/<name>.md`) into agy's
+ * global agents folder when it is missing or differs. agy only finds custom
+ * agents there, and `--agent` with an unknown name silently runs the default
+ * agent, so this runs before every fresh dispatch.
+ *
+ * @param {string} name
+ * @returns {void}
+ */
+export function installAgent(name) {
+  const src = fileURLToPath(new URL(`../../agy-agents/${name}.md`, import.meta.url));
+  const dest = join(homedir(), '.gemini', 'config', 'agents', `${name}.md`);
+  const text = readFileSync(src, 'utf8');
+  if (existsSync(dest) && readFileSync(dest, 'utf8') === text) return;
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, text, 'utf8');
 }
 
 /**
@@ -127,10 +121,13 @@ export function sidecarPrint(absPromptPath) {
  * @property {string=} logFile
  * @property {string=} model
  * @property {string=} effort
+ * @property {string=} agent               Custom agent name; fresh dispatch only
+ *                                         (a resumed conversation keeps its agent).
+ * @property {string[]=} readFirst         Convention files to name in `--print`.
  * @property {boolean=} sandbox
  * @property {string=} conversationId      Resume a specific conversation.
- * @property {boolean=} continueLatest     Resume agy's most recent conversation,
- *                                         which is machine-wide, not per-repo.
+ * @property {boolean=} continueLatest     Resume agy's most recent conversation
+ *                                         in this workspace (agy 1.2.1+).
  */
 
 /**
@@ -170,13 +167,14 @@ export function buildArgs(opts) {
   if (opts.effort && !modelEncodesEffort(opts.model)) {
     args.push('--effort', opts.effort);
   }
+  if (opts.agent && !isResume) args.push('--agent', opts.agent);
   args.push('--dangerously-skip-permissions');
   if (opts.sandbox) args.push('--sandbox');
   if (isResume) {
     if (opts.conversationId) args.push('--conversation', opts.conversationId);
     else args.push('--continue');
   }
-  args.push(`--print=${sidecarPrint(opts.promptPath)}`);
+  args.push(`--print=${sidecarPrint(opts.promptPath, opts.readFirst)}`);
   return args;
 }
 
@@ -358,7 +356,7 @@ function readModelCacheRaw() {
 
 /**
  * `agy --version` string saved by the last writer — `/agy:setup`, or the
- * weekly/cache-miss/rejected-model refresh in `delegate.mjs` (`M3`). Null
+ * weekly/cache-miss/rejected-model refresh in `delegate.mjs`. Null
  * when the cache predates this field or nothing has written it yet.
  *
  * @returns {string|null}

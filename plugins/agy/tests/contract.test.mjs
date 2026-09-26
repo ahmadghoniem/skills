@@ -1,5 +1,5 @@
 // Guards the link between the warnings the renderer can emit and the prose that
-// explains them in `skills/output-contract/SKILL.md`.
+// explains them in `contract.md`.
 //
 // This exists because the two drifted in practice: two new warning kinds shipped
 // and none of the four files documenting the contract were touched, so the
@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { WARNING_IDS } from '../scripts/lib/render.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CONTRACT = join(here, '..', 'skills', 'output-contract', 'contract.md');
+const CONTRACT = join(here, '..', 'contract.md');
 
 /** The ids the SKILL.md registry table documents, in table order. */
 function documentedIds() {
@@ -34,7 +34,8 @@ describe('the warning registry and the contract skill agree', () => {
     expect(new Set(WARNING_IDS).size).toBe(WARNING_IDS.length);
   });
 
-  it('names the registry in the prose, so the next author finds it', () => {
-    expect(readFileSync(CONTRACT, 'utf8')).toContain('WARNING_IDS');
+  it('names the contract next to the registry, so the next author finds it', () => {
+    const render = join(here, '..', 'scripts', 'lib', 'render.mjs');
+    expect(readFileSync(render, 'utf8')).toContain("`contract.md` at the plugin root");
   });
 });

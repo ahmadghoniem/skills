@@ -1,20 +1,52 @@
 #!/usr/bin/env node
 // Records a manually authored papercut: what agy's closing report said got in
-// its way, quoted rather than diagnosed. `delegate.mjs` logs `detected`
-// anomalies automatically; `/agy:kaizen` clusters both.
-import { readFileSync } from 'node:fs';
+// its way, quoted rather than diagnosed, or the resolution of an earlier cut.
+// `delegate.mjs` logs `detected` anomalies automatically; `/agy:update`
+// reviews the clusters.
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
-import { appendPapercut, pluginVersion } from './lib/papercuts.mjs';
+import { appendPapercut, pluginVersion, readPapercuts } from './lib/papercuts.mjs';
 import { cachedToolVersion } from './lib/agy.mjs';
-import { jobsDir } from './lib/paths.mjs';
+import { jobsDir, papercutsPath } from './lib/paths.mjs';
 import { readJob } from './lib/jobs.mjs';
 
 const USAGE = `Usage: /agy:papercut --source narrated --text "<what went wrong>"
                     [--fix "<what would have prevented it>"]
                     [--severity warn|info] [--job <job-id>]
                     [--quote "<the delegatee's own words>"]
+       /agy:papercut --resolve <id> --note "<what was changed>"
 `;
+
+/**
+ * Append a resolution row for one cut. The log is never rewritten: a fix that
+ * stops working shows up as its cluster reappearing after this row's date.
+ *
+ * @param {string} target
+ * @param {unknown} rawNote
+ * @returns {number}
+ */
+function resolveCut(target, rawNote) {
+  if (!readPapercuts().some((c) => c.id === target)) {
+    process.stderr.write(`Error: no papercut \`${target}\` in ${papercutsPath()}.\n`);
+    return 2;
+  }
+  const note = typeof rawNote === 'string' ? rawNote.trim() : '';
+  if (!note) {
+    process.stderr.write('Error: --resolve needs --note saying what was changed.\n');
+    return 2;
+  }
+  const id = appendPapercut({
+    ts: new Date().toISOString(),
+    source: 'resolution',
+    severity: 'info',
+    tool: 'agy',
+    pluginVersion,
+    text: note,
+    resolves: target,
+  });
+  process.stdout.write(`resolved \`${target}\` (recorded as \`${id}\`).\n`);
+  return 0;
+}
 
 /**
  * @param {string[]} rawArgv
@@ -26,6 +58,10 @@ export async function main(rawArgv) {
   if (flags.help) {
     process.stdout.write(USAGE);
     return 0;
+  }
+
+  if (typeof flags.resolve === 'string' && flags.resolve.trim()) {
+    return resolveCut(flags.resolve.trim(), flags.note);
   }
 
   const source = typeof flags.source === 'string' ? flags.source.trim() : '';

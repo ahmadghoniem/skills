@@ -134,7 +134,8 @@ function label({ events, exitCode, killed, stderr }) {
   else if (/quota/i.test(error)) cls = 'quota';
   else if (/stream was interrupted|network issue|retryable error/i.test(error)) cls = 'stream-drop';
   else if (/not a valid artifact path/i.test(error)) cls = 'refused-write';
-  else if (result?.status === 'SUCCESS' && exitCode === 0 && toolErrors === 0) cls = 'clean';
+  else if (result?.status === 'SUCCESS' && exitCode === 0 && toolErrors === 0 && stderr.length === 0) cls = 'clean';
+  else if (result?.status === 'SUCCESS' && exitCode === 0 && toolErrors === 0) cls = 'clean-with-stderr';
   else if (result?.status === 'SUCCESS' && exitCode === 0) cls = 'clean-with-tool-errors';
   else cls = 'other';
 

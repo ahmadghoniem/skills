@@ -1,5 +1,5 @@
 // Integration tests for the model-cache refresh triggers delegate.mjs's
-// `main` fires (M3): weekly after a run, before dispatch on a cache miss, and
+// `main` fires: weekly after a run, before dispatch on a cache miss, and
 // after agy rejects a model. `modelCacheStale` and `refreshModelCache` are
 // mocked here so each trigger can be checked in isolation without a real
 // network call; every other export keeps its real behaviour.

@@ -12,9 +12,9 @@ const UUID_RE =
  * or uuid resolves to that conversation; otherwise the newest job in this
  * repository that has a conversation id supplies one. If none has one, this
  * reports the failure and returns 2 rather than falling back to agy's own
- * `--continue`, which resumes machine-wide and may belong to another
- * repository. An explicit `--continue` the user passes themselves still goes
- * through untouched.
+ * `--continue`, which picks agy's newest conversation in the workspace, not
+ * necessarily one this plugin started. An explicit `--continue` the user
+ * passes themselves still goes through untouched.
  *
  * @param {string[]} rawArgv
  * @returns {Promise<number>}

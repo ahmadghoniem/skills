@@ -12,8 +12,6 @@ A follow-up longer than one line goes in a file written with the Write tool, pas
 
 A job id (full, prefix, or 4-char suffix, this repository only) resumes that job's conversation; a UUID passes through as `--conversation`; with neither, the newest job in this repository that has a conversation id is resumed. If none has one, the command says so and stops; it never falls back to `--continue`.
 
-Do not add `--add-dir`; resume is bound to the existing conversation, and the script omits it.
-
 ## Reading the output
 
-!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
+!`cat "${CLAUDE_PLUGIN_ROOT}/contract.md"`

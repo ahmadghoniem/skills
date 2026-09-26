@@ -134,3 +134,50 @@ describe('the log itself', () => {
     expect(readPapercuts()).toEqual([]);
   });
 });
+
+describe('the review /agy:update prints', () => {
+  const cut = (ts, warningId = 'stderr') => ({ ts, source: 'detected', severity: 'warn', tool: 'agy', text: `${warningId} at ${ts}`, warningId });
+
+  it('groups open cuts by warning, largest cluster first', async () => {
+    const { appendPapercut, formatOpenPapercuts } = await lib();
+    appendPapercut(cut('2026-09-01T00:00:00Z', 'timeout'));
+    appendPapercut(cut('2026-09-02T00:00:00Z'));
+    appendPapercut(cut('2026-09-03T00:00:00Z'));
+    const out = formatOpenPapercuts();
+    expect(out).toContain('3 open papercuts in 2 clusters');
+    expect(out.indexOf('## stderr')).toBeLessThan(out.indexOf('## timeout'));
+  });
+
+  it('is empty when nothing is open', async () => {
+    const { formatOpenPapercuts } = await lib();
+    expect(formatOpenPapercuts()).toBe('');
+  });
+
+  it('hides resolved cuts and flags a cluster that came back after its fix', async () => {
+    const { main } = await import('../scripts/papercut.mjs');
+    const { appendPapercut, formatOpenPapercuts } = await lib();
+    const first = appendPapercut(cut('2026-09-01T00:00:00Z'));
+    const { vi } = await import('vitest');
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = await main(['--resolve', first, '--note', 'fixed the flag']);
+    spy.mockRestore();
+    expect(code).toBe(0);
+    expect(formatOpenPapercuts()).toBe('');
+
+    appendPapercut(cut('2099-01-01T00:00:00Z'));
+    const out = formatOpenPapercuts();
+    expect(out).toContain('1 open papercut in 1 cluster');
+    expect(out).toContain('stderr: 1 new since the');
+  });
+
+  it('refuses to resolve an unknown id or one without a note', async () => {
+    const { main } = await import('../scripts/papercut.mjs');
+    const { appendPapercut } = await lib();
+    const id = appendPapercut(cut('2026-09-01T00:00:00Z'));
+    const { vi } = await import('vitest');
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    expect(await main(['--resolve', 'deadbeef', '--note', 'x'])).toBe(2);
+    expect(await main(['--resolve', id])).toBe(2);
+    spy.mockRestore();
+  });
+});
