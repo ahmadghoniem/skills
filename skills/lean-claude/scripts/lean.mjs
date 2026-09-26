@@ -2,7 +2,11 @@
 // Measures what Claude Code sends on every request, per component, and joins it with
 // how often each component was actually used in local transcripts.
 //
-//   node lean.mjs report [--days 90] [--json <file>] [--estimate]
+//   node lean.mjs report [--days N] [--json <file>] [--estimate]
+//   node lean.mjs stretch --saved N [--days N]
+//
+// Both read every transcript on disk unless --days narrows the window: Claude Code
+// deletes old ones itself (cleanupPeriodDays), so whatever is left is the most data.
 //   node lean.mjs capture [--out <file>] [--settings '<json>']
 //
 // Capturing costs nothing: Claude Code is pointed at a local server that records the
@@ -230,7 +234,7 @@ export async function usage(days) {
 
 // ---------- usage limit ----------
 // How much further the usage limit goes once `saved` tokens leave every request.
-// Replays the last `days` of transcripts: each API call either read its prefix from
+// Replays the transcripts in the window: each API call either read its prefix from
 // the prompt cache or wrote it, and the saved tokens would have been read or written
 // the same way. Anthropic doesn't publish how plan limits weigh token kinds, so the
 // share is computed three ways: at API prices (input 1, cache write 1.25 or 2, cache
@@ -240,20 +244,27 @@ const WEIGHTS = { price: 0.1, readsFree: 0, readsFull: 1 };
 const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
 const PATCH_RULE_TOKENS = 130; // the apply-patch rule step 4 installs, loaded on every request
 
-export async function stretch(saved, days = 30) {
+export async function stretch(saved, days = Infinity) {
   const cutoff = Date.now() - days * 864e5;
   const root = join(CLAUDE_DIR, 'projects');
   const seen = new Set();
   const total = { price: 0, readsFree: 0, readsFull: 0 }, cut = { ...total };
-  let calls = 0, suggestions = 0, suggestionCost = 0, idleRewrite = 0, ruleUnit = 0;
+  let calls = 0, suggestions = 0, suggestionCost = 0, ruleUnit = 0, w1All = 0, w5All = 0, first = Infinity, last = 0;
+  const misses = [], active = {}, titles = {}, compacted = [];
   if (!existsSync(root)) return null;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
     let replies = 0, prev = null, compactAt = 0;
+    const sid = /[\/]subagents[\/]/.test(p) ? basename(dirname(dirname(p))) : basename(p, '.jsonl');
     for await (const line of createInterface({ input: createReadStream(p) })) {
-      if (!line.includes('"usage"') && !line.includes('compact_boundary')) continue;
+      if (!line.includes('"usage"') && !line.includes('compact_boundary') && !line.includes('"ai-title"')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
-      if (e.subtype === 'compact_boundary') { compactAt = Date.parse(e.timestamp); continue; }
+      if (e.type === 'ai-title') { titles[sid] = e.aiTitle; continue; }
+      if (e.subtype === 'compact_boundary') {
+        compactAt = Date.parse(e.timestamp);
+        if (compactAt >= cutoff && e.compactMetadata?.postTokens) compacted.push(e.compactMetadata.postTokens);
+        continue;
+      }
       const m = e.message, u = m?.usage;
       if (e.type !== 'assistant' || !u || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
       seen.add(m.id);
@@ -267,13 +278,18 @@ export async function stretch(saved, days = 30) {
         cut[k] += read >= saved ? r * saved : 2 * saved;
       }
       ruleUnit += read >= PATCH_RULE_TOKENS ? 0.1 : 2;
+      w1All += w1; w5All += w5;
       calls++;
-      if (e.isSidechain) continue;
-      // Back after a break longer than the 1-hour cache lifetime: the conversation is
-      // written to the cache again instead of read from it.
       const t = Date.parse(e.timestamp);
-      if (prev && t - prev.t > 36e5 && t - compactAt > 3e5 && written > 5000 && read < 0.5 * prev.ctx) {
-        idleRewrite += Math.min(written, prev.ctx) * ((1.25 * w5 + 2 * w1) / written - 0.1);
+      if (t < first) first = t;
+      if (t > last) last = t;
+      (active[sid] ??= []).push(t);
+      if (e.isSidechain) continue;
+      // The conversation was written to the cache again instead of read from it. Kept
+      // when the gap outlasts the cache lifetime, which is known only after the loop.
+      if (prev && t - prev.t > 3e5 && t - compactAt > 3e5 && written > 5000 && read < 0.5 * prev.ctx) {
+        const tokens = Math.min(written, prev.ctx), rate = (1.25 * w5 + 2 * w1) / written;
+        misses.push({ sid, from: prev.t, to: t, tokens, rate, ctx: prev.ctx, project: basename(e.cwd ?? '') });
       }
       prev = { t, ctx: input + written + read + output };
       replies++;
@@ -295,13 +311,34 @@ export async function stretch(saved, days = 30) {
     flag = cfg.cachedGrowthBookFeatures?.tengu_chomp_inflection ?? null;
   } catch {}
   const pct = (k) => cut[k] / total[k];
+  // Returns after the cache expired. Cost is the write minus the cached read it
+  // replaced. Compacting first would have read the conversation while it was still
+  // cached, written a summary, and written only that summary again on return.
+  const ttl = w1All >= w5All ? 36e5 : 3e5;
+  const back = misses.filter((x) => x.to - x.from > ttl);
+  const sorted = [...compacted].sort((a, b) => a - b), summary = sorted[sorted.length >> 1] ?? 15000;
+  const times = Object.entries(active);
+  for (const x of back) x.elsewhere = times.some(([s, ts]) => s !== x.sid && ts.some((v) => v > x.from && v < x.to));
+  const extra = (x) => x.tokens * (x.rate - 0.1), sum = (f, l = back) => l.reduce((a, x) => a + f(x), 0);
+  const sizes = back.map((x) => x.tokens).sort((a, b) => a - b);
   const further = (k) => total[k] / (total[k] - Math.min(cut[k], total[k] * 0.99)) - 1;
   return {
-    days, calls, suggestions, suggestionsServerOn: flag,
+    from: new Date(first).toISOString().slice(0, 10), spanDays: Math.max(1, Math.round((last - first) / 864e5)),
+    calls, suggestions, suggestionsServerOn: flag,
     share: pct('price'), stretch: further('price') + 1,
     range: Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, { share: pct(k), further: further(k) }])),
     suggestionShareMax: (0.1 * suggestionCost) / total.price,
-    idleRewriteShare: idleRewrite / total.price,
+    cacheExpiry: {
+      ttlMinutes: ttl / 6e4, returns: back.length, sessions: new Set(back.map((x) => x.sid)).size,
+      afterOtherSession: back.filter((x) => x.elsewhere).length, medianTokens: sizes[sizes.length >> 1] ?? 0,
+      share: sum(extra) / total.price, shareAfterOtherSession: sum(extra, back.filter((x) => x.elsewhere)) / total.price,
+      summaryTokens: summary,
+      compactFirstShare: sum((x) => Math.max(0, x.tokens * x.rate - 0.1 * x.ctx - 7 * summary)) / total.price,
+      largest: [...back].sort((a, b) => extra(b) - extra(a)).slice(0, 3).map((x) => ({
+        title: titles[x.sid] ?? null, project: x.project, date: new Date(x.to).toISOString().slice(0, 10),
+        gapHours: +((x.to - x.from) / 36e5).toFixed(1), tokens: x.tokens, afterOtherSession: x.elsewhere,
+      })),
+    },
     editScripts: await editScripts(cutoff, total.price, PATCH_RULE_TOKENS * ruleUnit),
   };
 }
@@ -428,7 +465,7 @@ const pluginOf = (kind, name) => {
   return (kind === 'skill' || kind === 'agent') && name.includes(':') ? name.split(':')[0] : null;
 };
 
-async function report({ days = 90, json = null, estimate = false }) {
+async function report({ days = Infinity, json = null, estimate = false }) {
   const s = userSettings();
   const base = await capture();
   const counting = counter(base.headers, estimate);
@@ -515,7 +552,7 @@ async function report({ days = 90, json = null, estimate = false }) {
 
   const out = {
     version: base.headers['user-agent'] ?? '', model: base.req.model, counting: exact ? 'exact (count_tokens)' : `estimate (${CHARS_PER_TOKEN} chars/token)`,
-    total, interactive, platform: process.platform, window: { days, from: u.from, sessions: u.sessionIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
+    total, interactive, platform: process.platform, window: { days: Number.isFinite(days) ? days : null, from: u.from, sessions: u.sessionIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
     byKind: Object.entries(rows.reduce((a, r) => ((a[r.kind] = (a[r.kind] ?? 0) + r.tokens), a), {})).sort((a, b) => b[1] - a[1]),
     rows: rows.sort((a, b) => b.tokens - a.tokens),
     plugins: Object.values(plugins).sort((a, b) => b.tokens - a.tokens),
@@ -532,7 +569,7 @@ function render(o) {
   const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}`;
   L.push('# lean-claude report', '');
   L.push(`Every request starts with **${n(o.interactive)} tokens** in an interactive session, ${n(o.total)} in headless mode.`);
-  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: last ${o.window.days} days, ${o.window.sessions} sessions${o.window.from ? ` from ${o.window.from}` : ''}.`);
+  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: ${o.window.sessions} sessions${o.window.from ? ` since ${o.window.from}` : ''}${o.window.days ? ` (--days ${o.window.days})` : ', every transcript on disk'}.`);
   if (!o.deferredKnown) L.push('No transcript showed which tools are deferred, so the interactive figure equals the headless one.');
   L.push('', '## Where the tokens go', '', '| Kind | Tokens |', '|---|---:|');
   for (const [k, t] of o.byKind) L.push(`| ${k} | ${n(t)} |`);
@@ -568,9 +605,9 @@ function arg(args, name, dflt = null) { const i = args.indexOf(name); return i >
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'report') {
-    await report({ days: Number(arg(args, '--days', 90)), json: arg(args, '--json'), estimate: args.includes('--estimate') });
+    await report({ days: Number(arg(args, '--days', Infinity)), json: arg(args, '--json'), estimate: args.includes('--estimate') });
   } else if (cmd === 'stretch') {
-    const r = await stretch(Number(arg(args, '--saved', 0)), Number(arg(args, '--days', 30)));
+    const r = await stretch(Number(arg(args, '--saved', 0)), Number(arg(args, '--days', Infinity)));
     process.stdout.write(r ? JSON.stringify(r, null, 1) + '\n' : 'no transcripts in the window\n');
   } else if (cmd === 'capture') {
     const settings = arg(args, '--settings'); const out = arg(args, '--out');
@@ -578,7 +615,7 @@ async function main() {
     if (out) writeFileSync(out, JSON.stringify(req));
     else process.stdout.write(JSON.stringify(breakdown(req).map(({ cut, ...i }) => i), null, 1) + '\n');
   } else {
-    process.stdout.write('usage: lean.mjs report [--days 90] [--json out.json] [--estimate] | stretch --saved N [--days 30] | capture [--out f] [--settings json]\n');
+    process.stdout.write('usage: lean.mjs report [--days N] [--json out.json] [--estimate] | stretch --saved N [--days N] | capture [--out f] [--settings json]\n');
     process.exitCode = cmd ? 2 : 0;
   }
 }

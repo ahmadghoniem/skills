@@ -15,7 +15,7 @@ picks. Whenever you mention something that can be cut, give its token cost.
 Run from the project the user works in (its `CLAUDE.md` and MCP config count):
 
 ```
-node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" report --days 90 --json "<temp dir>/lean-claude.json"
+node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" report --json "<temp dir>/lean-claude.json"
 ```
 
 Pass `$ARGUMENTS` through. Before it runs, tell the user in two sentences that it takes
@@ -136,7 +136,7 @@ the probe cannot see them. Run
 `node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" stretch --saved 0` for the numbers below.
 - `promptSuggestionEnabled: false`: the greyed-out next prompt in the input box. Each
   one reads the whole context with the main model after a turn. Give
-  `suggestionShareMax` as "up to N% of your usage in the last 30 days" (upper bound:
+  `suggestionShareMax` as "up to N% of your usage since <from>" (upper bound:
   the CLI doesn't log them). Many users say they never see one: the request still
   runs, but the model is told to stay silent unless the next step is obvious, and a
   filter drops answers that are too short, too long, evaluative or several sentences,
@@ -145,18 +145,21 @@ the probe cannot see them. Run
 - `awaySummaryEnabled: false`: the recap written when the terminal loses focus.
   `/recap` still works on demand. On the author's machine recaps were 1.5–2% of usage.
 
-**An extra, next to the background requests**: apply-patch. It adds a rule rather than
-removing anything, so offer it as a suggestion. Offer it when `editScripts.scripts` is
-above 0 and `editScripts.patches` is 0 (a user with patches already has it). Claude
-often batches literal edits by writing a Python or Node script (`s.replace(old, new)`,
-then a write). A failed script stays in context with its error, and so does the retry.
-apply-patch takes the same edits as SEARCH/REPLACE blocks and checks every block before
-writing, so a failed patch changes nothing. Say: "Claude wrote N edit scripts in the
-last 30 days and F failed (X%, against Y% for the Edit tool). A tool for this would
-have saved about S% of your usage, after the ~130-token rule it needs." Take N, F and
-S from `editScripts` (`scripts`, `failed`, `share`), Y from `editsFailed / edits`.
-Ticking it installs this repo's apply-patch; the user can instead ask Claude to write
-their own.
+**An extra, next to the background requests: a batch-edit tool.** It adds a small
+script and a rule rather than removing anything, so offer it as a suggestion, and only
+when `editScripts.scripts` is at least `spanDays` (about one a day or more) and `editScripts.patches` is 0. When Claude
+makes several literal edits it often writes a one-off Python or Node script for them
+(`s.replace(old, new)`, then a write). Justify it from `editScripts`, in this order:
+- "Claude wrote N edit scripts since <from> and F failed: X%, against Y% for
+  the Edit tool" (Y from `editsFailed / edits`).
+- A script that fails halfway can leave some files changed and others not, and the
+  failed script, its error and the retry all stay in the conversation.
+- A small tool that checks every edit before writing any file makes a failed batch
+  change nothing, and the edits are written as plain SEARCH/REPLACE blocks with no
+  script around them.
+- Tokens are the smaller gain: about S% of usage (`share`), already net of the
+  ~130-token rule. Say so plainly.
+Ticking it means Claude writes the tool now, in this session, from the spec in step 4.
 
 **Do not suggest** `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`. It saves little more than
 `user-invocable-only` and makes every bundled command untypable. Mention it only if
@@ -176,7 +179,7 @@ at most 4 questions.
   one option per unused plugin. The description lists every skill with its own
   saving (`run −264 · update-config −235 · …`). End the question with: "To keep
   one of them, pick the option and name the skill in Other."
-- Prompt switches, background requests and apply-patch: one option each; apply-patch
+- Prompt switches, background requests and the batch-edit tool: one option each; the tool
   goes in the same question as the background requests.
 
 Fill the first call with Tools and Skills questions, then ask the rest in a second
@@ -191,20 +194,25 @@ Apply only what was picked:
 - `~/.claude/settings.json`: read it first and keep every other key. Bare names go in
   `permissions.deny`, env switches in `env`, other keys at the top level.
 - Skill frontmatter and agent files: edit in place.
-- apply-patch: copy `${CLAUDE_SKILL_DIR}/../../tools/apply-patch/apply-patch.mjs` to
-  `~/.claude/scripts/apply-patch/apply-patch.mjs`, then write
-  `~/.claude/rules/apply-patch.md` with the rule below. If the script isn't there (the
-  skill was installed without its repo), skip the copy and suggest the user ask Claude
-  to write a script that applies SEARCH/REPLACE blocks only after every block matches
-  exactly once.
+- Batch-edit tool: write `~/.claude/scripts/apply-patch.mjs`, a dependency-free Node
+  script, to this spec:
+  - reads a patch from stdin, or from `--file <path>`: `*** Update: <path>` followed by
+    `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks, plus `*** Create: <path>`
+    with the new file's text;
+  - every SEARCH must match exactly once; all blocks, in all files, are checked in
+    memory before any file is written; on a failure it names the file and block,
+    writes nothing, and exits 1;
+  - keeps CRLF line endings and a BOM; writes to a temp file and renames it.
+  Test it on a temp directory: one patch that applies, and one with a bad block that
+  must leave every file untouched. Then write `~/.claude/rules/apply-patch.md`:
 
   ```markdown
   ## Batch edits
-  For literal edits in one or several files, run apply-patch instead of writing a
-  Python or Node replace script: `node ~/.claude/scripts/apply-patch/apply-patch.mjs
-  <<'PATCH'`, then `*** Update: <path>` and `<<<<<<< SEARCH` / `=======` /
-  `>>>>>>> REPLACE` blocks. It checks every block before writing, so a failed patch
-  changes nothing. For regex, JSON or line-range edits use sed, a script or Edit.
+  For literal edits in one or several files, run
+  `node ~/.claude/scripts/apply-patch.mjs <<'PATCH'` instead of writing a Python or
+  Node replace script: `*** Update: <path>`, then SEARCH/REPLACE blocks. It checks
+  every block before writing, so a failed patch changes nothing. For regex, JSON or
+  line-range edits use sed, a script or Edit.
   ```
   On Windows add: "Patches over about 5 KB go in a file, passed with `--file <path>`."
 
@@ -219,16 +227,32 @@ Re-run the report, then run
 Lead with the result in one sentence: "Every request now starts with A tokens instead
 of B: N fewer (P%)." Then:
 - a table of each change and its actual saving, largest first;
-- the usage limit: "Over the last 30 days the removed part was S% of your usage, so the
+- the usage limit: "Since <from>, the removed part was S% of your usage, so the
   same limit should go about X% further." Take S and X from `share` and `stretch`, and
   give the low and high `further` in `range` in brackets. Anthropic doesn't publish how
   plan limits weigh cached tokens, so the range covers cache reads counted free, at API
   price, and at full price;
 - the background requests turned off, with their share, as a separate line;
 - what turning each change back on costs, from the report's restore table;
-- tips, last. If `idleRewriteShare` is 1% or more: "N% of your usage in the last 30
-  days went to writing long conversations back into the cache after breaks of over an
-  hour, when it had expired. After a break, `/clear` first if the next task is new."
+- tips, last, from `cacheExpiry`, if its `share` is 1% or more. Claude Code keeps a
+  conversation cached for `ttlMinutes`; the first message after that writes the whole
+  conversation again, at 12 to 20 times the cost of reading it from the cache. Make
+  it about the user's own sessions:
+  - the numbers: "Since <from> you came back to a conversation after its cache
+    expired R times, in S sessions; the median conversation was M tokens. That cost
+    P% of your usage." Then name the largest one or two from `largest` by title,
+    project and size ("Composer design graph… in design-playground: 323k tokens after
+    3.5 hours away").
+  - what to do, with `compactFirstShare` as the saving:
+    - "Stepping away from a long conversation you'll come back to? `/compact` first.
+      It summarises while the cache is still warm, and only the summary is written
+      again when you return." Would have saved about C%.
+    - "Switching to another session for a while? `/compact` the one you're leaving."
+      Say how many of the returns came after working in another session
+      (`afterOtherSession`).
+    - "Coming back to something unrelated? `/clear` instead."
+  - the trade-off, one line: a compacted conversation keeps a summary, not every
+    detail, so skip it when exact earlier output still matters.
 
 If a change saved nothing, say so and offer to undo it.
 
