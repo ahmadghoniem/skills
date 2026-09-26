@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CHARS_PER_TOKEN = 3.5;
@@ -191,13 +191,18 @@ function* walk(dir) {
 
 export async function usage(days) {
   const cutoff = Date.now() - days * 864e5;
-  const u = { tool: {}, skill: {}, typed: {}, agent: {}, mcp: {}, sessions: 0, deferred: new Set(), deferredAt: 0, from: null };
-  const bump = (m, k, ts) => { const e = (m[k] ??= { n: 0, last: '' }); e.n++; if (ts > e.last) e.last = ts; };
+  const u = { tool: {}, skill: {}, typed: {}, agent: {}, mcp: {}, sessions: 0, sessionIds: new Set(), deferred: new Set(), deferredAt: 0, from: null };
+  // Each item keeps the sessions it was used in: 41 calls in one session and one call
+  // in each of 41 sessions argue differently for keeping it.
+  const bump = (m, k, ts, sid) => { const e = (m[k] ??= { n: 0, last: '', s: new Set() }); e.n++; e.s.add(sid); if (ts > e.last) e.last = ts; };
   const root = join(CLAUDE_DIR, 'projects');
   if (!existsSync(root)) return u;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
     u.sessions++;
+    // A subagent's transcript sits in <session>/subagents/ and counts toward its parent.
+    const sid = /[\/]subagents[\/]/.test(p) ? basename(dirname(dirname(p))) : basename(p, '.jsonl');
+    u.sessionIds.add(sid);
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('tool_use') && !line.includes('command-name') && !line.includes('deferred_tools_delta')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
@@ -208,15 +213,15 @@ export async function usage(days) {
         u.deferredAt = Date.parse(e.timestamp); u.deferred = new Set(e.attachment.addedNames ?? []);
       }
       const content = e.message?.content;
-      const typed = (s) => { for (const m of s.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) bump(u.typed, m[1], ts); };
+      const typed = (s) => { for (const m of s.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) bump(u.typed, m[1], ts, sid); };
       if (typeof content === 'string') { typed(content); continue; }
       for (const b of Array.isArray(content) ? content : []) {
         if (b.type === 'text' && b.text?.includes('<command-name>')) typed(b.text);
         if (b.type !== 'tool_use') continue;
-        bump(u.tool, b.name, ts);
-        if (b.name === 'Skill' && b.input?.skill) bump(u.skill, b.input.skill, ts);
-        if (b.name === 'Agent' || b.name === 'Task') bump(u.agent, b.input?.subagent_type || 'general-purpose', ts);
-        const m = /^mcp__(.+?)__/.exec(b.name); if (m) bump(u.mcp, m[1], ts);
+        bump(u.tool, b.name, ts, sid);
+        if (b.name === 'Skill' && b.input?.skill) bump(u.skill, b.input.skill, ts, sid);
+        if (b.name === 'Agent' || b.name === 'Task') bump(u.agent, b.input?.subagent_type || 'general-purpose', ts, sid);
+        const m = /^mcp__(.+?)__/.exec(b.name); if (m) bump(u.mcp, m[1], ts, sid);
       }
     }
   }
@@ -233,20 +238,22 @@ export async function usage(days) {
 
 const WEIGHTS = { price: 0.1, readsFree: 0, readsFull: 1 };
 const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
+const PATCH_RULE_TOKENS = 130; // the apply-patch rule step 4 installs, loaded on every request
 
 export async function stretch(saved, days = 30) {
   const cutoff = Date.now() - days * 864e5;
   const root = join(CLAUDE_DIR, 'projects');
   const seen = new Set();
   const total = { price: 0, readsFree: 0, readsFull: 0 }, cut = { ...total };
-  let calls = 0, suggestions = 0, suggestionCost = 0;
+  let calls = 0, suggestions = 0, suggestionCost = 0, idleRewrite = 0, ruleUnit = 0;
   if (!existsSync(root)) return null;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
-    let replies = 0;
+    let replies = 0, prev = null, compactAt = 0;
     for await (const line of createInterface({ input: createReadStream(p) })) {
-      if (!line.includes('"usage"')) continue;
+      if (!line.includes('"usage"') && !line.includes('compact_boundary')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
+      if (e.subtype === 'compact_boundary') { compactAt = Date.parse(e.timestamp); continue; }
       const m = e.message, u = m?.usage;
       if (e.type !== 'assistant' || !u || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
       seen.add(m.id);
@@ -259,8 +266,16 @@ export async function stretch(saved, days = 30) {
         total[k] += input + 1.25 * w5 + 2 * w1 + r * read + 5 * output;
         cut[k] += read >= saved ? r * saved : 2 * saved;
       }
+      ruleUnit += read >= PATCH_RULE_TOKENS ? 0.1 : 2;
       calls++;
       if (e.isSidechain) continue;
+      // Back after a break longer than the 1-hour cache lifetime: the conversation is
+      // written to the cache again instead of read from it.
+      const t = Date.parse(e.timestamp);
+      if (prev && t - prev.t > 36e5 && t - compactAt > 3e5 && written > 5000 && read < 0.5 * prev.ctx) {
+        idleRewrite += Math.min(written, prev.ctx) * ((1.25 * w5 + 2 * w1) / written - 0.1);
+      }
+      prev = { t, ctx: input + written + read + output };
       replies++;
       // A prompt suggestion runs after a turn ends, from the third reply on, and only
       // when the turn left the cache warm. It reads the whole context from cache and
@@ -286,7 +301,59 @@ export async function stretch(saved, days = 30) {
     share: pct('price'), stretch: further('price') + 1,
     range: Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, { share: pct(k), further: further(k) }])),
     suggestionShareMax: (0.1 * suggestionCost) / total.price,
+    idleRewriteShare: idleRewrite / total.price,
+    editScripts: await editScripts(cutoff, total.price, PATCH_RULE_TOKENS * ruleUnit),
   };
+}
+
+// ---------- hand-written edit scripts ----------
+// Python and Node scripts Claude writes to make literal replacements
+// (`s.replace(old, new)` then a write), which apply-patch does with a check first.
+// A failed script stays in context with its error, and so does the retry; the
+// script's own boilerplate (imports, reads, writes, asserts) is carried the same way.
+// `share` is what both would have cost, net of the rule that points Claude at
+// apply-patch, as a share of usage at API prices.
+
+const SCRIPT = /\b(python3?|py|node)\b[^\n]*(<<|-c\s|-e\s)/;
+const WRITES = /write_text\(|writeFileSync\(|\.write\(|open\([^)]*['"]w/;
+const LITERAL = /\.replace\(\s*(?:[rbu]?'|[rbu]?"|`|old|a\b|s\b|find|search|before)/;
+const REGEX = /re\.sub\(|re\.compile|\.replace\(\s*\/|replaceAll\(\s*\//;
+const FAILED = /Traceback|AssertionError|SyntaxError|Error:|not found|NOT FOUND|no match|Exit code [1-9]/;
+const literals = (s) => [...s.matchAll(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\[\s\S]|[^`])*`|"(?:\.|[^"\n])*"|'(?:\.|[^'\n])*'/g)]
+  .reduce((a, m) => a + (m[0].length >= 20 ? m[0].length : 0), 0);
+
+async function editScripts(cutoff, total, ruleCost) {
+  const r = { scripts: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
+  let cost = 0;
+  for (const { p, mtime } of walk(join(CLAUDE_DIR, 'projects'))) {
+    if (mtime < cutoff) continue;
+    const ev = [], seen = new Set(), results = new Map(), calls = [];
+    for await (const line of createInterface({ input: createReadStream(p) })) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      const t = Date.parse(e.timestamp);
+      if (!(t >= cutoff)) continue;
+      const m = e.message;
+      if (e.type === 'assistant' && m?.usage && !seen.has(m.id)) { seen.add(m.id); calls.push(t); }
+      for (const b of Array.isArray(m?.content) ? m.content : []) {
+        if (b.type === 'tool_result') results.set(b.tool_use_id, b);
+        if (b.type === 'tool_use') ev.push({ t, b });
+      }
+    }
+    for (const { t, b } of ev) {
+      const res = results.get(b.id);
+      const out = res ? (typeof res.content === 'string' ? res.content : JSON.stringify(res.content ?? '')).slice(0, 3000) : '';
+      if (b.name === 'Edit') { r.edits++; if (res?.is_error) r.editsFailed++; continue; }
+      const cmd = ['Bash', 'PowerShell'].includes(b.name) ? String(b.input?.command ?? '') : '';
+      if (/apply-patch/.test(cmd)) { r.patches++; continue; }
+      if (!SCRIPT.test(cmd) || !WRITES.test(cmd) || !LITERAL.test(cmd) || REGEX.test(cmd)) continue;
+      r.scripts++;
+      // written once as output, cached, then read on every later request
+      const later = calls.filter((x) => x > t).length, carry = (tok) => 7 * tok + 0.1 * tok * later;
+      cost += carry(Math.max(0, cmd.length - literals(cmd) - 120) / CHARS_PER_TOKEN);
+      if (res && (res.is_error === true || FAILED.test(out))) { r.failed++; cost += carry((cmd.length + out.length) / CHARS_PER_TOKEN); }
+    }
+  }
+  return { ...r, share: Math.max(0, cost - ruleCost) / total };
 }
 
 // ---------- claude.ai skills ----------
@@ -383,8 +450,8 @@ async function report({ days = 90, json = null, estimate = false }) {
     const use = i.kind === 'tool' || i.kind === 'mcp-tool' ? u.tool[i.name] : i.kind === 'agent' ? u.agent[i.name] : null;
     if (i.kind === 'skill') {
       const [a, b] = [sk(u.skill), sk(u.typed)];
-      Object.assign(r, { modelUses: a?.n ?? 0, typed: b?.n ?? 0, uses: (a?.n ?? 0) + (b?.n ?? 0), last: [a?.last ?? '', b?.last ?? ''].sort().pop() });
-    } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.last = use?.last ?? ''; }
+      Object.assign(r, { modelUses: a?.n ?? 0, typed: b?.n ?? 0, uses: (a?.n ?? 0) + (b?.n ?? 0), sessions: new Set([...(a?.s ?? []), ...(b?.s ?? [])]).size, last: [a?.last ?? '', b?.last ?? ''].sort().pop() });
+    } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.last = use?.last ?? ''; }
     if (i.kind === 'agent') r.userFile = existsSync(join(CLAUDE_DIR, 'agents', `${i.name}.md`));
     if (i.kind === 'mcp-instructions') r.uses = Object.entries(u.mcp).filter(([k]) => k.includes(i.name.replace(/\W+/g, '_'))).reduce((a, [, v]) => a + v.n, 0);
     if (i.kind === 'tool' || i.kind === 'mcp-tool') { r.deferred = u.deferred.has(i.name); r.core = CORE_TOOLS.has(i.name); r.headlessOnly = HEADLESS_ONLY.has(i.name); }
@@ -448,7 +515,7 @@ async function report({ days = 90, json = null, estimate = false }) {
 
   const out = {
     version: base.headers['user-agent'] ?? '', model: base.req.model, counting: exact ? 'exact (count_tokens)' : `estimate (${CHARS_PER_TOKEN} chars/token)`,
-    total, interactive, platform: process.platform, window: { days, from: u.from, sessions: u.sessions }, deferredKnown: u.deferred.size > 0,
+    total, interactive, platform: process.platform, window: { days, from: u.from, sessions: u.sessionIds.size, transcripts: u.sessions }, deferredKnown: u.deferred.size > 0,
     byKind: Object.entries(rows.reduce((a, r) => ((a[r.kind] = (a[r.kind] ?? 0) + r.tokens), a), {})).sort((a, b) => b[1] - a[1]),
     rows: rows.sort((a, b) => b.tokens - a.tokens),
     plugins: Object.values(plugins).sort((a, b) => b.tokens - a.tokens),
@@ -462,10 +529,10 @@ async function report({ days = 90, json = null, estimate = false }) {
 function render(o) {
   const L = [];
   const n = (x) => (x ?? 0).toLocaleString('en-US');
-  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : ''}`;
+  const used = (r) => `${r.uses ?? ''}${r.uses === 0 ? ' (unused)' : r.sessions ? ` in ${r.sessions} of ${o.window.sessions} sessions` : ''}`;
   L.push('# lean-claude report', '');
   L.push(`Every request starts with **${n(o.interactive)} tokens** in an interactive session, ${n(o.total)} in headless mode.`);
-  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: last ${o.window.days} days, ${o.window.sessions} transcripts${o.window.from ? ` from ${o.window.from}` : ''}.`);
+  L.push(`${o.counting}, model ${o.model}, ${o.version}. Usage: last ${o.window.days} days, ${o.window.sessions} sessions${o.window.from ? ` from ${o.window.from}` : ''}.`);
   if (!o.deferredKnown) L.push('No transcript showed which tools are deferred, so the interactive figure equals the headless one.');
   L.push('', '## Where the tokens go', '', '| Kind | Tokens |', '|---|---:|');
   for (const [k, t] of o.byKind) L.push(`| ${k} | ${n(t)} |`);

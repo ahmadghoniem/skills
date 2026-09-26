@@ -19,12 +19,10 @@ node "${CLAUDE_SKILL_DIR}/scripts/lean.mjs" report --days 90 --json "<temp dir>/
 ```
 
 Pass `$ARGUMENTS` through. Before it runs, tell the user in two sentences that it takes
-about a minute and doesn't touch their usage limits:
-- Claude Code builds a request as usual, but it stays on this machine: a small local
-  server takes it in place of Anthropic's API and answers with an error, so no model
-  runs.
-- Anthropic's token counter (the free `count_tokens` endpoint) does the counting. It
-  counts text without running a model and doesn't count toward usage limits.
+about a minute and doesn't touch their usage limits: it puts together the same request
+Claude Code would send, without sending it to a model, and Anthropic's own token
+counter counts it, free of charge. Don't describe the mechanics (the local capture
+server, the base URL) unless the user asks.
 
 If counting fails, the report says "estimate" and figures are within about 10%.
 Keep the JSON; step 5 compares against it.
@@ -32,7 +30,10 @@ Keep the JSON; step 5 compares against it.
 ## 2. Show where the tokens go
 
 Open with the per-request total for interactive sessions and the three largest kinds.
-One short paragraph, no tables yet.
+One short paragraph, no tables yet. Then one sentence on usage: how many of the tools
+and skills were used in the window's sessions, and how many times Claude messaged another
+session by name (`ListAgents` calls). Don't count spawned subagents here: `Agent` and
+`SendMessage` are never candidates.
 
 ## 3. Pick the candidates
 
@@ -60,8 +61,9 @@ however expensive; show its usage and let the user decide. Order each group by t
   - `PushNotification` sends a desktop notification, and to the phone while Remote
     Control is connected. Its description is the same size either way, so a user with
     `disableRemoteControl: true` pays for phone text they cannot use.
-  - `ListAgents`: "only for messaging other sessions by name; N calls in the window;
-    subagents you spawn work without it".
+  - `ListAgents` looks up other running sessions so Claude can message one by name.
+    With 0 calls, recommend removing it without hedging: subagents the user spawns,
+    and `SendMessage` to them, keep working.
   - `DesignSync` syncs a component library with a claude.ai/design project.
   - `ScheduleWakeup` lets Claude pause and resume itself later; `/loop` uses it.
 - Rank deferred tools last: interactive sessions send only their names.
@@ -103,19 +105,30 @@ however expensive; show its usage and let the user decide. Order each group by t
   descriptions and the built-in git instructions. Say it is the one cut that can change
   behaviour, and offer a short `~/.claude/rules/` file with the dropped lines the user
   wants back (about 200 tokens).
-- **Built-in git instructions** (`includeGitInstructions: false`), a separate cut
-  whether or not the short prompt is on. It removes the commit and pull-request steps
-  from the Bash tool (about 2,200 tokens with the full prompt, about 150 with the short
-  one) and the git status snapshot of the current repo added to every session (its
-  size depends on the repo: branch, changed files, recent commits). Claude still runs
-  git; it loses Anthropic's commit-message and PR checklist. Offer a prompt the user
-  can give their agent to write a short `~/.claude/rules/git.md` in their own
-  conventions (branch naming, commit style, what never to force-push).
-- **Explore/Plan agents** (`CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1`). If they were
-  spawned, explain: Explore is a read-only search agent, Plan does plan-mode research,
-  and Explore now runs on the main model, so it saves nothing over general-purpose. The
-  user can ask their agent to write a read-only agent on a cheaper model instead. If
-  never spawned, one line.
+- **Built-in git instructions** (`includeGitInstructions: false`). Both parts are
+  added by Claude Code itself; the one setting removes both:
+  - the commit and pull-request steps in the Bash tool: about 2,200 tokens with the
+    full prompt, about 150 with the short one;
+  - the git status snapshot added to the first message of each session in a repo:
+    branch, git user, `git status --short` (capped at 2,000 characters) and the last 5
+    commits. About 200 tokens in a clean repo, up to about 1,500 in a busy one; file
+    paths cost about one token per two characters. It is taken once and never
+    refreshed. On the author's machine, with the snapshot present, Claude still ran
+    `git status`, `log` or `branch` itself in 3 of 4 sessions, and in a third of them
+    within its first 5 requests.
+  Give the measured saving and say it varies with the repo it was measured in. In a
+  clean repo the saving is small; say so, and leave the choice to the user. The
+  short prompt and this setting are independent: the short prompt shortens the git
+  steps and keeps the snapshot; this setting removes both. There is no setting for
+  the snapshot alone.
+  Reason to tick it: the snapshot goes stale at the first edit or commit, and Claude
+  runs `git status` or `git log` itself whenever it needs the current state.
+- **Explore/Plan agents** (`CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1`). Explore is a
+  read-only search agent and Plan does plan-mode research. Explore now runs on the
+  main model, so it saves nothing over the general-purpose agent. Reason to tick it,
+  in the option itself: a user who wants a cheap search agent can ask Claude to write
+  a read-only "scout" agent on Haiku (one line in the agent list), which costs
+  less per search than Explore does now. If they were spawned, say how often.
 
 **Background requests**: always suggest the ones that are off, whatever the usage.
 Each re-sends the whole conversation as a side request, which counts against usage;
@@ -127,10 +140,23 @@ the probe cannot see them. Run
   the CLI doesn't log them). Many users say they never see one: the request still
   runs, but the model is told to stay silent unless the next step is obvious, and a
   filter drops answers that are too short, too long, evaluative or several sentences,
-  so the user pays for suggestions that never show. If `suggestionsServerOn` is
-  `false`, the account doesn't generate them and the switch saves nothing; say so.
+  so the user pays for suggestions that never show. `promptSuggestionEnabled: false`
+  turns them off.
 - `awaySummaryEnabled: false`: the recap written when the terminal loses focus.
   `/recap` still works on demand. On the author's machine recaps were 1.5–2% of usage.
+
+**An extra, next to the background requests**: apply-patch. It adds a rule rather than
+removing anything, so offer it as a suggestion. Offer it when `editScripts.scripts` is
+above 0 and `editScripts.patches` is 0 (a user with patches already has it). Claude
+often batches literal edits by writing a Python or Node script (`s.replace(old, new)`,
+then a write). A failed script stays in context with its error, and so does the retry.
+apply-patch takes the same edits as SEARCH/REPLACE blocks and checks every block before
+writing, so a failed patch changes nothing. Say: "Claude wrote N edit scripts in the
+last 30 days and F failed (X%, against Y% for the Edit tool). A tool for this would
+have saved about S% of your usage, after the ~130-token rule it needs." Take N, F and
+S from `editScripts` (`scripts`, `failed`, `share`), Y from `editsFailed / edits`.
+Ticking it installs this repo's apply-patch; the user can instead ask Claude to write
+their own.
 
 **Do not suggest** `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`. It saves little more than
 `user-invocable-only` and makes every bundled command untypable. Mention it only if
@@ -140,27 +166,47 @@ Report large `CLAUDE.md` and rules files with their size. Never edit them here.
 
 ## 4. Ask, then apply
 
-Ask with AskUserQuestion, one multi-select question per group: Tools, Skills and
-plugins, Prompt switches, Background requests. Skip empty groups. A question takes
-at most 4 options, so bundle items that share a reason into one option:
-- Tools: Artifact · PowerShell · "Unused scheduling: Cron tools, ScheduleWakeup" ·
-  "Other unused tools: RemoteTrigger, DesignSync, PushNotification, …".
-- Skills: "Hide from Claude, keep typable: claude-api, code-review" · "Off, never
-  used: …" · "claude.ai skills" · one option per unused plugin.
+Ask with AskUserQuestion, multi-select. A question takes at most 4 options and a call
+at most 4 questions.
+- **Tools: one option per tool or switch**, each with its own explanation, split
+  across as many questions as needed ("Tools (1 of 3)", …), largest first. The Cron
+  tools count as one option because one switch removes them.
+- **Skills: bundled**, since each is small and they share a reason: "Hide from Claude,
+  keep typable: claude-api, code-review" · "Off, never used: …" · "claude.ai skills" ·
+  one option per unused plugin. The description lists every skill with its own
+  saving (`run −264 · update-config −235 · …`). End the question with: "To keep
+  one of them, pick the option and name the skill in Other."
+- Prompt switches, background requests and apply-patch: one option each; apply-patch
+  goes in the same question as the background requests.
+
+Fill the first call with Tools and Skills questions, then ask the rest in a second
+call. Skip empty groups.
 
 Each option:
-- label: the change and its total saving, `Unused scheduling (−3,582)`
-- description: every item with its own saving and uses (`run −264 · update-config
-  −235 · …`), then what the user loses
-
-End a question that has a bundle with: "To keep something inside a bundle, pick it
-and name what to keep in Other." If a group still has more than 4 options, ask a
-second round for the rest.
+- label: the change and its saving, `DesignSync (−3,322)`
+- description: its uses, counted in sessions ("used in 3 of 161 sessions, 41 calls";
+  "You've never used claude.ai/design sync"), what it does, and what the user loses
 
 Apply only what was picked:
 - `~/.claude/settings.json`: read it first and keep every other key. Bare names go in
   `permissions.deny`, env switches in `env`, other keys at the top level.
 - Skill frontmatter and agent files: edit in place.
+- apply-patch: copy `${CLAUDE_SKILL_DIR}/../../tools/apply-patch/apply-patch.mjs` to
+  `~/.claude/scripts/apply-patch/apply-patch.mjs`, then write
+  `~/.claude/rules/apply-patch.md` with the rule below. If the script isn't there (the
+  skill was installed without its repo), skip the copy and suggest the user ask Claude
+  to write a script that applies SEARCH/REPLACE blocks only after every block matches
+  exactly once.
+
+  ```markdown
+  ## Batch edits
+  For literal edits in one or several files, run apply-patch instead of writing a
+  Python or Node replace script: `node ~/.claude/scripts/apply-patch/apply-patch.mjs
+  <<'PATCH'`, then `*** Update: <path>` and `<<<<<<< SEARCH` / `=======` /
+  `>>>>>>> REPLACE` blocks. It checks every block before writing, so a failed patch
+  changes nothing. For regex, JSON or line-range edits use sed, a script or Edit.
+  ```
+  On Windows add: "Patches over about 5 KB go in a file, passed with `--file <path>`."
 
 Changes apply from the next session. Deny rules also apply at once, and changing the
 tool list mid-session re-writes the whole prompt cache once, so suggest a new session.
@@ -179,7 +225,10 @@ of B: N fewer (P%)." Then:
   plan limits weigh cached tokens, so the range covers cache reads counted free, at API
   price, and at full price;
 - the background requests turned off, with their share, as a separate line;
-- what turning each change back on costs, from the report's restore table.
+- what turning each change back on costs, from the report's restore table;
+- tips, last. If `idleRewriteShare` is 1% or more: "N% of your usage in the last 30
+  days went to writing long conversations back into the cache after breaks of over an
+  hour, when it had expired. After a break, `/clear` first if the next task is new."
 
 If a change saved nothing, say so and offer to undo it.
 
