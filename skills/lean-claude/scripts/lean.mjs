@@ -227,17 +227,23 @@ export async function usage(days) {
 // How much further the usage limit goes once `saved` tokens leave every request.
 // Replays the last `days` of transcripts: each API call either read its prefix from
 // the prompt cache or wrote it, and the saved tokens would have been read or written
-// the same way. Token kinds are weighted by API price (input 1, cache write 1.25 or 2,
-// cache read 0.1, output 5), on the assumption that plan limits weigh them alike.
+// the same way. Anthropic doesn't publish how plan limits weigh token kinds, so the
+// share is computed three ways: at API prices (input 1, cache write 1.25 or 2, cache
+// read 0.1, output 5), with cache reads free, and with cache reads at full price.
+
+const WEIGHTS = { price: 0.1, readsFree: 0, readsFull: 1 };
+const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
 
 export async function stretch(saved, days = 30) {
   const cutoff = Date.now() - days * 864e5;
   const root = join(CLAUDE_DIR, 'projects');
   const seen = new Set();
-  let total = 0, cut = 0, calls = 0, turns = 0, turnContext = 0;
+  const total = { price: 0, readsFree: 0, readsFull: 0 }, cut = { ...total };
+  let calls = 0, suggestions = 0, suggestionCost = 0;
   if (!existsSync(root)) return null;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
+    let replies = 0;
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('"usage"')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
@@ -248,16 +254,39 @@ export async function stretch(saved, days = 30) {
       const w1 = cc.ephemeral_1h_input_tokens ?? (u.cache_creation ? 0 : u.cache_creation_input_tokens ?? 0);
       const w5 = cc.ephemeral_5m_input_tokens ?? 0;
       const read = u.cache_read_input_tokens ?? 0;
-      total += (u.input_tokens ?? 0) + 1.25 * w5 + 2 * w1 + 0.1 * read + 5 * (u.output_tokens ?? 0);
-      cut += read >= saved ? 0.1 * saved : 2 * saved;
+      const input = u.input_tokens ?? 0, output = u.output_tokens ?? 0, written = u.cache_creation_input_tokens ?? 0;
+      for (const [k, r] of Object.entries(WEIGHTS)) {
+        total[k] += input + 1.25 * w5 + 2 * w1 + r * read + 5 * output;
+        cut[k] += read >= saved ? r * saved : 2 * saved;
+      }
       calls++;
-      if (m.stop_reason === 'end_turn' && !e.isSidechain) { turns++; turnContext += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + read; }
+      if (e.isSidechain) continue;
+      replies++;
+      // A prompt suggestion runs after a turn ends, from the third reply on, and only
+      // when the turn left the cache warm. It reads the whole context from cache and
+      // writes nothing. The CLI doesn't log them, so this is an upper bound: it also
+      // counts turns that ended while the terminal was unfocused.
+      if (m.stop_reason === 'end_turn' && replies >= 2 && input + output + written <= SUGGESTION_GATE) {
+        suggestions++;
+        suggestionCost += input + written + read;
+      }
     }
   }
-  if (!total) return null;
-  // A prompt suggestion reads the whole context once per turn; the CLI does not log
-  // them, so this is an upper bound.
-  return { days, calls, share: cut / total, stretch: total / (total - Math.min(cut, total * 0.99)), suggestionShareMax: (0.1 * turnContext) / total };
+  if (!total.price) return null;
+  // Suggestions only run while the server-side flag is on for this account.
+  let flag = null;
+  try {
+    const cfg = JSON.parse(readFileSync(process.env.CLAUDE_CONFIG_DIR ? join(CLAUDE_DIR, '.claude.json') : join(homedir(), '.claude.json'), 'utf8'));
+    flag = cfg.cachedGrowthBookFeatures?.tengu_chomp_inflection ?? null;
+  } catch {}
+  const pct = (k) => cut[k] / total[k];
+  const further = (k) => total[k] / (total[k] - Math.min(cut[k], total[k] * 0.99)) - 1;
+  return {
+    days, calls, suggestions, suggestionsServerOn: flag,
+    share: pct('price'), stretch: further('price') + 1,
+    range: Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, { share: pct(k), further: further(k) }])),
+    suggestionShareMax: (0.1 * suggestionCost) / total.price,
+  };
 }
 
 // ---------- claude.ai skills ----------
@@ -297,6 +326,7 @@ const has = (req, re) => (req.tools ?? []).some((t) => re.test(t.name ?? ''));
 const SWITCHES = [
   { id: 'artifact', name: 'Artifact off', how: 'settings enableArtifact: false', on: (s) => s.enableArtifact === false || s.disableArtifact === true, applies: (req) => has(req, /^Artifact/), patch: { enableArtifact: false }, tools: /^Artifact/ },
   { id: 'simple-prompt', name: 'Short system prompt', how: 'env CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1', on: (s) => envOn(s, 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT'), applies: () => true, patch: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '1' } }, revert: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '0' } } },
+  { id: 'git', name: 'Built-in git instructions off', how: 'settings includeGitInstructions: false', on: (s) => s.includeGitInstructions === false, applies: (req) => has(req, /^Bash$/), patch: { includeGitInstructions: false }, revert: { includeGitInstructions: true } },
   { id: 'powershell', name: 'PowerShell tool off (Windows)', how: 'env CLAUDE_CODE_USE_POWERSHELL_TOOL=0', on: (s) => envOn(s, 'CLAUDE_CODE_USE_POWERSHELL_TOOL', '0'), applies: (req) => process.platform === 'win32' && has(req, /^PowerShell$/), patch: { env: { CLAUDE_CODE_USE_POWERSHELL_TOOL: '0' } }, tools: /^PowerShell$/, windows: true },
   { id: 'cron', name: 'Cron tools off (/loop stops working)', how: 'env CLAUDE_CODE_DISABLE_CRON=1', on: (s) => envOn(s, 'CLAUDE_CODE_DISABLE_CRON'), applies: (req) => has(req, /^Cron/), patch: { env: { CLAUDE_CODE_DISABLE_CRON: '1' } }, tools: /^Cron/ },
   { id: 'claude-ai-skills', name: 'claude.ai skill sync off', how: 'settings syncClaudeAiSkills: false', on: (s) => s.syncClaudeAiSkills === false, applies: () => true, patch: { syncClaudeAiSkills: false }, revert: { syncClaudeAiSkills: true } },

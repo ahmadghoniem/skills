@@ -43,9 +43,7 @@ however expensive; show its usage and let the user decide. Order each group by t
 - **Artifact** (`enableArtifact: false`) removes Artifact, ArtifactComments and
   ArtifactData, together the largest item on most setups. Worth keeping only for
   someone who often shares pages on claude.ai and uses their comments or stored data.
-  Without it, Claude writes a local HTML file; to share one now and then, Cloudflare
-  Drop (cloudflare.com/drop) turns a dragged-in file into a public link, for an hour or
-  permanently with a free account.
+  Without it, Claude writes a local HTML file the user can open or share themselves.
 - **PowerShell** (Windows only, `CLAUDE_CODE_USE_POWERSHELL_TOOL=0`). A second shell
   next to Bash. With Git Bash installed, Bash does the same work, and when a Windows
   cmdlet is needed Claude runs it from Bash with `powershell.exe -Command`, so nothing
@@ -102,9 +100,17 @@ however expensive; show its usage and let the user decide. Order each group by t
   for cases that can't happen, default to no comments, watch for injection and XSS,
   test UI changes in a browser, answer exploratory questions briefly before
   implementing, make independent tool calls in parallel. It also shortens tool
-  descriptions and the built-in git instructions (to about 110 tokens). Say it is the
-  one cut that can change behaviour, and offer a short `~/.claude/rules/` file with the
-  dropped lines the user wants back (about 200 tokens).
+  descriptions and the built-in git instructions. Say it is the one cut that can change
+  behaviour, and offer a short `~/.claude/rules/` file with the dropped lines the user
+  wants back (about 200 tokens).
+- **Built-in git instructions** (`includeGitInstructions: false`), a separate cut
+  whether or not the short prompt is on. It removes the commit and pull-request steps
+  from the Bash tool (about 2,200 tokens with the full prompt, about 150 with the short
+  one) and the git status snapshot of the current repo added to every session (its
+  size depends on the repo: branch, changed files, recent commits). Claude still runs
+  git; it loses Anthropic's commit-message and PR checklist. Offer a prompt the user
+  can give their agent to write a short `~/.claude/rules/git.md` in their own
+  conventions (branch naming, commit style, what never to force-push).
 - **Explore/Plan agents** (`CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1`). If they were
   spawned, explain: Explore is a read-only search agent, Plan does plan-mode research,
   and Explore now runs on the main model, so it saves nothing over general-purpose. The
@@ -118,7 +124,11 @@ the probe cannot see them. Run
 - `promptSuggestionEnabled: false`: the greyed-out next prompt in the input box. Each
   one reads the whole context with the main model after a turn. Give
   `suggestionShareMax` as "up to N% of your usage in the last 30 days" (upper bound:
-  the CLI skips some and doesn't log them).
+  the CLI doesn't log them). Many users say they never see one: the request still
+  runs, but the model is told to stay silent unless the next step is obvious, and a
+  filter drops answers that are too short, too long, evaluative or several sentences,
+  so the user pays for suggestions that never show. If `suggestionsServerOn` is
+  `false`, the account doesn't generate them and the switch saves nothing; say so.
 - `awaySummaryEnabled: false`: the recap written when the terminal loses focus.
   `/recap` still works on demand. On the author's machine recaps were 1.5–2% of usage.
 
@@ -140,9 +150,12 @@ at most 4 options, so bundle items that share a reason into one option:
 
 Each option:
 - label: the change and its total saving, `Unused scheduling (−3,582)`
-- description: the items with their uses, then what the user loses
+- description: every item with its own saving and uses (`run −264 · update-config
+  −235 · …`), then what the user loses
 
-If a group still has more than 4 options, ask a second round for the rest.
+End a question that has a bundle with: "To keep something inside a bundle, pick it
+and name what to keep in Other." If a group still has more than 4 options, ask a
+second round for the rest.
 
 Apply only what was picked:
 - `~/.claude/settings.json`: read it first and keep every other key. Bare names go in
@@ -161,8 +174,10 @@ Lead with the result in one sentence: "Every request now starts with A tokens in
 of B: N fewer (P%)." Then:
 - a table of each change and its actual saving, largest first;
 - the usage limit: "Over the last 30 days the removed part was S% of your usage, so the
-  same limit should go about X% further." Say it is an estimate: it assumes plan limits
-  weigh tokens the way API prices do;
+  same limit should go about X% further." Take S and X from `share` and `stretch`, and
+  give the low and high `further` in `range` in brackets. Anthropic doesn't publish how
+  plan limits weigh cached tokens, so the range covers cache reads counted free, at API
+  price, and at full price;
 - the background requests turned off, with their share, as a separate line;
 - what turning each change back on costs, from the report's restore table.
 
