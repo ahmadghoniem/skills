@@ -15,6 +15,15 @@ if (argvDump) {
   }
 }
 
+const stdinDump = process.env.AGY_STUB_STDIN;
+if (stdinDump && args.includes('--input-format')) {
+  try {
+    writeFileSync(stdinDump, readFileSync(0, 'utf8'), 'utf8');
+  } catch {
+    // noop
+  }
+}
+
 if (process.env.AGY_STUB_FAIL === '1') {
   process.stderr.write('stub: forced failure\n');
   process.exit(1);

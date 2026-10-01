@@ -1,5 +1,12 @@
 import { once } from 'node:events';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -17,6 +24,19 @@ const MODEL_CACHE_MAX_AGE_DAYS = 7;
 
 const SIDECAR_INSTRUCTION =
   'Read the file at %PATH% in full and carry out that task exactly.';
+
+/**
+ * Longest message sent on stdin. agy cuts a longer one short without an error
+ * (a 324,000-char message kept about 191,000), so past this the message goes
+ * to the sidecar file instead.
+ */
+export const MAX_STDIN_CHARS = 150_000;
+
+/**
+ * Default flash family. 3.8 used 1.4 to 3.2 times the input tokens of 3.7 on
+ * the same replayed jobs, so 3.7 wins while agy lists it.
+ */
+export const PREFERRED_FLASH = 'gemini-3.7-flash';
 
 /**
  * True when the model id already encodes an effort level. Sending `--effort`
@@ -75,24 +95,45 @@ export function formatPrintTimeout(seconds) {
 }
 
 /**
- * Generate the `--print=` payload directing agy to read the sidecar file.
- *
- * The sidecar file is written to `~/.cad/jobs/<repo-hash>/<job>.prompt.md`,
- * which is outside the directory passed to `--add-dir`, and agy reads it
- * anyway.
- *
- * A custom agent does not load the repository's AGENTS.md or CLAUDE.md, so
- * the ones that exist are named here; asking agy to look for them instead
- * costs a failed tool call per missing file.
+ * Generate the `--print=` payload directing agy to read the sidecar file,
+ * used only for a message too long for stdin. The sidecar file is written to
+ * `~/.cad/jobs/<repo-hash>/<job>.prompt.md`, which is outside the directory
+ * passed to `--add-dir`, and agy reads it anyway.
  *
  * @param {string} absPromptPath
- * @param {string[]} [readFirst] absolute paths of convention files to read first
  * @returns {string}
  */
-export function sidecarPrint(absPromptPath, readFirst = []) {
-  const task = SIDECAR_INSTRUCTION.replace('%PATH%', absPromptPath);
-  if (readFirst.length === 0) return task;
-  return `First read ${readFirst.join(' and ')}: this repository's rules, which you follow. ${task}`;
+export function sidecarPrint(absPromptPath) {
+  return SIDECAR_INSTRUCTION.replace('%PATH%', absPromptPath);
+}
+
+/**
+ * The first message of a fresh job: a short environment note, the
+ * repository's rules, then the brief. A custom agent loads no AGENTS.md or
+ * CLAUDE.md itself, and inlining the text saves the tool call that reads it.
+ *
+ * @param {{workspace: string, isGit: boolean, rules?: {name: string, text: string}|null, task: string}} opts
+ * @returns {string}
+ */
+export function taskMessage({ workspace, isGit, rules, task }) {
+  const parts = [
+    `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`,
+  ];
+  if (rules?.text?.trim()) {
+    parts.push(`# Repository rules (${rules.name}), which you follow\n\n${rules.text.trim()}`);
+  }
+  parts.push(`# Task\n\n${task}`);
+  return parts.join('\n\n');
+}
+
+/**
+ * One stream-json input line carrying `text` as a user turn.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function stdinLine(text) {
+  return `${JSON.stringify({ event: 'user', message: { content: text } })}\n`;
 }
 
 /**
@@ -114,16 +155,88 @@ export function installAgent(name) {
 }
 
 /**
+ * Server name of the plugin's bash tool in agy's MCP config. agy names an MCP
+ * tool `mcp_<server>_<tool>`, so the model sees `mcp_agy_bash`.
+ */
+export const BASH_SERVER = 'agy';
+
+/** Earlier names of the same server, moved to `BASH_SERVER` on install. */
+const LEGACY_BASH_SERVERS = ['agybash'];
+
+/** agy's global MCP config, read by every agy session. */
+export function mcpConfigPath() {
+  return join(homedir(), '.gemini', 'config', 'mcp_config.json');
+}
+
+/**
+ * The bash server's entry, pointing at this install's `mcp/bash.mjs`.
+ * `timeoutSeconds` sits above bash.mjs's 20-min cap so agy never cuts a call
+ * short; `eager` lists the tool directly instead of behind `call_mcp_tool`.
+ *
+ * @returns {object}
+ */
+export function bashServerEntry() {
+  const script = fileURLToPath(new URL('../../mcp/bash.mjs', import.meta.url)).replace(/\\/g, '/');
+  return {
+    command: 'node',
+    args: [script],
+    timeoutSeconds: 1260,
+    tools: { bash: { eager: true } },
+  };
+}
+
+/**
+ * Add or update the bash server in agy's global MCP config, keeping every
+ * other server and any extra keys on the entry (such as `env`), and renaming
+ * an entry left under a legacy name. Writes only
+ * when something changed. Throws when the file exists but is not valid JSON,
+ * rather than overwrite it.
+ *
+ * @param {string=} configPath
+ * @returns {'added'|'updated'|'unchanged'}
+ */
+export function installBashServer(configPath = mcpConfigPath()) {
+  let config = {};
+  if (existsSync(configPath)) {
+    const raw = readFileSync(configPath, 'utf8');
+    if (raw.trim()) {
+      try {
+        config = JSON.parse(raw);
+      } catch (err) {
+        throw new Error(`${configPath} is not valid JSON, left it unchanged: ${err.message}`);
+      }
+    }
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error(`${configPath} is not a JSON object, left it unchanged`);
+  }
+  const servers =
+    config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
+  const legacy = LEGACY_BASH_SERVERS.filter((name) => name in servers);
+  const prev = servers[BASH_SERVER] ?? servers[legacy[0]];
+  const next = { ...(prev && typeof prev === 'object' ? prev : {}), ...bashServerEntry() };
+  if (!legacy.length && prev && JSON.stringify(prev) === JSON.stringify(next)) return 'unchanged';
+  const kept = { ...servers };
+  for (const name of legacy) delete kept[name];
+  config.mcpServers = { ...kept, [BASH_SERVER]: next };
+  mkdirSync(dirname(configPath), { recursive: true });
+  const tmp = `${configPath}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  renameSync(tmp, configPath);
+  return prev ? 'updated' : 'added';
+}
+
+/**
  * @typedef {Object} BuildArgsInput
  * @property {string=} addDir              Absolute workspace path. Mandatory on fresh.
- * @property {string} promptPath           Absolute sidecar path.
+ * @property {string=} print               `--print` text; omitted, the message
+ *                                         goes on stdin as stream-json.
  * @property {number=} printTimeoutSec
  * @property {string=} logFile
  * @property {string=} model
  * @property {string=} effort
  * @property {string=} agent               Custom agent name; fresh dispatch only
  *                                         (a resumed conversation keeps its agent).
- * @property {string[]=} readFirst         Convention files to name in `--print`.
  * @property {boolean=} sandbox
  * @property {string=} conversationId      Resume a specific conversation.
  * @property {boolean=} continueLatest     Resume agy's most recent conversation
@@ -139,7 +252,11 @@ export function installAgent(name) {
  * projects; `--project` binds neither paths nor IDs).
  *
  * Resume omits `--add-dir` and specifies `--conversation <uuid>` or `--continue`.
- * `--print=<text>` is attached last.
+ *
+ * The message goes on stdin (`--input-format stream-json`), which `runHeadless`
+ * closes after one line; agy exits once that turn ends. With `opts.print` it
+ * goes in `--print=<text>` instead, attached last. `--disable-slash-commands`
+ * stops a message that starts with `/usage` or similar from running a command.
  *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
@@ -149,12 +266,11 @@ export function buildArgs(opts) {
   if (!isResume && !opts.addDir) {
     throw new Error('--add-dir <absolute-path> is required for a fresh dispatch');
   }
-  if (!opts.promptPath) {
-    throw new Error('sidecar prompt path is required');
-  }
 
   /** @type {string[]} */
   const args = ['--output-format', 'stream-json'];
+  if (!opts.print) args.push('--input-format', 'stream-json');
+  args.push('--disable-slash-commands');
   if (!isResume) {
     args.push('--add-dir', opts.addDir);
   }
@@ -174,7 +290,7 @@ export function buildArgs(opts) {
     if (opts.conversationId) args.push('--conversation', opts.conversationId);
     else args.push('--continue');
   }
-  args.push(`--print=${sidecarPrint(opts.promptPath, opts.readFirst)}`);
+  if (opts.print) args.push(`--print=${opts.print}`);
   return args;
 }
 
@@ -223,10 +339,11 @@ function versionOf(id) {
 }
 
 /**
- * Pick the newest flash model matching the requested effort from `models`.
- * Because agy encodes effort in the model ID (e.g. `gemini-3.7-flash-low`),
- * selecting the ID applies the effort level. When the newest version lacks the
- * requested effort, its highest-effort ID is selected.
+ * Pick the default model for the requested effort from `models`:
+ * `PREFERRED_FLASH` at that effort when agy lists it, else the newest flash
+ * model at that effort. Because agy encodes effort in the model ID (e.g.
+ * `gemini-3.7-flash-low`), selecting the ID applies the effort level. When the
+ * newest version lacks the requested effort, its highest-effort ID is selected.
  *
  * Falls back to the account default label, then the first model, or null if
  * empty.
@@ -239,6 +356,9 @@ function versionOf(id) {
 export function pickDefaultModel(models, accountDefaultLabel, effort = 'medium') {
   const list = Array.isArray(models) ? models : [];
   if (list.length === 0) return null;
+
+  const preferred = list.find((m) => m.id === `${PREFERRED_FLASH}-${effort}`);
+  if (preferred) return preferred.id;
 
   const flash = list.filter((m) => /flash/i.test(m.id));
   if (flash.length > 0) {
@@ -471,6 +591,7 @@ export async function refreshModelCache() {
  * @property {string=} cwd
  * @property {number=} timeoutSec          Outer watchdog (print-timeout + 60s grace).
  * @property {string} logPath              NDJSON capture path.
+ * @property {string=} input               Written to stdin, which is then closed.
  * @property {(ev: Record<string, unknown>) => void=} onEvent
  * @property {(pid: number) => void=} onSpawn
  */
@@ -505,7 +626,9 @@ export function escalateSigkill(child) {
 }
 
 /**
- * Spawn agy in headless mode. Closes stdin to prevent `agy -p` hangs.
+ * Spawn agy in headless mode. Writes `opts.input` to stdin and closes it:
+ * with `--input-format stream-json` agy runs a turn per line and exits only
+ * when stdin ends. Without input, stdin is ignored.
  * Appends stdout lines to `logPath` and parses JSON events.
  *
  * @param {DelegateOpts} opts
@@ -515,12 +638,18 @@ export async function runHeadless(opts) {
   const bin = await resolveBin();
   const child = spawnDirect(bin, opts.args, {
     cwd: opts.cwd ?? process.cwd(),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [opts.input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     env: process.env,
     windowsHide: true,
   });
   if (!child.stdout || !child.stderr) {
     throw new Error('agy spawn failed: stdout/stderr not attached');
+  }
+  if (child.stdin) {
+    // An agy that exits early (bad flag, failed spawn) closes the pipe first;
+    // its own exit code and stderr report that, not this EPIPE.
+    child.stdin.on('error', () => {});
+    child.stdin.end(opts.input, 'utf8');
   }
   if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
     opts.onSpawn(child.pid);

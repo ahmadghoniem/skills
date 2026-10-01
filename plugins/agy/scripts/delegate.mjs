@@ -3,16 +3,21 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
+  MAX_STDIN_CHARS,
   WATCHDOG_GRACE_SEC,
   buildArgs,
   cachedModels,
   cachedToolVersion,
   familyLevels,
   installAgent,
+  installBashServer,
   modelCacheStale,
   refreshModelCache,
   resolveDefaultModel,
   runHeadless,
+  sidecarPrint,
+  stdinLine,
+  taskMessage,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
@@ -29,7 +34,6 @@ import {
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
 import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
-import { run } from './lib/run.mjs';
 import { latestRelease, updateNotice } from './update.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
@@ -38,23 +42,27 @@ import { latestRelease, updateNotice } from './update.mjs';
 // default unless overridden by `--effort`.
 const DEFAULT_EFFORT = 'medium';
 
-const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue', 'read-only'];
+const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--read-only] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
 
 /**
- * `git status` lines, untracked files included, or null outside a git repo.
+ * The repository's rules to inline in the first message: AGENTS.md, or
+ * CLAUDE.md when AGENTS.md is missing or empty.
  *
  * @param {string} root
- * @returns {Promise<Set<string>|null>}
+ * @returns {{name: string, text: string}|null}
  */
-async function workspaceState(root) {
-  const res = await run('git', ['status', '--porcelain', '--untracked-files=all'], {
-    cwd: root,
-    timeoutMs: 10_000,
-  });
-  if (res.exitCode !== 0) return null;
-  return new Set(res.stdout.split('\n').filter((l) => l.trim()));
+function repoRules(root) {
+  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+    try {
+      const text = readFileSync(join(root, name), 'utf8');
+      if (text.trim()) return { name, text };
+    } catch {
+      // try the next one
+    }
+  }
+  return null;
 }
 
 /**
@@ -98,7 +106,6 @@ function parseFlags(argv) {
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
     timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
     sandbox: flags['sandbox'] === true,
-    readOnly: flags['read-only'] === true,
     help: flags['help'] === true,
     conversation,
     continueLatest,
@@ -133,8 +140,19 @@ function isModelCached(model, models) {
  * @param {string} root
  */
 async function runAndRecord(flags, prompt, jobId, root) {
+  // A resumed conversation already has the environment note and the rules.
+  const message = isResume(flags)
+    ? prompt
+    : taskMessage({
+        workspace: root,
+        isGit: existsSync(join(root, '.git')),
+        rules: repoRules(root),
+        task: prompt,
+      });
+  // Kept for the record, and read by agy when the message is too long for stdin.
   const absPrompt = resolvePath(promptPath(root, jobId));
-  writeFileSync(absPrompt, prompt, 'utf8');
+  writeFileSync(absPrompt, message, 'utf8');
+  const viaFile = message.length > MAX_STDIN_CHARS;
 
   // `buildArgs` drops `--effort` when the model id already encodes a level.
   // Any other mismatch goes to agy, whose error names the levels the model has.
@@ -145,31 +163,33 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const agent =
     isResume(flags) || process.env.CAD_AGY_AGENT === 'default'
       ? undefined
-      : flags.readOnly ? 'agy-delegate-readonly' : 'agy-delegate';
+      : 'agy-delegate';
   if (agent) installAgent(agent);
-  const before = flags.readOnly ? await workspaceState(root) : null;
+  // agy reads its MCP servers from the global config on every start, resume
+  // included, so the bash tool needs no per-run flag.
+  try {
+    installBashServer();
+  } catch (err) {
+    process.stderr.write(`Warning: bash tool not installed: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
 
   updateJob(root, jobId, {
     pid: process.pid,
     model: flags.model ?? '',
     effort,
     promptPath: absPrompt,
-    readOnly: flags.readOnly || undefined,
     sandbox: flags.sandbox || undefined,
     briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });
 
   const args = buildArgs({
     addDir: isResume(flags) ? undefined : root,
-    promptPath: absPrompt,
+    print: viaFile ? sidecarPrint(absPrompt) : undefined,
     printTimeoutSec: flags.timeout,
     logFile: agyLogPath(root, jobId),
     model: flags.model,
     effort,
     agent,
-    readFirst: agent
-      ? ['AGENTS.md', 'CLAUDE.md'].map((f) => join(root, f)).filter((p) => existsSync(p))
-      : undefined,
     sandbox: flags.sandbox,
     conversationId: flags.conversation,
     continueLatest: flags.continueLatest && !flags.conversation,
@@ -177,6 +197,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
 
   const result = await runHeadless({
     args,
+    input: viaFile ? undefined : stdinLine(message),
     cwd: root,
     timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
     logPath: rawLogPathFor(root, jobId),
@@ -199,9 +220,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
   });
 
   const summary = summariseEvents(result.events);
-
-  const after = before ? await workspaceState(root) : null;
-  const readOnlyWrites = after ? [...after].filter((l) => !before.has(l)) : [];
 
   // agy 1.1.28+ stops itself at the print timeout and returns partial output
   // with status SUCCESS and exit 0 — the only trace is this stderr line.
@@ -238,7 +256,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
     toolErrors: summary.toolErrors?.length ? summary.toolErrors : undefined,
     compactions: summary.compactions || undefined,
     deniedActions: summary.deniedActions?.length ? summary.deniedActions : undefined,
-    readOnlyWrites: readOnlyWrites.length ? readOnlyWrites : undefined,
   });
 
   // Sole write site for detected papercuts. `/agy:result` evaluates anomalies

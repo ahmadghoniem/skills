@@ -39,7 +39,6 @@ function firstLine(message) {
  * @property {string} [timedOutAfter]
  * @property {number} [compactions]
  * @property {string[]} [deniedActions]
- * @property {string[]} [readOnlyWrites] `git status` lines that appeared during a `--read-only` run
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
@@ -59,7 +58,6 @@ export const WARNING_IDS = Object.freeze([
   "tool-errors",
   "compaction",
   "denied",
-  "read-only",
   "agy-error",
   "watchdog",
   "timeout",
@@ -193,15 +191,6 @@ export function anomalies(job) {
       id: 'denied',
       line: `agy skipped ${denied.length} action${denied.length === 1 ? '' : 's'} it was not allowed to take:`,
       detail: denied.map((d) => `  ${d}`),
-    });
-  }
-
-  const written = Array.isArray(job.readOnlyWrites) ? job.readOnlyWrites : [];
-  if (written.length > 0) {
-    out.push({
-      id: 'read-only',
-      line: 'this read-only run changed files in the workspace:',
-      detail: written.map((f) => `  ${f}`),
     });
   }
 

@@ -7,6 +7,10 @@ describe('kebabSlug', () => {
     expect(kebabSlug('Add retry to FetchUser')).toBe('add-retry-to-fetchuser');
   });
 
+  it('cuts a first word longer than the cap', () => {
+    expect(kebabSlug('x'.repeat(500))).toBe('x'.repeat(40));
+  });
+
   it('strips punctuation and collapses separators', () => {
     expect(kebabSlug('Fix the API (retry)!')).toBe('fix-the-api-retry');
   });

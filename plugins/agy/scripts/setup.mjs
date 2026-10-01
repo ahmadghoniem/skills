@@ -3,7 +3,9 @@ import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import {
   cachedModels,
   familyLevels,
+  installBashServer,
   listModels,
+  mcpConfigPath,
   readAccountDefaultLabel,
   refreshModelCache,
   resolveBin,
@@ -95,6 +97,15 @@ async function baseCheck() {
   // this cache without fetching.
   writeModelCache(models, defaultLabel, versionText, bin);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
+
+  try {
+    const state = installBashServer();
+    lines.push(`- ✓ bash tool ${state} in \`${mcpConfigPath().replace(/\\/g, '/')}\``);
+  } catch (err) {
+    lines.push(`- ✗ bash tool: ${err instanceof Error ? err.message : String(err)}`);
+    process.stdout.write(lines.join('\n') + '\n');
+    return 1;
+  }
   process.stdout.write(lines.join('\n') + '\n');
   return 0;
 }

@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--read-only] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -25,11 +25,13 @@ mid-run.
 Every brief has these sections, in this order:
 
 1. **Goal**: one or two sentences. What is the outcome, and what is it a step of.
-2. **Repo context**: one or two lines. Stack, and which convention file to follow
-   (`AGENTS.md`, `CLAUDE.md`) if the repo has one.
+2. **Repo context**: one or two lines of stack. The plugin already sends agy the repo's
+   `AGENTS.md` (or `CLAUDE.md`), so do not repeat or point to it.
 3. **Acceptance criteria**: one to five concrete, checkable bullets.
-4. **Files to touch**: an explicit list. agy must not wander outside it unless the task
-   cannot predict the list.
+4. **Files to touch**: every file you already know the task needs, as paths, plus the
+   files that show the pattern to follow. Each named path saves agy a search. Do not
+   read the tree to complete the list; when you cannot predict it, say where to look and
+   let agy find the rest.
 5. **How to verify**: the exact command that proves the task is done. Without it agy
    declares "done" on unverified work.
 
@@ -39,13 +41,18 @@ dependencies; if a pre-existing test already fails, report it, do not fix it.
 
 A spec that already lives in the repo is a path in the brief, not a copy.
 
+Do not ask for a list of changed files or a summary of the edits; you read the diff.
+Ask for what the diff cannot show: items agy was unsure about or skipped, problems it
+noticed but did not fix, the result of each check, and any answer the task needs.
+
 One dispatch per coherent slice. Run at most three agy jobs at once.
 
 ## Model and effort
 
-Omit `--model`. The plugin picks the newest **flash** id from the cached `agy models`
-list at the `--effort` you pass (`medium` if you pass none). Pass a model only when the
-user names one. Never invent an id; the ids agy accepts are listed below.
+Omit `--model`. The plugin uses `gemini-3.7-flash` at the `--effort` you pass (`medium`
+if you pass none). Pass `--effort low` for mechanical edits and `--effort high` for work
+that needs more reasoning. Pass a model only when the user names one. Never invent an
+id; the ids agy accepts are listed below.
 
 Models agy accepts right now (family, then the effort levels it takes):
 
@@ -71,10 +78,9 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
-| `--effort <level>` | `low`, `medium`, or `high`. Steers which flash id is picked. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
+| `--effort <level>` | `low`, `medium`, or `high`. Picks the `gemini-3.7-flash` id at that level. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 3600 (60m); the watchdog is that plus 60s grace. |
-| `--read-only` | For analysis and research whose answer comes back in agy's report. agy gets no file-writing tools; its shell commands still run, and any file they change is listed in a ⚠ line. A job that must write a file, even outside the repo, runs without it: writing a long file through the shell cost one eval run 40 minutes. |
-| `--sandbox` | Restricts terminal commands only. Use `--read-only` to keep the repo unchanged. |
+| `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |
 

@@ -450,17 +450,3 @@ describe('compaction and denied lines', () => {
     expect(ids).toEqual(['agy-status', 'compaction', 'denied', 'agy-error', 'resume']);
   });
 });
-
-describe('read-only runs', () => {
-  const base = { id: 'j', status: 'done', agyStatus: 'SUCCESS', exitCode: 0, summary: 'report' };
-
-  it('lists the files a read-only run changed', () => {
-    const out = renderResult({ ...base, readOnly: true, readOnlyWrites: ['?? notes.txt'] });
-    expect(out).toContain('⚠ this read-only run changed files in the workspace:');
-    expect(out).toContain('?? notes.txt');
-  });
-
-  it('stays clean when nothing changed', () => {
-    expect(renderResult({ ...base, readOnly: true })).toBe('report\n');
-  });
-});

@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **A `bash` tool for agy.** `mcp/bash.mjs` serves Git Bash over MCP: it runs in the
+  foreground until the command ends (up to 20 min), where agy's own `run_command` runs
+  PowerShell and backgrounds anything over 10 s. `delegate.mjs` and `/agy:setup` register
+  it as the `agy` server in `~/.gemini/config/mcp_config.json`, keeping the other servers,
+  and rewrite the entry only when its path or settings change. The model sees it directly
+  as `mcp_agy_bash`. The global config reaches resumed conversations too, which a per-run
+  `--add-dir` does not.
+- **`apply-patch` in the bash tool.** The repo's `tools/apply-patch` runs as the
+  `apply-patch` bash function. After a patch that applies, the tool appends the diff of
+  that call's changes.
+
+### Changed
+
+- **One agent.** `agy-delegate` now has only `view_file`, `search_web` and
+  `read_url_content` of its own, plus the bash tool, and edits files with `apply-patch`.
+  It loads no rule files (`excludeDefaultComponents`).
+- **The message goes on stdin.** A fresh job sends an environment note, the repo's
+  `AGENTS.md` (or `CLAUDE.md` when there is no `AGENTS.md`) and the brief as one
+  `--input-format stream-json` line, instead of a `--print` instruction to read a file.
+  Measured: 11 to 13 model calls and 140k to 148k input tokens, against 14 to 15 and 180k.
+  A message over 150,000 chars still goes through the file. `--disable-slash-commands`
+  is always passed.
+- **Default model `gemini-3.7-flash`** at the requested effort, while agy lists it,
+  instead of the newest flash. 3.8 used 1.4 to 3.2 times the input tokens.
+- A task whose first word is longer than 40 characters no longer fails on a job file
+  name too long to open.
+
+### Removed
+
+- **`--read-only`**, the `agy-delegate-readonly` agent and the `read-only` warning.
+
 ## 0.3.0 (agy 1.2.11)
 
 Checked against agy 1.2.11.

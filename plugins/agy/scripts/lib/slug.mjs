@@ -25,7 +25,8 @@ export function kebabSlug(text) {
     parts.push(w);
     len = next;
   }
-  return parts.join('-') || 'task';
+  // A first word past the cap would otherwise make a file name too long to open.
+  return parts.join('-').slice(0, MAX_SLUG_CHARS) || 'task';
 }
 
 /**

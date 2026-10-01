@@ -18,6 +18,8 @@ import {
   resolveDefaultModel,
   runHeadless,
   sidecarPrint,
+  stdinLine,
+  taskMessage,
   writeModelCache,
 } from '../scripts/lib/agy.mjs';
 import { STUB_BIN, ADD_DIR_WORKS } from './helpers.mjs';
@@ -57,17 +59,26 @@ describe('buildArgs', () => {
     logFile: LOG,
   };
 
-  it('fresh dispatch: --add-dir, skip-permissions, --print last', () => {
+  it('fresh dispatch: --add-dir, skip-permissions, message on stdin', () => {
     const args = buildArgs({ ...fresh, model: 'gemini-3.7-flash-low' });
     expect(args[0]).toBe('--output-format');
     expect(args[1]).toBe('stream-json');
+    expect(args[args.indexOf('--input-format') + 1]).toBe('stream-json');
+    expect(args).toContain('--disable-slash-commands');
     expect(args).toContain('--add-dir');
     expect(args[args.indexOf('--add-dir') + 1]).toBe(ADD_DIR);
     expect(args).toContain('--dangerously-skip-permissions');
     expect(args).toContain('--print-timeout');
     expect(args[args.indexOf('--print-timeout') + 1]).toBe('15m');
-    expect(args[args.length - 1]).toBe(`--print=${sidecarPrint(PROMPT)}`);
+    expect(args.some((a) => a.startsWith('--print='))).toBe(false);
     expect(args.some((a) => a === '--effort' || a.startsWith('--effort='))).toBe(false);
+  });
+
+  it('with print: --print last, no --input-format, slash commands still off', () => {
+    const args = buildArgs({ ...fresh, print: sidecarPrint(PROMPT) });
+    expect(args.at(-1)).toBe(`--print=${sidecarPrint(PROMPT)}`);
+    expect(args).not.toContain('--input-format');
+    expect(args).toContain('--disable-slash-commands');
   });
 
   it('never sends --effort when the model id encodes it', () => {
@@ -103,7 +114,6 @@ describe('buildArgs', () => {
 
   it('resume omits --add-dir, adds --conversation', () => {
     const args = buildArgs({
-      promptPath: PROMPT,
       printTimeoutSec: 900,
       logFile: LOG,
       conversationId: 'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
@@ -113,12 +123,11 @@ describe('buildArgs', () => {
     expect(args[args.indexOf('--conversation') + 1]).toBe(
       'b8b3e36f-3fb0-4d55-a0ee-8a839b4b0fe4',
     );
-    expect(args[args.length - 1].startsWith('--print=')).toBe(true);
+    expect(args).toContain('--input-format');
   });
 
   it('resume with continueLatest uses --continue, not a conversation id', () => {
     const args = buildArgs({
-      promptPath: PROMPT,
       continueLatest: true,
     });
     expect(args).toContain('--continue');
@@ -127,10 +136,10 @@ describe('buildArgs', () => {
   });
 
   it('throws when a fresh dispatch is missing --add-dir', () => {
-    expect(() => buildArgs({ promptPath: PROMPT })).toThrow(/--add-dir/);
+    expect(() => buildArgs({})).toThrow(/--add-dir/);
   });
 
-  it('only emits flags from the 1.1.19 surface', () => {
+  it('only emits flags from the 1.2.11 surface', () => {
     const args = buildArgs({
       ...fresh,
       model: 'claude-sonnet-4-6',
@@ -139,6 +148,8 @@ describe('buildArgs', () => {
     });
     const allowed = new Set([
       '--output-format',
+      '--input-format',
+      '--disable-slash-commands',
       '--add-dir',
       '--print-timeout',
       '--log-file',
@@ -183,6 +194,14 @@ describe('pickDefaultModel', () => {
 
   it('picks the newest flash at medium when the caller says nothing', () => {
     expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-medium');
+  });
+
+  it('prefers 3.7 flash over a newer flash while agy lists it', () => {
+    const newer = [...list, { id: 'gemini-3.8-flash-medium', label: 'a' }, { id: 'gemini-3.8-flash-low', label: 'b' }];
+    expect(pickDefaultModel(newer)).toBe('gemini-3.7-flash-medium');
+    expect(pickDefaultModel(newer, null, 'low')).toBe('gemini-3.7-flash-low');
+    const without = newer.filter((m) => !m.id.startsWith('gemini-3.7-flash'));
+    expect(pickDefaultModel(without)).toBe('gemini-3.8-flash-medium');
   });
 
   it('honours the requested effort within the newest flash version', () => {
@@ -481,8 +500,8 @@ describe('resolveBin: cached path (T1, "store the resolved path")', () => {
   });
 });
 
-describe('buildArgs: custom agent and convention files', () => {
-  const fresh = { addDir: ADD_DIR, promptPath: PROMPT };
+describe('buildArgs: custom agent', () => {
+  const fresh = { addDir: ADD_DIR };
 
   it('passes --agent on a fresh dispatch', () => {
     const args = buildArgs({ ...fresh, agent: 'agy-delegate' });
@@ -491,18 +510,36 @@ describe('buildArgs: custom agent and convention files', () => {
 
   // A resumed conversation keeps the agent it started with.
   it('drops --agent on resume', () => {
-    const args = buildArgs({ promptPath: PROMPT, conversationId: 'abc', agent: 'agy-delegate' });
+    const args = buildArgs({ conversationId: 'abc', agent: 'agy-delegate' });
     expect(args).not.toContain('--agent');
   });
+});
 
-  it('names the convention files in --print, before the task', () => {
-    const rules = 'C:\repo\AGENTS.md';
-    const args = buildArgs({ ...fresh, readFirst: [rules] });
-    expect(args.at(-1)).toBe(`--print=${sidecarPrint(PROMPT, [rules])}`);
-    expect(args.at(-1).indexOf(rules)).toBeLessThan(args.at(-1).indexOf(PROMPT));
+describe('taskMessage', () => {
+  it('puts the environment note, then the rules, then the task', () => {
+    const msg = taskMessage({
+      workspace: ADD_DIR,
+      isGit: true,
+      rules: { name: 'AGENTS.md', text: 'Use pnpm.\n' },
+      task: 'Do X.',
+    });
+    expect(msg).toBe(
+      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n\n' +
+        '# Repository rules (AGENTS.md), which you follow\n\nUse pnpm.\n\n# Task\n\nDo X.',
+    );
   });
 
-  it('leaves --print unchanged when the repo has none', () => {
-    expect(sidecarPrint(PROMPT, [])).toBe(sidecarPrint(PROMPT));
+  it('leaves the rules section out when the repo has none', () => {
+    const msg = taskMessage({ workspace: '/w', isGit: false, rules: null, task: 'Do X.' });
+    expect(msg).toBe('Environment\n- Working directory: /w\n- Git repository: no\n\n# Task\n\nDo X.');
+  });
+});
+
+describe('stdinLine', () => {
+  it('is one JSON line that keeps newlines and quotes in the text', () => {
+    const line = stdinLine('a "b"\nc');
+    expect(line.endsWith('\n')).toBe(true);
+    expect(line.slice(0, -1)).not.toContain('\n');
+    expect(JSON.parse(line)).toEqual({ event: 'user', message: { content: 'a "b"\nc' } });
   });
 });

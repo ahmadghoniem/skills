@@ -25,26 +25,37 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 - **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
 - **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). A job whose processes are already gone reads as `orphaned`, and nothing is killed.
 - **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
-- **`/agy:setup`** — health-check the CLI: resolved binary, version, and a model cache refresh. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
+- **`/agy:setup`** — health-check the CLI: resolved binary, version, a model cache refresh, and the bash tool's entry in agy's MCP config. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
 - **`/agy:update`** — run `agy update`, print the changelog entries newer than the old version and the open papercuts, for Claude to review against the plugin. `/agy:delegate` checks GitHub for a new agy release once a day, alongside the run, and ends its output with a notice when one is out.
 - **`/agy:papercut`** — record one friction point by hand, or close one with `--resolve`.
 
 ### The agy agents
 
-Fresh dispatches run agy with one of two custom agents from `agy-agents/`, which
+Fresh dispatches run agy with the `agy-delegate` agent from `agy-agents/`, which
 `delegate.mjs` copies into `~/.gemini/config/agents/` whenever the installed copy is
-missing or differs:
+missing or differs.
 
-- **`agy-delegate`** — agy's default tools minus `generate_image` and `ask_question`,
-  and a two-line prompt: check usages before removing code, and say when a file cannot
-  be read. A custom agent does not load `AGENTS.md` or `CLAUDE.md`, so `delegate.mjs`
-  names the ones the repository has in agy's `--print` instruction.
-  First call on agy 1.2.11: 10.4k input tokens, against 13.1k for the default agent.
-- **`agy-delegate-readonly`** (`--read-only`) — the same without `write_to_file` and
-  `replace_file_content`. Shell commands still run, so `delegate.mjs` compares
-  `git status` before and after and lists any change in a `⚠` line.
+Its own tools are `view_file`, `search_web` and `read_url_content`; everything else goes
+through the bash tool below (`inheritMcp`). Files are created and edited with
+`apply-patch`, a bash function that runs the repo's `tools/apply-patch`.
+`excludeDefaultComponents` drops agy's default prompt components, so the agent loads no
+rule files: `delegate.mjs` puts the repository's `AGENTS.md` (or `CLAUDE.md` when there
+is no `AGENTS.md`) in the first message instead.
 
 A resumed conversation keeps the agent it started with.
+
+### The bash tool
+
+`mcp/bash.mjs` gives agy a `bash` tool (Git Bash) that runs a command in the foreground
+until it exits or its `timeout_ms` passes (default 2 min, max 20 min), and kills the
+whole process tree on timeout. agy's own `run_command` runs PowerShell and moves
+anything past 10 s to the background.
+
+`delegate.mjs` and `/agy:setup` register it as the `agy` server in agy's global
+`~/.gemini/config/mcp_config.json`, next to any servers already there, and update the
+entry when the plugin's path changes. agy lists it to the model directly as
+`mcp_agy_bash` (`eager`), so no `call_mcp_tool` lookup is needed. Being global, it also
+reaches resumed conversations and interactive agy sessions.
 
 ### `/agy:delegate`
 
@@ -54,15 +65,15 @@ A resumed conversation keeps the agent it started with.
 /agy:delegate --model gemini-3.1-pro --effort high --timeout 1800 "the hard one"
 ```
 
-The plugin automatically selects the newest `flash` model from the cached `agy models` list at the chosen `--effort` (`medium` by default). A long brief goes in a file: Claude writes it to `~/.cad/briefs/` and passes `--prompt-file`.
+The plugin uses `gemini-3.7-flash` at the chosen `--effort` (`medium` by default), or the newest `flash` model in the cached `agy models` list when agy no longer lists 3.7. A long brief goes in a file: Claude writes it to `~/.cad/briefs/` and passes `--prompt-file`.
 
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file instead of the command line. Not combined with an inline task. |
-| `--model <id>` | A model family (`gemini-3.1-pro`) or a full id (`gemini-3.8-flash-high`) from `agy models`. Omit it and the newest flash at the chosen `--effort` is used. |
+| `--model <id>` | A model family (`gemini-3.1-pro`) or a full id (`gemini-3.8-flash-high`) from `agy models`. Omit it and `gemini-3.7-flash` at the chosen `--effort` is used. |
 | `--effort <level>` | Sent with a family. Dropped when the id already encodes effort. A level the model lacks is refused by agy, which names the ones it has. |
 | `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 3600 (60m); watchdog is that plus 60s. |
-| `--sandbox` | Restricts terminal commands only. Not a read-only mode. |
+| `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. |
 | `--continue` | Resume agy's most recent conversation in this workspace (agy 1.2.1+). The plugin never falls back to it. |
 
@@ -86,7 +97,6 @@ The warnings below fire on runs agy reports as finished:
 | `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
 | `⚠ agy compacted its context N times` | agy summarised the conversation mid-run. Work after a compaction is where it most often drifts from the brief. |
 | `⚠ agy skipped N actions it was not allowed to take` | Permission denials. Should never fire, since the plugin bypasses permissions. |
-| `⚠ this read-only run changed files in the workspace` | A `--read-only` run's shell commands changed files, listed underneath. Another job in the same repository shows up here too. |
 | `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; on an unknown model, the valid ids are listed instead. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
 | `⚠ agy hit its print timeout after 1h0m0s` | agy stopped itself at its own limit and returned partial output, still reporting `SUCCESS`. |
@@ -121,11 +131,11 @@ because `pruneOlderThanDays` deletes job directory files older than 30 days
 ## Design notes
 
 - **`--add-dir <absolute repo path>` is always passed on fresh dispatch and is the only workspace flag sent.** Without it, agy ignores the working directory and defaults to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS`. `--new-project` also binds the working directory but creates a throwaway project on every run. `--project` binds neither absolute paths nor project names, falling back to scratch.
-- **The brief is written to a sidecar file.** Stored at `~/.cad/jobs/<repo-hash>/<job>.prompt.md` — outside the directory passed to `--add-dir`, which agy reads anyway — then dispatched via `--print=Read the file at <abs> in full and carry out that task exactly.` Attaching the brief directly to `--print=` stops a bare `-p` swallowing the next flag.
+- **The message goes on stdin.** A fresh job's message is a short environment note (working directory, whether it is a git repository), the repository's rules, then the brief, sent as one `--input-format stream-json` line; `delegate.mjs` then closes stdin, and agy exits when the turn ends. A resume sends only the follow-up. `--disable-slash-commands` stops a message that starts with `/usage` or similar from running a command. The message is also written to `~/.cad/jobs/<repo-hash>/<job>.prompt.md` for the record. agy cuts a stdin message short without an error (a 324,000-char message kept about 191,000), so one over 150,000 chars goes through that file instead: `--print=Read the file at <abs> in full and carry out that task exactly.` The file route costs agy a `view_file` call and, measured, 3 more model calls and about 35k more input tokens per job.
 - **Permission bypass is always on.** Without it the first shell command kills the run outright, so an opt-out would break runs rather than make them safer. Planning remains the orchestrator's responsibility.
-- **Dynamic model discovery without hardcoded lists.** `agy models` is parsed at runtime. The default selects the newest flash model matching the requested effort. Because agy encodes effort directly in the model id (e.g. `gemini-3.7-flash-low`), `--effort` selects the appropriate model id. The display label in `~/.gemini/antigravity-cli/settings.json` serves as fallback when no flash model is listed.
+- **Model discovery.** `agy models` is parsed at runtime. The default is `gemini-3.7-flash` at the requested effort while agy lists it: on replayed jobs 3.8 flash used 1.4 to 3.2 times its input tokens. Without it, the newest flash model at that effort is used. Because agy encodes effort directly in the model id (e.g. `gemini-3.7-flash-low`), `--effort` selects the appropriate model id. The display label in `~/.gemini/antigravity-cli/settings.json` serves as fallback when no flash model is listed.
 - **Non-blocking execution without detached workers.** The job runs in the foreground of its process under a backgrounded Bash call, allowing the harness to report exit events directly without polling.
-- **agy.exe is a native Go binary.** Spawned directly, no shell, stdin ignored.
+- **agy.exe is a native Go binary.** Spawned directly, no shell. Each job has its own stdin pipe, so several jobs can run at once.
 - **The plugin never commits.** You read the diff.
 
 ## Environment

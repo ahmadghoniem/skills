@@ -2,11 +2,11 @@
 // binary (never the real CLI) so the never-started rule, the resume offer,
 // and the exit code are exercised through the real dispatch path rather than
 // re-implemented against a mock.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
+import { MAX_STDIN_CHARS, resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
 import { listJobs } from '../scripts/lib/jobs.mjs';
 import { STUB_BIN } from './helpers.mjs';
 
@@ -162,5 +162,68 @@ describe('delegate.mjs: --prompt-file', () => {
 
     expect(code).toBe(2);
     expect(listJobs(repo)).toHaveLength(0);
+  });
+});
+
+describe('delegate.mjs: the message agy receives', () => {
+  /** Run one dispatch and return [argv, stdin text] as the stub saw them. */
+  async function dispatch(argv) {
+    const { main } = await import('../scripts/delegate.mjs');
+    // A fresh cache, so no `agy models` refresh overwrites the dumped argv.
+    writeModelCache([{ id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' }], null, '1.2.11', STUB_BIN);
+    process.env.AGY_STUB_FIXTURE = writeFixture(home, 'ok.ndjson', {
+      status: 'SUCCESS',
+      conversation_id: 'c0ffee00-0000-4000-8000-000000000000',
+      response: 'done',
+    });
+    process.env.AGY_STUB_ARGV = join(home, 'argv.json');
+    process.env.AGY_STUB_STDIN = join(home, 'stdin.txt');
+    try {
+      await main(argv);
+    } finally {
+      delete process.env.AGY_STUB_ARGV;
+      delete process.env.AGY_STUB_STDIN;
+    }
+    const args = JSON.parse(readFileSync(join(home, 'argv.json'), 'utf8'));
+    let stdin = null;
+    try {
+      stdin = readFileSync(join(home, 'stdin.txt'), 'utf8');
+    } catch {
+      // no stdin read
+    }
+    return [args, stdin];
+  }
+
+  it('sends the environment note, AGENTS.md and the task on stdin', async () => {
+    writeFileSync(join(repo, 'AGENTS.md'), 'agents rules', 'utf8');
+    writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
+    const [args, stdin] = await dispatch(['do the thing']);
+    expect(args).toContain('--input-format');
+    expect(args).toContain('--disable-slash-commands');
+    const { content } = JSON.parse(stdin).message;
+    expect(content).toMatch(/^Environment\n- Working directory: .+\n- Git repository: no\n/);
+    expect(content).toContain('# Repository rules (AGENTS.md), which you follow\n\nagents rules');
+    expect(content).not.toContain('claude rules');
+    expect(content.endsWith('# Task\n\ndo the thing')).toBe(true);
+  });
+
+  it('falls back to CLAUDE.md when AGENTS.md is missing or empty', async () => {
+    writeFileSync(join(repo, 'AGENTS.md'), '\n', 'utf8');
+    writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
+    const [, stdin] = await dispatch(['do the thing']);
+    expect(JSON.parse(stdin).message.content).toContain('# Repository rules (CLAUDE.md), which you follow');
+  });
+
+  it('sends only the follow-up on resume', async () => {
+    writeFileSync(join(repo, 'AGENTS.md'), 'agents rules', 'utf8');
+    const [, stdin] = await dispatch(['--conversation', 'c0ffee00-0000-4000-8000-000000000000', 'and now this']);
+    expect(JSON.parse(stdin).message.content).toBe('and now this');
+  });
+
+  it('moves a message too long for stdin to the sidecar file', async () => {
+    const [args, stdin] = await dispatch(['x'.repeat(MAX_STDIN_CHARS + 1)]);
+    expect(stdin).toBe(null);
+    expect(args).not.toContain('--input-format');
+    expect(args.at(-1)).toMatch(/^--print=Read the file at .+\.prompt\.md in full/);
   });
 });

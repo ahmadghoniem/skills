@@ -44,7 +44,6 @@ export const DETECTED_WARNINGS = Object.freeze({
   'agy-error': { severity: 'warn' },
   watchdog: { severity: 'warn' },
   timeout: { severity: 'warn' },
-  'read-only': { severity: 'warn' },
   'tool-errors': { severity: 'info' },
 });
 
