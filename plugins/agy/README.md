@@ -31,9 +31,17 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 
 ### The agy agents
 
-Fresh dispatches run agy with the `agy-delegate` agent from `agy-agents/`, which
+Fresh dispatches run agy with one of two agents from `agy-agents/`, which
 `delegate.mjs` copies into `~/.gemini/config/agents/` whenever the installed copy is
-missing or differs.
+missing or differs:
+
+| Agent | Runs for | Does |
+| --- | --- | --- |
+| `agy-delegate` | a task (the default) | implements a brief and edits files |
+| `agy-chore` | `--chore` or `--read` | investigates, runs scratch scripts in a `mktemp -d` directory, and reports with `path:line` citations; told not to change the workspace |
+
+The rest of this section describes `agy-delegate`; `agy-chore` has the same tools and
+no `apply-patch` instructions.
 
 Its own tools are `view_file`, `search_web` and `read_url_content`; everything else goes
 through the bash tool below (`inheritMcp`). Files are created and edited with
@@ -77,6 +85,13 @@ The plugin uses `gemini-3.7-flash` at the chosen `--effort` (`medium` by default
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. |
 | `--continue` | Resume agy's most recent conversation in this workspace (agy 1.2.1+). The plugin never falls back to it. |
+| `--chore` | Run `agy-chore` instead of `agy-delegate`. Defaults to `low` effort. |
+| `--read <path[:from-to]>,...` | Put these files, numbered like `cat -n` and wrapped in `<file path="...">`, in the first message so agy does not read them itself. Paths are checked before anything runs. Implies `--chore`. |
+
+```bash
+/agy:delegate --chore --prompt-file ~/.cad/briefs/count-casts.md
+/agy:delegate --read src/api/client.ts,src/api/retry.ts:1-80 "Where is the retry delay set?"
+```
 
 Job names look like `add-retry-to-fetchuser-a7f3` and resolve by full name, unique prefix, or the 4-char suffix alone.
 

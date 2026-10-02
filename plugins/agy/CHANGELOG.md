@@ -14,6 +14,11 @@
 - **`apply-patch` in the bash tool.** The repo's `tools/apply-patch` runs as the
   `apply-patch` bash function. After a patch that applies, the tool appends the diff of
   that call's changes.
+- **`--chore`** runs the new `agy-chore` agent: it investigates, runs scratch scripts in
+  a `mktemp -d` directory, reports with `path:line` citations, and is told not to change
+  the workspace. Defaults to `low` effort.
+- **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
+  `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 
 ### Changed
 
@@ -23,7 +28,8 @@
   not stop it.
 - **Rules are no longer inlined.** The first message held the repo's `AGENTS.md` (or
   `CLAUDE.md`), which agy had already loaded on its own. Now a task job whose repo has a
-  `CLAUDE.md` and no `AGENTS.md` or `GEMINI.md` gets a one-line pointer to it.
+  `CLAUDE.md` and no `AGENTS.md` or `GEMINI.md` gets a one-line pointer to it; a chore
+  gets none.
 - **The message goes on stdin.** A fresh job sends an environment note and the brief as one
   `--input-format stream-json` line, instead of a `--print` instruction to read a file.
   Measured: 11 to 13 model calls and 140k to 148k input tokens, against 14 to 15 and 180k.
@@ -37,6 +43,7 @@
 ### Removed
 
 - **`--read-only`**, the `agy-delegate-readonly` agent and the `read-only` warning.
+- **`CAD_AGY_AGENT=default`**, which ran agy's own agent instead of `agy-delegate`.
 
 ## 0.3.0 (agy 1.2.11)
 

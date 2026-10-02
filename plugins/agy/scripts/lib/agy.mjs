@@ -108,17 +108,18 @@ export function sidecarPrint(absPromptPath) {
 }
 
 /**
- * The first message of a fresh job: a short environment note, then the brief.
- * agy loads AGENTS.md and GEMINI.md itself but not CLAUDE.md, so `rulesFile`
- * names a CLAUDE.md for the agent to read.
+ * The first message of a fresh job: a short environment note, any files passed
+ * with `--read`, then the brief. agy loads AGENTS.md and GEMINI.md itself but
+ * not CLAUDE.md, so `rulesFile` names a CLAUDE.md for the agent to read.
  *
- * @param {{workspace: string, isGit: boolean, rulesFile?: string, task: string}} opts
+ * @param {{workspace: string, isGit: boolean, rulesFile?: string, files?: string, task: string}} opts
  * @returns {string}
  */
-export function taskMessage({ workspace, isGit, rulesFile, task }) {
+export function taskMessage({ workspace, isGit, rulesFile, files, task }) {
   let env = `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`;
   if (rulesFile) env += `\n- Repository rules: ${rulesFile}; read it before you change anything.`;
   const parts = [env];
+  if (files) parts.push(`# Files\n\n${files}`);
   parts.push(`# Task\n\n${task}`);
   return parts.join('\n\n');
 }

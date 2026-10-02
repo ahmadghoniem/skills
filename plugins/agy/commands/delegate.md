@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--chore] [--read <path[:from-to]>,...] [--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -48,6 +48,21 @@ noticed but did not fix, the result of each check, and any answer the task needs
 
 One dispatch per coherent slice. Run at most three agy jobs at once.
 
+## Chores
+
+Pass `--chore` for an investigation that changes nothing: counting, tracing, comparing,
+running a scratch script over data. The brief states the questions to answer, where to
+look, and the facts you need back; leave out Acceptance criteria, Files to touch and
+Guardrails. When you already know files agy will need, pass them as
+`--read <path[:from-to]>,...` (this implies `--chore`) so they arrive numbered in the
+first message. Check a cited line before you edit it.
+
+Send a chore only when you have other work to do while it runs: a chore takes minutes.
+Good chores are long reads you would otherwise do yourself, such as a log, transcript or
+data file to summarise, or a sweep across the repo (call sites, unused code, duplicated
+logic). Do not send a lookup you can answer with a few searches, a file you are about to
+edit, or a number you will have to verify anyway. Ask follow-ups with `/agy:resume`.
+
 ## Model and effort
 
 Omit `--model`. The plugin uses `gemini-3.7-flash` at the `--effort` you pass (`medium`
@@ -84,6 +99,8 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |
+| `--chore` | Run the investigation agent. Defaults to `low`. |
+| `--read <path[:from-to]>,...` | Put these files in the chore's first message. Implies `--chore`. |
 
 ## Reading the output
 

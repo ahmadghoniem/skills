@@ -33,18 +33,23 @@ import {
 } from './lib/jobs.mjs';
 import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
+import { readFiles } from './lib/read.mjs';
 import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
 import { latestRelease, updateNotice } from './update.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
 // detaching. agy models encode effort (e.g. `gemini-3.7-flash-low`); medium is
-// default unless overridden by `--effort`.
+// default unless overridden by `--effort`. Chores default to low.
 const DEFAULT_EFFORT = 'medium';
+const HELPER_EFFORT = 'low';
 
-const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue'];
+/** The agy agent each kind of job runs. */
+const AGENTS = { task: 'agy-delegate', chore: 'agy-chore' };
+
+const BOOLEAN_FLAGS = ['sandbox', 'help', 'continue', 'chore'];
 const USAGE =
-  'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
+  'Usage: /agy:delegate [--chore] [--read <path[:from-to]>,...] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
 
 /**
  * The rules file to point a task job at: CLAUDE.md when the repo root has it
@@ -102,6 +107,9 @@ function parseFlags(argv) {
     help: flags['help'] === true,
     conversation,
     continueLatest,
+    chore: flags['chore'] === true,
+    // `undefined` = flag absent; otherwise comma-separated `path[:from-to]` specs.
+    read: flags['read'],
     // `undefined` = flag absent; `true` = bare `--prompt-file` with no value
     // (a usage error, caught in main); otherwise the path as given.
     promptFile: flags['prompt-file'],
@@ -110,6 +118,11 @@ function parseFlags(argv) {
 
 function isResume(flags) {
   return Boolean(flags.conversation || flags.continueLatest);
+}
+
+/** @returns {'task'|'chore'} */
+function jobKind(flags) {
+  return flags.chore || flags.read !== undefined ? 'chore' : 'task';
 }
 
 /**
@@ -135,11 +148,12 @@ function isModelCached(model, models) {
 async function runAndRecord(flags, prompt, jobId, root) {
   // A resumed conversation already has the environment note.
   const message = isResume(flags)
-    ? prompt
+    ? [flags.files, prompt].filter(Boolean).join('\n\n')
     : taskMessage({
         workspace: root,
         isGit: existsSync(join(root, '.git')),
-        rulesFile: rulesPointer(root),
+        rulesFile: jobKind(flags) === 'task' ? rulesPointer(root) : undefined,
+        files: flags.files,
         task: prompt,
       });
   // Kept for the record, and read by agy when the message is too long for stdin.
@@ -152,11 +166,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const effort = flags.effort;
 
   // A resumed conversation keeps the agent it started with.
-  // `CAD_AGY_AGENT=default` runs agy's own agent, for comparing the two.
-  const agent =
-    isResume(flags) || process.env.CAD_AGY_AGENT === 'default'
-      ? undefined
-      : 'agy-delegate';
+  const agent = isResume(flags) ? undefined : AGENTS[jobKind(flags)];
   if (agent) installAgent(agent);
   // agy reads its MCP servers from the global config on every start, resume
   // included, so the bash tool needs no per-run flag.
@@ -328,13 +338,31 @@ export async function main(rawArgv) {
   }
 
   const root = await repoRoot(process.cwd());
+
+  let shownFiles = '';
+  if (flags.read !== undefined) {
+    const specs = String(flags.read === true ? '' : flags.read).split(',').map((s) => s.trim()).filter(Boolean);
+    if (!specs.length) {
+      process.stderr.write('Error: --read needs at least one path.\n');
+      return 2;
+    }
+    try {
+      const built = readFiles({ specs, cwd: process.cwd(), root });
+      flags.files = built.text;
+      shownFiles = `\n\nFiles: ${built.files.join(', ')}`;
+    } catch (err) {
+      process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
+
   pruneOlderThanDays(root, 30);
 
   // Resolve default model from cache. Omitted on resume because
   // `--conversation` preserves the initial model (e.g. pro), avoiding
   // unintended downgrades.
   if (!flags.model && !isResume(flags)) {
-    flags.model = resolveDefaultModel(flags.effort ?? DEFAULT_EFFORT) ?? undefined;
+    flags.model = resolveDefaultModel(flags.effort ?? (jobKind(flags) === 'task' ? DEFAULT_EFFORT : HELPER_EFFORT)) ?? undefined;
   }
 
   // A model named today must not be rejected by a week-old cache. Refresh
@@ -349,7 +377,7 @@ export async function main(rawArgv) {
   const jobId = uniqueJobName(root, prompt || 'continue');
   const task = prompt || 'Continue from where you left off.';
 
-  createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
+  createJob({ id: jobId, repoPath: root, prompt: task + shownFiles, model: flags.model ?? '' });
   process.stdout.write(`agy \`${jobId}\`\n\n`);
 
   await runOrMarkFailed(flags, task, jobId, root);

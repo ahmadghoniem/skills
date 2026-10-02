@@ -170,7 +170,15 @@ describe('delegate.mjs: the message agy receives', () => {
   async function dispatch(argv) {
     const { main } = await import('../scripts/delegate.mjs');
     // A fresh cache, so no `agy models` refresh overwrites the dumped argv.
-    writeModelCache([{ id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' }], null, '1.2.11', STUB_BIN);
+    writeModelCache(
+      [
+        { id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' },
+        { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
+      ],
+      null,
+      '1.2.11',
+      STUB_BIN,
+    );
     process.env.AGY_STUB_FIXTURE = writeFixture(home, 'ok.ndjson', {
       status: 'SUCCESS',
       conversation_id: 'c0ffee00-0000-4000-8000-000000000000',
@@ -212,6 +220,12 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(content).not.toContain('claude rules');
   });
 
+  it('gives a chore no rules pointer', async () => {
+    writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
+    const [, stdin] = await dispatch(['--chore', 'count the casts']);
+    expect(JSON.parse(stdin).message.content).not.toContain('Repository rules');
+  });
+
   it('sends only the follow-up on resume', async () => {
     writeFileSync(join(repo, 'AGENTS.md'), 'agents rules', 'utf8');
     const [, stdin] = await dispatch(['--conversation', 'c0ffee00-0000-4000-8000-000000000000', 'and now this']);
@@ -223,5 +237,36 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(stdin).toBe(null);
     expect(args).not.toContain('--input-format');
     expect(args.at(-1)).toMatch(/^--print=Read the file at .+\.prompt\.md in full/);
+  });
+
+  it('runs a chore on agy-chore at low effort', async () => {
+    const [args, stdin] = await dispatch(['--chore', 'count the casts']);
+    expect(args[args.indexOf('--agent') + 1]).toBe('agy-chore');
+    expect(args[args.indexOf('--model') + 1]).toBe('gemini-3.7-flash-low');
+    expect(JSON.parse(stdin).message.content.endsWith('# Task\n\ncount the casts')).toBe(true);
+  });
+
+  it('runs --read as a chore with the numbered files before the task', async () => {
+    writeFileSync(join(repo, 'a.txt'), 'one\ntwo\nthree\n', 'utf8');
+    writeFileSync(join(repo, 'b.txt'), 'four\n', 'utf8');
+    const [args, stdin] = await dispatch(['--read', 'a.txt:2-3,b.txt', 'what is two?']);
+    expect(args[args.indexOf('--agent') + 1]).toBe('agy-chore');
+    expect(args[args.indexOf('--model') + 1]).toBe('gemini-3.7-flash-low');
+    expect(JSON.parse(stdin).message.content).toMatch(
+      /\n\n# Files\n\n<file path="a\.txt" lines="2-3">\n {5}2\ttwo\n {5}3\tthree\n<\/file>\n\n<file path="b\.txt">\n {5}1\tfour\n<\/file>\n\n# Task\n\nwhat is two\?$/,
+    );
+    const [job] = listJobs(repo);
+    expect(job.prompt).toBe('what is two?\n\nFiles: a.txt:2-3, b.txt');
+  });
+});
+
+describe('delegate.mjs: --read usage errors', () => {
+  it('starts no job for a missing file, no paths, or no task', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    expect(await main(['--read', 'missing.txt', 'q'])).toBe(2);
+    expect(await main(['--read'])).toBe(2);
+    writeFileSync(join(repo, 'a.txt'), 'x\n', 'utf8');
+    expect(await main(['--read', 'a.txt'])).toBe(2);
+    expect(listJobs(repo)).toEqual([]);
   });
 });
