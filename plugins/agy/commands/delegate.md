@@ -25,8 +25,9 @@ mid-run.
 Every brief has these sections, in this order:
 
 1. **Goal**: one or two sentences. What is the outcome, and what is it a step of.
-2. **Repo context**: one or two lines of stack. The plugin already sends agy the repo's
-   `AGENTS.md` (or `CLAUDE.md`), so do not repeat or point to it.
+2. **Repo context**: one or two lines of stack. agy loads the repo's `AGENTS.md` itself,
+   and the plugin points it at `CLAUDE.md` when there is no `AGENTS.md`, so do not
+   repeat or point to either.
 3. **Acceptance criteria**: one to five concrete, checkable bullets.
 4. **Files to touch**: every file you already know the task needs, as paths, plus the
    files that show the pattern to follow. Each named path saves agy a search. Do not

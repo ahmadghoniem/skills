@@ -516,21 +516,16 @@ describe('buildArgs: custom agent', () => {
 });
 
 describe('taskMessage', () => {
-  it('puts the environment note, then the rules, then the task', () => {
-    const msg = taskMessage({
-      workspace: ADD_DIR,
-      isGit: true,
-      rules: { name: 'AGENTS.md', text: 'Use pnpm.\n' },
-      task: 'Do X.',
-    });
+  it('puts the environment note, then the rules pointer, then the task', () => {
+    const msg = taskMessage({ workspace: ADD_DIR, isGit: true, rulesFile: 'CLAUDE.md', task: 'Do X.' });
     expect(msg).toBe(
-      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n\n' +
-        '# Repository rules (AGENTS.md), which you follow\n\nUse pnpm.\n\n# Task\n\nDo X.',
+      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n' +
+        '- Repository rules: CLAUDE.md; read it before you change anything.\n\n# Task\n\nDo X.',
     );
   });
 
-  it('leaves the rules section out when the repo has none', () => {
-    const msg = taskMessage({ workspace: '/w', isGit: false, rules: null, task: 'Do X.' });
+  it('leaves the rules pointer out when there is none', () => {
+    const msg = taskMessage({ workspace: '/w', isGit: false, task: 'Do X.' });
     expect(msg).toBe('Environment\n- Working directory: /w\n- Git repository: no\n\n# Task\n\nDo X.');
   });
 });

@@ -108,20 +108,17 @@ export function sidecarPrint(absPromptPath) {
 }
 
 /**
- * The first message of a fresh job: a short environment note, the
- * repository's rules, then the brief. A custom agent loads no AGENTS.md or
- * CLAUDE.md itself, and inlining the text saves the tool call that reads it.
+ * The first message of a fresh job: a short environment note, then the brief.
+ * agy loads AGENTS.md and GEMINI.md itself but not CLAUDE.md, so `rulesFile`
+ * names a CLAUDE.md for the agent to read.
  *
- * @param {{workspace: string, isGit: boolean, rules?: {name: string, text: string}|null, task: string}} opts
+ * @param {{workspace: string, isGit: boolean, rulesFile?: string, task: string}} opts
  * @returns {string}
  */
-export function taskMessage({ workspace, isGit, rules, task }) {
-  const parts = [
-    `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`,
-  ];
-  if (rules?.text?.trim()) {
-    parts.push(`# Repository rules (${rules.name}), which you follow\n\n${rules.text.trim()}`);
-  }
+export function taskMessage({ workspace, isGit, rulesFile, task }) {
+  let env = `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`;
+  if (rulesFile) env += `\n- Repository rules: ${rulesFile}; read it before you change anything.`;
+  const parts = [env];
   parts.push(`# Task\n\n${task}`);
   return parts.join('\n\n');
 }

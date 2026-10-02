@@ -38,9 +38,10 @@ missing or differs.
 Its own tools are `view_file`, `search_web` and `read_url_content`; everything else goes
 through the bash tool below (`inheritMcp`). Files are created and edited with
 `apply-patch`, a bash function that runs the repo's `tools/apply-patch`.
-`excludeDefaultComponents` drops agy's default prompt components, so the agent loads no
-rule files: `delegate.mjs` puts the repository's `AGENTS.md` (or `CLAUDE.md` when there
-is no `AGENTS.md`) in the first message instead.
+`excludeDefaultComponents` drops agy's default prompt components. agy still loads
+`AGENTS.md` and `GEMINI.md` itself, from the workspace and from the directories of the
+files it reads, but never `CLAUDE.md`. When the repository root has a `CLAUDE.md` and
+neither of the others, `delegate.mjs` names it in the environment note of a task job.
 
 A resumed conversation keeps the agent it started with.
 
@@ -131,7 +132,7 @@ because `pruneOlderThanDays` deletes job directory files older than 30 days
 ## Design notes
 
 - **`--add-dir <absolute repo path>` is always passed on fresh dispatch and is the only workspace flag sent.** Without it, agy ignores the working directory and defaults to `~/.gemini/antigravity-cli/scratch` while reporting `status: SUCCESS`. `--new-project` also binds the working directory but creates a throwaway project on every run. `--project` binds neither absolute paths nor project names, falling back to scratch.
-- **The message goes on stdin.** A fresh job's message is a short environment note (working directory, whether it is a git repository), the repository's rules, then the brief, sent as one `--input-format stream-json` line; `delegate.mjs` then closes stdin, and agy exits when the turn ends. A resume sends only the follow-up. `--disable-slash-commands` stops a message that starts with `/usage` or similar from running a command. The message is also written to `~/.cad/jobs/<repo-hash>/<job>.prompt.md` for the record. agy cuts a stdin message short without an error (a 324,000-char message kept about 191,000), so one over 150,000 chars goes through that file instead: `--print=Read the file at <abs> in full and carry out that task exactly.` The file route costs agy a `view_file` call and, measured, 3 more model calls and about 35k more input tokens per job.
+- **The message goes on stdin.** A fresh job's message is a short environment note (working directory, whether it is a git repository), then the brief, sent as one `--input-format stream-json` line; `delegate.mjs` then closes stdin, and agy exits when the turn ends. A resume sends only the follow-up. `--disable-slash-commands` stops a message that starts with `/usage` or similar from running a command. The message is also written to `~/.cad/jobs/<repo-hash>/<job>.prompt.md` for the record. agy cuts a stdin message short without an error (a 324,000-char message kept about 191,000), so one over 150,000 chars goes through that file instead: `--print=Read the file at <abs> in full and carry out that task exactly.` The file route costs agy a `view_file` call and, measured, 3 more model calls and about 35k more input tokens per job.
 - **Permission bypass is always on.** Without it the first shell command kills the run outright, so an opt-out would break runs rather than make them safer. Planning remains the orchestrator's responsibility.
 - **Model discovery.** `agy models` is parsed at runtime. The default is `gemini-3.7-flash` at the requested effort while agy lists it: on replayed jobs 3.8 flash used 1.4 to 3.2 times its input tokens. Without it, the newest flash model at that effort is used. Because agy encodes effort directly in the model id (e.g. `gemini-3.7-flash-low`), `--effort` selects the appropriate model id. The display label in `~/.gemini/antigravity-cli/settings.json` serves as fallback when no flash model is listed.
 - **Non-blocking execution without detached workers.** The job runs in the foreground of its process under a backgrounded Bash call, allowing the harness to report exit events directly without polling.

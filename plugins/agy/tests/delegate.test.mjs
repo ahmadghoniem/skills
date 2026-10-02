@@ -194,24 +194,22 @@ describe('delegate.mjs: the message agy receives', () => {
     return [args, stdin];
   }
 
-  it('sends the environment note, AGENTS.md and the task on stdin', async () => {
+  it('sends the environment note and the task on stdin, without the rules text', async () => {
     writeFileSync(join(repo, 'AGENTS.md'), 'agents rules', 'utf8');
     writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
     const [args, stdin] = await dispatch(['do the thing']);
     expect(args).toContain('--input-format');
     expect(args).toContain('--disable-slash-commands');
     const { content } = JSON.parse(stdin).message;
-    expect(content).toMatch(/^Environment\n- Working directory: .+\n- Git repository: no\n/);
-    expect(content).toContain('# Repository rules (AGENTS.md), which you follow\n\nagents rules');
-    expect(content).not.toContain('claude rules');
-    expect(content.endsWith('# Task\n\ndo the thing')).toBe(true);
+    expect(content).toMatch(/^Environment\n- Working directory: .+\n- Git repository: no\n\n# Task\n\ndo the thing$/);
   });
 
-  it('falls back to CLAUDE.md when AGENTS.md is missing or empty', async () => {
-    writeFileSync(join(repo, 'AGENTS.md'), '\n', 'utf8');
+  it('points a task at CLAUDE.md when there is no AGENTS.md or GEMINI.md', async () => {
     writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
     const [, stdin] = await dispatch(['do the thing']);
-    expect(JSON.parse(stdin).message.content).toContain('# Repository rules (CLAUDE.md), which you follow');
+    const { content } = JSON.parse(stdin).message;
+    expect(content).toContain('- Repository rules: CLAUDE.md; read it before you change anything.');
+    expect(content).not.toContain('claude rules');
   });
 
   it('sends only the follow-up on resume', async () => {

@@ -47,22 +47,15 @@ const USAGE =
   'Usage: /agy:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
 
 /**
- * The repository's rules to inline in the first message: AGENTS.md, or
- * CLAUDE.md when AGENTS.md is missing or empty.
+ * The rules file to point a task job at: CLAUDE.md when the repo root has it
+ * and no AGENTS.md or GEMINI.md, which agy loads itself.
  *
  * @param {string} root
- * @returns {{name: string, text: string}|null}
+ * @returns {string|undefined}
  */
-function repoRules(root) {
-  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
-    try {
-      const text = readFileSync(join(root, name), 'utf8');
-      if (text.trim()) return { name, text };
-    } catch {
-      // try the next one
-    }
-  }
-  return null;
+function rulesPointer(root) {
+  if (existsSync(join(root, 'AGENTS.md')) || existsSync(join(root, 'GEMINI.md'))) return undefined;
+  return existsSync(join(root, 'CLAUDE.md')) ? 'CLAUDE.md' : undefined;
 }
 
 /**
@@ -140,13 +133,13 @@ function isModelCached(model, models) {
  * @param {string} root
  */
 async function runAndRecord(flags, prompt, jobId, root) {
-  // A resumed conversation already has the environment note and the rules.
+  // A resumed conversation already has the environment note.
   const message = isResume(flags)
     ? prompt
     : taskMessage({
         workspace: root,
         isGit: existsSync(join(root, '.git')),
-        rules: repoRules(root),
+        rulesFile: rulesPointer(root),
         task: prompt,
       });
   // Kept for the record, and read by agy when the message is too long for stdin.

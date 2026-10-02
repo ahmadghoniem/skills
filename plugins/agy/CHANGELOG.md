@@ -19,9 +19,12 @@
 
 - **One agent.** `agy-delegate` now has only `view_file`, `search_web` and
   `read_url_content` of its own, plus the bash tool, and edits files with `apply-patch`.
-  It loads no rule files (`excludeDefaultComponents`).
-- **The message goes on stdin.** A fresh job sends an environment note, the repo's
-  `AGENTS.md` (or `CLAUDE.md` when there is no `AGENTS.md`) and the brief as one
+  agy still loads `AGENTS.md` and `GEMINI.md` itself; `excludeDefaultComponents` does
+  not stop it.
+- **Rules are no longer inlined.** The first message held the repo's `AGENTS.md` (or
+  `CLAUDE.md`), which agy had already loaded on its own. Now a task job whose repo has a
+  `CLAUDE.md` and no `AGENTS.md` or `GEMINI.md` gets a one-line pointer to it.
+- **The message goes on stdin.** A fresh job sends an environment note and the brief as one
   `--input-format stream-json` line, instead of a `--print` instruction to read a file.
   Measured: 11 to 13 model calls and 140k to 148k input tokens, against 14 to 15 and 180k.
   A message over 150,000 chars still goes through the file. `--disable-slash-commands`
