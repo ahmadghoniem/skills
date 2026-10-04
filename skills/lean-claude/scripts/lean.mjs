@@ -7,6 +7,7 @@
 //
 // Both read every transcript on disk unless --days narrows the window: Claude Code
 // deletes old ones itself (cleanupPeriodDays), so whatever is left is the most data.
+//   node lean.mjs compare <before.json> <after.json>
 //   node lean.mjs capture [--out <file>] [--settings '<json>']
 //
 // Capturing costs nothing: Claude Code is pointed at a local server that records the
@@ -23,9 +24,13 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CHARS_PER_TOKEN = 3.5;
-const CORE_TOOLS = new Set(['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'Skill', 'ToolSearch']);
+const CORE_TOOLS = new Set(['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'Skill', 'ToolSearch', 'Agent', 'SendMessage']);
 // Loaded by headless runs only; interactive sessions never send it.
 const HEADLESS_ONLY = new Set(['WaitForMcpServers']);
+const BASH_GREP = /(^|&&|;|\n|\|\||\$\()\s*(grep|rg)\b/;
+const BASH_FIND = /(^|&&|;|\n|\|\||\$\()\s*(find|fd)\b/;
+const SEARCH_VIA_BASH = { Grep: 'Bash:grep', Glob: 'Bash:find' };
+const BASH_SEARCH_RATIO = 10;
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 const API_BASE = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
 
@@ -214,6 +219,9 @@ export async function usage(days) {
     if (mtime < cutoff) continue;
     u.sessions++;
     const sid = sessionOf(p);
+    // Each delta record lists what changed since the last one, so a session's deferred
+    // set is replayed from all of them; the latest session's set wins.
+    const deferred = new Set(); let deferredAt = 0;
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('tool_use') && !line.includes('command-name') && !line.includes('deferred_tools_delta')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
@@ -222,8 +230,11 @@ export async function usage(days) {
       const headless = String(e.entrypoint ?? '').startsWith('sdk');
       (headless ? u.headlessIds : u.sessionIds).add(sid);
       if (ts && (!u.from || ts < u.from)) u.from = ts;
-      if (e.attachment?.type === 'deferred_tools_delta' && Date.parse(e.timestamp) > u.deferredAt) {
-        u.deferredAt = Date.parse(e.timestamp); u.deferred = new Set(e.attachment.addedNames ?? []);
+      if (e.attachment?.type === 'deferred_tools_delta') {
+        const a = e.attachment;
+        for (const n of [...(a.addedNames ?? []), ...(a.readdedNames ?? [])]) deferred.add(n);
+        for (const n of a.removedNames ?? []) deferred.delete(n);
+        deferredAt = Date.parse(e.timestamp);
       }
       const content = e.message?.content;
       const typed = (s) => { for (const m of s.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) bump(u.typed, m[1], ts, sid, headless); };
@@ -232,11 +243,18 @@ export async function usage(days) {
         if (b.type === 'text' && b.text?.includes('<command-name>')) typed(b.text);
         if (b.type !== 'tool_use') continue;
         bump(u.tool, b.name, ts, sid, headless);
+        // Searches Claude ran through Bash instead of Grep or Glob.
+        if (b.name === 'Bash') {
+          const cmd = String(b.input?.command ?? '');
+          if (BASH_GREP.test(cmd)) bump(u.tool, 'Bash:grep', ts, sid, headless);
+          if (BASH_FIND.test(cmd)) bump(u.tool, 'Bash:find', ts, sid, headless);
+        }
         if (b.name === 'Skill' && b.input?.skill) bump(u.skill, b.input.skill, ts, sid, headless);
         if (b.name === 'Agent' || b.name === 'Task') bump(u.agent, b.input?.subagent_type || 'general-purpose', ts, sid, headless);
         const m = /^mcp__(.+?)__/.exec(b.name); if (m) bump(u.mcp, m[1], ts, sid, headless);
       }
     }
+    if (deferred.size && deferredAt > u.deferredAt) { u.deferredAt = deferredAt; u.deferred = deferred; }
   }
   return u;
 }
@@ -247,37 +265,59 @@ export async function usage(days) {
 // the prompt cache or wrote it, and the saved tokens would have been read or written
 // the same way. Anthropic doesn't publish how plan limits weigh token kinds, so the
 // share is computed three ways: at API prices (input 1, cache write 1.25 or 2, cache
-// read 0.1, output 5), with cache reads free, and with cache reads at full price.
+// read 0.1, or 0.05 on Opus 5.5, output 5), with cache reads free, and with cache
+// reads at full price.
 
-const WEIGHTS = { price: 0.1, readsFree: 0, readsFull: 1 };
+const cacheRead = (model) => (/opus-5-5/.test(model ?? '') ? 0.05 : 0.1);
+const WEIGHTS = { price: cacheRead, readsFree: () => 0, readsFull: () => 1 };
 const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
 const PATCH_RULE_TOKENS = 130; // the rule a batch-edit tool needs, loaded on every request
+const SHORT_DESC = 200; // characters a rewritten skill description is aimed at
 
 export async function stretch(saved, days = Infinity) {
   const cutoff = Date.now() - days * 864e5;
   const root = join(CLAUDE_DIR, 'projects');
-  const seen = new Set();
+  const seen = new Map();
   const total = { price: 0, readsFree: 0, readsFull: 0 }, cut = { ...total };
   let calls = 0, suggestions = 0, suggestionCost = 0, ruleUnit = 0, w1All = 0, w5All = 0, first = Infinity, last = 0;
+  let readTokens = 0, readCost = 0;
   const misses = [], active = {}, titles = {}, compacted = [];
+  const convs = [], compactions = [], main = { calls: 0, written: 0, output: 0 };
   if (!existsSync(root)) return null;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
     let replies = 0, prev = null, compactAt = 0;
-    const sid = sessionOf(p);
+    const sid = sessionOf(p), conv = [];
+    convs.push(conv);
     for await (const line of createInterface({ input: createReadStream(p) })) {
       if (!line.includes('"usage"') && !line.includes('compact_boundary') && !line.includes('"ai-title"')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
       if (e.type === 'ai-title') { titles[sid] = e.aiTitle; continue; }
       if (e.subtype === 'compact_boundary') {
         compactAt = Date.parse(e.timestamp);
-        if (compactAt >= cutoff && e.compactMetadata?.postTokens) compacted.push(e.compactMetadata.postTokens);
+        const c = e.compactMetadata;
+        if (compactAt >= cutoff && c?.postTokens) compacted.push(c.postTokens);
+        if (compactAt >= cutoff && c?.preTokens) {
+          compactions.push({ manual: c.trigger === 'manual', pre: c.preTokens, ms: c.durationMs ?? 0 });
+          conv.push(null);
+        }
         continue;
       }
       const m = e.message, u = m?.usage;
       // <synthetic> entries are placeholders Claude Code writes for errors, not requests.
-      if (e.type !== 'assistant' || !u || m.model === '<synthetic>' || seen.has(m.id) || Date.parse(e.timestamp) < cutoff) continue;
-      seen.add(m.id);
+      if (e.type !== 'assistant' || !u || m.model === '<synthetic>' || Date.parse(e.timestamp) < cutoff) continue;
+      // A reply is logged as one line per content block, all under one id, and later
+      // lines carry the output streamed since. Only that growth is added.
+      if (seen.has(m.id)) {
+        const grew = (u.output_tokens ?? 0) - seen.get(m.id);
+        if (grew > 0) {
+          for (const k of Object.keys(WEIGHTS)) total[k] += 5 * grew;
+          seen.set(m.id, u.output_tokens);
+          if (!e.isSidechain) main.output += grew;
+        }
+        continue;
+      }
+      seen.set(m.id, u.output_tokens ?? 0);
       const cc = u.cache_creation ?? {};
       const w1 = cc.ephemeral_1h_input_tokens ?? (u.cache_creation ? 0 : u.cache_creation_input_tokens ?? 0);
       const w5 = cc.ephemeral_5m_input_tokens ?? 0;
@@ -289,18 +329,24 @@ export async function stretch(saved, days = Infinity) {
       const fromRead = Math.min(saved, read), fromWrite = Math.min(saved - fromRead, written);
       const fromInput = Math.min(saved - fromRead - fromWrite, input);
       const writeRate = written ? (1.25 * w5 + 2 * w1) / written : 2;
-      for (const [k, r] of Object.entries(WEIGHTS)) {
+      for (const [k, w] of Object.entries(WEIGHTS)) {
+        const r = w(m.model);
         total[k] += input + 1.25 * w5 + 2 * w1 + r * read + 5 * output;
         cut[k] += r * fromRead + writeRate * fromWrite + fromInput;
       }
-      ruleUnit += read >= PATCH_RULE_TOKENS ? 0.1 : 2;
-      w1All += w1; w5All += w5;
+      readTokens += read; readCost += cacheRead(m.model) * read;
+      ruleUnit += read >= PATCH_RULE_TOKENS ? cacheRead(m.model) : 2;
       calls++;
       const t = Date.parse(e.timestamp);
       if (t < first) first = t;
       if (t > last) last = t;
       (active[sid] ??= []).push(t);
       if (e.isSidechain) continue;
+      // Main conversation only: promptCacheTtl doesn't reach subagents, which default
+      // to 5 minutes (subagentPromptCacheTtl).
+      w1All += w1; w5All += w5;
+      main.calls++; main.written += written; main.output += output;
+      conv.push({ t, ctx: input + written + read, written });
       // The conversation was written to the cache again instead of read from it. Kept
       // when the gap outlasts the cache lifetime, which is known only after the loop.
       if (prev && t - prev.t > 3e5 && t - compactAt > 3e5 && written > 5000 && read < 0.5 * prev.ctx) {
@@ -309,10 +355,11 @@ export async function stretch(saved, days = Infinity) {
       }
       prev = { t, ctx: input + written + read + output };
       replies++;
-      // A prompt suggestion runs after a turn ends, from the third reply on, and only
-      // when the turn left the cache warm. It reads the whole context from cache and
-      // writes nothing. The CLI doesn't log them, so this is an upper bound: it also
-      // counts turns that ended while the terminal was unfocused.
+      // A prompt suggestion runs after a turn ends, once the conversation holds two
+      // assistant messages, and only when the turn left the cache warm. It reads the
+      // whole context from cache and writes nothing. The CLI doesn't log them, so this
+      // is an upper bound: it also counts turns that ended while the terminal was
+      // unfocused.
       if (m.stop_reason === 'end_turn' && replies >= 2 && input + output + written <= SUGGESTION_GATE) {
         suggestions++;
         suggestionCost += input + written + read;
@@ -327,6 +374,8 @@ export async function stretch(saved, days = Infinity) {
     flag = cfg.cachedGrowthBookFeatures?.tengu_chomp_inflection ?? null;
   } catch {}
   const pct = (k) => cut[k] / total[k];
+  // The cache-read rate across the window's models, for the estimates below.
+  const readRate = readTokens ? readCost / readTokens : 0.1;
   // Returns after the cache expired. Cost is the write minus the cached read it
   // replaced. Compacting first would have read the conversation while it was still
   // cached, written a summary, and written only that summary again on return.
@@ -335,32 +384,109 @@ export async function stretch(saved, days = Infinity) {
   const sorted = [...compacted].sort((a, b) => a - b), summary = sorted[sorted.length >> 1] ?? 15000;
   const times = Object.entries(active);
   for (const x of back) x.elsewhere = times.some(([s, ts]) => s !== x.sid && ts.some((v) => v > x.from && v < x.to));
-  const extra = (x) => x.tokens * (x.rate - 0.1), sum = (f, l = back) => l.reduce((a, x) => a + f(x), 0);
+  const extra = (x) => x.tokens * (x.rate - readRate), sum = (f, l = back) => l.reduce((a, x) => a + f(x), 0);
   const sizes = back.map((x) => x.tokens).sort((a, b) => a - b);
   // Five-minute writes that expired within the hour: `promptCacheTtl: "1h"` would have
   // read them instead, at the price of every 5-minute write costing 2 instead of 1.25.
   const shortGaps = misses.filter((x) => x.rate < 1.5 && x.to - x.from <= 36e5);
-  const oneHourNet = sum((x) => x.tokens * (x.rate - 0.1), shortGaps) - 0.75 * w5All;
+  const oneHourNet = sum((x) => x.tokens * (x.rate - readRate), shortGaps) - 0.75 * w5All;
   const further = (k) => total[k] / (total[k] - Math.min(cut[k], total[k] * 0.99)) - 1;
   return {
     from: new Date(first).toISOString().slice(0, 10), spanDays: Math.max(1, Math.round((last - first) / 864e5)),
     calls, suggestions, suggestionsServerOn: flag,
     share: pct('price'), stretch: further('price') + 1,
     range: Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, { share: pct(k), further: further(k) }])),
-    suggestionShareMax: (0.1 * suggestionCost) / total.price,
+    suggestionShareMax: (readRate * suggestionCost) / total.price,
     cacheExpiry: {
       ttlMinutes: ttl / 6e4, returns: back.length, sessions: new Set(back.map((x) => x.sid)).size,
       afterOtherSession: back.filter((x) => x.elsewhere).length, medianTokens: sizes[sizes.length >> 1] ?? 0,
       share: sum(extra) / total.price, shareAfterOtherSession: sum(extra, back.filter((x) => x.elsewhere)) / total.price,
       summaryTokens: summary,
       oneHourTtl: { returns: shortGaps.length, share: oneHourNet / total.price },
-      compactFirstShare: sum((x) => Math.max(0, x.tokens * x.rate - 0.1 * x.ctx - 7 * summary)) / total.price,
+      compactFirstShare: sum((x) => Math.max(0, x.tokens * x.rate - readRate * x.ctx - 7 * summary)) / total.price,
       largest: [...back].sort((a, b) => extra(b) - extra(a)).slice(0, 3).map((x) => ({
         title: titles[x.sid] ?? null, project: x.project, date: new Date(x.to).toISOString().slice(0, 10),
         gapHours: +((x.to - x.from) / 36e5).toFixed(1), tokens: x.tokens, afterOtherSession: x.elsewhere,
       })),
     },
-    editScripts: await editScripts(cutoff, total.price, PATCH_RULE_TOKENS * ruleUnit),
+    editScripts: await editScripts(cutoff, total.price, PATCH_RULE_TOKENS * ruleUnit, readRate),
+    compaction: compactionPoint(convs, compactions, main, summary, w1All >= w5All ? 2 : 1.25, readRate, total.price),
+  };
+}
+
+// ---------- compaction point ----------
+// When to compact. Each session that reached the lowest option is replayed from that
+// call to its last one, compacting whenever the context reaches K. A call costs a
+// cache read of its context plus the writes and output every call has; a compaction
+// reads the whole context once and writes the summary as output, and the call after
+// it writes the new context to the cache. Context grows by the user's own mean per
+// call, and faster in the 20 calls after a compaction, while files are read again.
+// Prices are the same API weights as `stretch` (cache read 0.1 or 0.05, output 5).
+
+const COMPACT_OPTIONS = [130e3, 165e3, 200e3];
+const COMPACT_MARGIN = 13e3; // compaction fires this far below autoCompactWindow (2.1.283)
+const REREAD_CALLS = 20;
+
+function compactionPoint(convs, compactions, main, summary, writeRate, readRate, totalPrice) {
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const median = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
+  const normal = [], reread = [], after = [], afterWrites = [], starts = [], runs = [];
+  for (const conv of convs) {
+    let prev = null, since = Infinity;
+    for (const c of conv) {
+      if (!c) { since = 0; prev = null; continue; }
+      if (since === 0) { after.push(c.ctx); afterWrites.push(c.written); }
+      if (prev && c.t - prev.t < 36e5 && c.ctx > prev.ctx && c.ctx - prev.ctx < 6e4) (since <= REREAD_CALLS ? reread : normal).push(c.ctx - prev.ctx);
+      if (!prev && since === Infinity) starts.push(c.ctx);
+      prev = c; since++;
+    }
+    const calls = conv.filter(Boolean), j = calls.findIndex((c) => c.ctx >= COMPACT_OPTIONS[0]);
+    if (j >= 0) runs.push({ from: calls[j].ctx, n: calls.length - j - 1 });
+  }
+  if (runs.length < 5 || !normal.length) return null;
+  const g = mean(normal), gAfter = reread.length ? mean(reread) : g;
+  const base = after.length ? median(after) : summary + (starts.length ? median(starts) : 2e4);
+  const perCompaction = 5 * summary + writeRate * (afterWrites.length ? median(afterWrites) : base / 2);
+  const perCall = (writeRate * main.written + 5 * main.output) / main.calls;
+  const sim = (from, n, at) => {
+    let ctx = from, cost = 0, count = 0, since = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (ctx >= at) { cost += readRate * ctx + perCompaction; ctx = base; count++; since = 0; }
+      cost += readRate * ctx + perCall; ctx += since < REREAD_CALLS ? gAfter : g; since++;
+    }
+    return { cost, count };
+  };
+  const costAt = (at) => runs.reduce((a, r) => a + sim(r.from, r.n, at).cost, 0);
+
+  // Where the user compacts now: by hand, if most compactions were, else the trigger
+  // their window setting gives, else where automatic compaction fired.
+  const s = userSettings(), env = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? s.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+  const window = Number(env ?? s.autoCompactWindow) || null;
+  const manual = compactions.filter((c) => c.manual), auto = compactions.filter((c) => !c.manual);
+  let current = null, source = null;
+  if (manual.length >= 3 && manual.length >= auto.length) { current = median(manual.map((c) => c.pre)); source = 'manual'; }
+  else if (window) { current = window - COMPACT_MARGIN; source = env != null ? 'env' : 'setting'; }
+  else if (auto.length) { current = median(auto.map((c) => c.pre)); source = 'auto'; }
+
+  const long = [...runs].sort((a, b) => a.n - b.n)[Math.floor(runs.length * 0.75)];
+  const waitMs = compactions.length ? median(compactions.map((c) => c.ms)) : 0;
+  const cheapest = costAt(COMPACT_OPTIONS[0]), yours = current ? costAt(current) : null;
+  const option = (at) => {
+    const cost = costAt(at), { count } = sim(COMPACT_OPTIONS[0], long.n, at);
+    return {
+      at: Math.round(at), window: Math.round(at + COMPACT_MARGIN), extraCost: cost / cheapest - 1,
+      savedVsCurrent: yours == null ? null : (yours - cost) / totalPrice,
+      longSession: { compactions: count, waitMinutes: +((count * waitMs) / 6e4).toFixed(1) },
+      verbatimTokens: Math.round(at - base),
+    };
+  };
+  return {
+    sessions: runs.length, longSessionCalls: long.n,
+    current: current && { at: Math.round(current), source, window, envAndSetting: env != null && s.autoCompactWindow != null },
+    compactions: { manual: manual.length, auto: auto.length, medianManualAt: manual.length ? median(manual.map((c) => c.pre)) : null, medianWaitSeconds: Math.round(waitMs / 1e3) },
+    model: { growthPerCall: Math.round(g), growthAfterCompaction: Math.round(gAfter), contextAfterCompaction: Math.round(base) },
+    options: COMPACT_OPTIONS.map(option),
+    currentOption: current ? option(current) : null,
   };
 }
 
@@ -390,9 +516,22 @@ const failedScript = (cmd, res, out) => {
 const literals = (s) => [...s.matchAll(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\n])*"|'(?:\\.|[^'\n])*'/g)]
   .reduce((a, m) => a + (m[0].length >= 20 ? m[0].length : 0), 0);
 
-async function editScripts(cutoff, total, ruleCost) {
+// Script text is counted with count_tokens, using the login a capture records; if that
+// fails, every text falls back to 3.5 characters per token.
+async function textCounter() {
+  try {
+    const { req, headers } = await capture();
+    const c = counter(headers, false);
+    const say = (text) => ({ model: req.model, messages: [{ role: 'user', content: text }] });
+    const bare = await c.count(say('ok'));
+    if (bare !== null) return { exact: true, count: async (text) => Math.max(0, ((await c.count(say(`ok\n${text}`))) ?? bare + text.length / CHARS_PER_TOKEN) - bare) };
+  } catch {}
+  return { exact: false, count: async (text) => text.length / CHARS_PER_TOKEN };
+}
+
+async function editScripts(cutoff, total, ruleCost, readRate) {
   const r = { scripts: 0, replacements: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
-  let cost = 0;
+  const texts = [];
   for (const { p, mtime } of walk(join(CLAUDE_DIR, 'projects'))) {
     if (mtime < cutoff) continue;
     const ev = [], seen = new Set(), results = new Map(), calls = [];
@@ -418,12 +557,18 @@ async function editScripts(cutoff, total, ruleCost) {
       // Each replace() is an edit the Edit tool would have taken one call for.
       r.replacements += cmd.split('.replace(').length - 1;
       // written once as output, cached, then read on every later request
-      const later = calls.filter((x) => x > t).length, carry = (tok) => 7 * tok + 0.1 * tok * later;
-      cost += carry(Math.max(0, cmd.length - literals(cmd) - 120) / CHARS_PER_TOKEN);
-      if (failedScript(cmd, res, out)) { r.failed++; cost += carry((cmd.length + out.length) / CHARS_PER_TOKEN); }
+      const later = calls.filter((x) => x > t).length;
+      // The script minus its long string literals and the ~120 characters an Edit call
+      // would have taken anyway.
+      const body = cmd.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\n])*"|'(?:\\.|[^'\n])*'/g, (m) => (m.length >= 20 ? '' : m));
+      texts.push({ text: body, scale: Math.max(0, cmd.length - literals(cmd) - 120) / Math.max(1, body.length), later });
+      if (failedScript(cmd, res, out)) { r.failed++; texts.push({ text: cmd + out, scale: 1, later }); }
     }
   }
-  return { ...r, share: Math.max(0, cost - ruleCost) / total };
+  const counted = texts.length ? await textCounter() : { exact: true };
+  const costs = await pool(texts.map((x) => async () => { const tok = (await counted.count(x.text)) * x.scale; return 7 * tok + readRate * tok * x.later; }));
+  const cost = costs.reduce((a, b) => a + b, 0);
+  return { ...r, counting: counted.exact ? 'count_tokens' : 'estimate', share: Math.max(0, cost - ruleCost) / total };
 }
 
 // ---------- claude.ai skills ----------
@@ -478,6 +623,7 @@ const SWITCHES = [
   { id: 'artifact', name: 'Artifact off', how: 'settings enableArtifact: false', on: (s) => s.enableArtifact === false || s.disableArtifact === true, applies: (req) => has(req, /^Artifact/), patch: { enableArtifact: false }, tools: /^Artifact/ },
   { id: 'simple-prompt', name: 'Short system prompt', how: 'env CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1', on: (s) => envOn(s, 'CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT'), applies: () => true, patch: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '1' } }, revert: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '0' } }, unset: { env: { CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '' } } },
   { id: 'git', name: 'Built-in git instructions off', how: 'settings includeGitInstructions: false', on: (s) => s.includeGitInstructions === false, applies: (req) => has(req, /^Bash$/), patch: { includeGitInstructions: false }, revert: { includeGitInstructions: true } },
+  { id: 'attribution', name: 'Claude attribution in commits off', how: 'settings attribution: false', on: (s) => s.attribution === false, applies: (req) => has(req, /^Bash$/), patch: { attribution: false } },
   { id: 'powershell', name: 'PowerShell tool off (Windows)', how: 'env CLAUDE_CODE_USE_POWERSHELL_TOOL=0', on: (s) => envOn(s, 'CLAUDE_CODE_USE_POWERSHELL_TOOL', '0'), applies: (req) => process.platform === 'win32' && has(req, /^PowerShell$/), patch: { env: { CLAUDE_CODE_USE_POWERSHELL_TOOL: '0' } }, tools: /^PowerShell$/, windows: true },
   { id: 'cron', name: 'Cron tools off (/loop stops working)', how: 'env CLAUDE_CODE_DISABLE_CRON=1', on: (s) => envOn(s, 'CLAUDE_CODE_DISABLE_CRON'), applies: (req) => has(req, /^Cron/), patch: { env: { CLAUDE_CODE_DISABLE_CRON: '1' } }, tools: /^Cron/ },
   { id: 'claude-ai-skills', name: 'claude.ai skill sync off', how: 'settings syncClaudeAiSkills: false', on: (s) => s.syncClaudeAiSkills === false, applies: () => true, patch: { syncClaudeAiSkills: false }, revert: { syncClaudeAiSkills: true } },
@@ -488,7 +634,9 @@ const SWITCHES = [
 // Side requests that re-send the whole conversation. The probe cannot see them.
 const UNMEASURED = [
   { id: 'recap', name: 'Session recap off', how: 'settings awaySummaryEnabled: false', on: (s) => s.awaySummaryEnabled === false },
-  { id: 'suggestions', name: 'Prompt suggestions off', how: 'settings promptSuggestionEnabled: false', on: (s) => s.promptSuggestionEnabled === false },
+  // The variable is checked before the server flag and the setting, so it is the one
+  // switch nothing else can turn back on.
+  { id: 'suggestions', name: 'Prompt suggestions off', how: 'env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=0', on: (s) => ['0', 'false', 'no', 'off'].includes(String(s.env?.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION ?? '').toLowerCase().trim()) },
 ];
 
 // Built-in tools this setup does not load, sized from a capture with an empty config
@@ -540,10 +688,21 @@ async function report({ days = Infinity, json = null, estimate = false }) {
       const life = skillUsage[i.name] ?? skillUsage[i.name.split(':').pop()];
       Object.assign(r, { lifetimeUses: life?.usageCount ?? 0, lifetimeLast: day(life?.lastUsedAt) });
       if (i.listing === `- ${i.name}`) r.nameOnly = true;
+      // The user's own skills can keep their auto-trigger with a shorter description.
+      // Plugin and built-in skills have no file here, and an update would undo the edit.
+      const file = [join(CLAUDE_DIR, 'skills', i.name, 'SKILL.md'), join(process.cwd(), '.claude', 'skills', i.name, 'SKILL.md')].find((f) => existsSync(f));
+      if (file) Object.assign(r, { file, ...(i.chars > SHORT_DESC * 1.5 && { shortenSaves: r.tokens - Math.round((r.tokens * SHORT_DESC) / i.chars) }) });
     } else if (['tool', 'mcp-tool', 'agent'].includes(i.kind)) { r.uses = use?.n ?? 0; r.sessions = use?.s.size ?? 0; r.headlessUses = use?.headless ?? 0; r.last = use?.last ?? ''; }
     if (i.kind === 'agent') r.userFile = existsSync(join(CLAUDE_DIR, 'agents', `${i.name}.md`));
     if (i.kind === 'mcp-instructions') r.uses = Object.entries(u.mcp).filter(([k]) => k.includes(i.name.replace(/\W+/g, '_'))).reduce((a, [, v]) => a + v.n, 0);
     if (i.kind === 'tool' || i.kind === 'mcp-tool') { r.deferred = u.deferred.has(i.name); r.core = CORE_TOOLS.has(i.name); r.headlessOnly = HEADLESS_ONLY.has(i.name); }
+    // Grep and Glob stop being core when Claude already searches through Bash nearly
+    // every time: the tool is then paid on every request for the rare call.
+    const via = u.tool[i.kind === 'tool' && SEARCH_VIA_BASH[i.name]];
+    if (via) {
+      r.viaBash = { uses: via.n, sessions: via.s.size };
+      if (via.n >= BASH_SEARCH_RATIO * Math.max(1, r.uses)) r.core = false;
+    }
     r.plugin = pluginOf(i.kind, i.name);
     return r;
   });
@@ -572,8 +731,8 @@ async function report({ days = Infinity, json = null, estimate = false }) {
     const v = (await capture({ settings: patch })).req;
     return w.id === 'claude-ai-connectors' ? total - (await count(v)) : baseNoMcp - (await count(noMcp(v)));
   };
-  // Claude Code picks the short prompt per model (current Opus by default, Sonnet and
-  // Haiku not), so the setting may change nothing here: unset and set to 1 give the same
+  // Claude Code picks the short prompt per model (Opus 4.8 and later and Sonnet 5.5 by
+  // default; Opus 4.7 and earlier, Sonnet 5 and Haiku not), so the setting may change nothing here: unset and set to 1 give the same
   // system prompt and built-in tools. Compared as text, since the git snapshot in the
   // messages can move between two captures. fullCost is what the full prompt adds, which
   // is roughly what the setting saves on a model that defaults to the full one.
@@ -619,9 +778,13 @@ async function report({ days = Infinity, json = null, estimate = false }) {
 
   // Interactive sessions list deferred tools by name and load them when first used;
   // headless runs send every tool in full.
+  // A deferred tool is listed as one line with its name; each line is counted too.
   const deferredRows = rows.filter((r) => r.deferred);
+  const say = (text) => ({ model: base.req.model, messages: [{ role: 'user', content: text }] });
+  const bare = await count(say('ok'));
+  await pool(deferredRows.map((r) => async () => { r.nameTokens = Math.max(0, (await count(say(`ok\n${r.name}`))) - bare); }));
   const interactive = total - rows.filter((r) => r.headlessOnly).reduce((a, r) => a + r.tokens, 0)
-    - deferredRows.reduce((a, r) => a + r.tokens, 0) + deferredRows.reduce((a, r) => a + Math.ceil((r.name.length + 1) / CHARS_PER_TOKEN), 0);
+    - deferredRows.reduce((a, r) => a + r.tokens - r.nameTokens, 0);
 
   // The skill listing has a character budget (1% of the context window by default).
   // Over it, the least-used skills are listed by name only, and removing a skill mostly
@@ -669,7 +832,7 @@ function render(o) {
   L.push('', '## Switches', '', '| Switch | How | Status | Tokens |', '|---|---|---|---:|');
   for (const w of o.switches) {
     const status = (w.on ? 'on' : 'off') + (w.modelDefault ? ', already the default on this model' : '');
-    const effect = w.modelDefault ? `none here; about −${n(w.fullCost)} on Sonnet or Haiku`
+    const effect = w.modelDefault ? `none here; about −${n(w.fullCost)} on Haiku, Sonnet 5 or Opus 4.7 and earlier`
       : w.on ? (w.restoreCost != null ? `+${n(w.restoreCost)} to undo` : '') : `−${n(w.saves)}`;
     L.push(`| ${w.name} | \`${w.how}\` | ${status} | ${effect} |`);
   }
@@ -705,6 +868,76 @@ function render(o) {
   return L.join('\n');
 }
 
+// ---------- compare ----------
+// What changed between two reports and what each change saved, in interactive terms
+// (a deferred tool costs only its name). The total is measured; the per-change figures
+// come from the before report, so their sum is checked against the total and the gap
+// is reported as `unexplained`, with `check: "mismatch"` when it is too large to trust.
+
+export function compare(before, after) {
+  for (const [label, o] of [['before', before], ['after', after]]) {
+    if (!Number.isFinite(o?.interactive) || !Array.isArray(o?.rows) || !Array.isArray(o?.switches)) throw new Error(`${label} report has no interactive, rows or switches`);
+  }
+  const key = (r) => `${r.kind}\t${r.name}`;
+  const cost = (r) => (r.deferred ? r.nameTokens ?? Math.ceil((r.name.length + 1) / CHARS_PER_TOKEN) : r.tokens);
+  // Headless-only tools never reach an interactive session.
+  const rows = (o) => o.rows.filter((r) => !r.headlessOnly);
+  const afterRows = new Map(rows(after).map((r) => [key(r), r]));
+  let removed = rows(before).filter((r) => !afterRows.has(key(r)));
+  const changes = [];
+  const take = (match) => { const hit = removed.filter(match); removed = removed.filter((r) => !match(r)); return hit; };
+  // This skill never edits instruction files, so one missing from the after report
+  // means it ran from another directory or the file changed outside it. Left in
+  // `unexplained` and named in `outside`.
+  const outside = take((r) => r.kind === 'instructions');
+
+  // Switches turned on. One that removes tools is worth the rows it took; one that
+  // rewrites text (short prompt, git) is worth its measured delta, and the prompt or
+  // reminder rows it dropped belong to it.
+  const was = Object.fromEntries(before.switches.map((w) => [w.id, w]));
+  for (const w of after.switches) {
+    const b = was[w.id];
+    if (!w.on || !b || b.on) continue;
+    const re = SWITCHES.find((x) => x.id === w.id)?.tools;
+    const hit = re ? take((r) => re.test(r.name))
+      : w.id === 'claude-ai-connectors' ? take((r) => /^mcp__claude_ai_/.test(r.name) || (r.kind === 'mcp-instructions' && r.name.startsWith('claude.ai ')))
+      : w.id === 'claude-ai-skills' ? take((r) => r.kind === 'skill' && (b.skills ?? []).includes(r.name))
+      : take((r) => r.kind === 'system-prompt' || r.kind === 'reminder');
+    const sum = hit.reduce((a, r) => a + cost(r), 0);
+    changes.push({ change: w.name, how: w.how, tokens: re || w.id === 'claude-ai-connectors' ? sum : b.saves ?? sum });
+  }
+  // Plugins disabled: everything they added, as one change.
+  const plugins = new Set((after.plugins ?? []).map((p) => p.name));
+  for (const p of before.plugins ?? []) {
+    if (plugins.has(p.name)) continue;
+    const hit = take((r) => r.plugin === p.name);
+    if (hit.length) changes.push({ change: `plugin ${p.key}`, tokens: hit.reduce((a, r) => a + cost(r), 0) });
+  }
+  for (const r of removed) changes.push({ change: `${r.kind} ${r.name}`, tokens: cost(r) });
+  // Skills and agents still listed with a shorter description.
+  for (const r of rows(before)) {
+    const a = afterRows.get(key(r));
+    if (a && ['skill', 'agent'].includes(r.kind) && r.tokens - a.tokens >= 10) changes.push({ change: `${r.kind} ${r.name} shortened`, tokens: r.tokens - a.tokens });
+  }
+  changes.sort((x, y) => y.tokens - x.tokens);
+
+  const saved = before.interactive - after.interactive;
+  const explained = changes.reduce((a, c) => a + c.tokens, 0);
+  const unexplained = saved - explained;
+  const beforeKeys = new Set(rows(before).map(key));
+  const bg = Object.fromEntries((before.unmeasured ?? []).map((w) => [w.id, w.on]));
+  return {
+    before: { interactive: before.interactive, total: before.total }, after: { interactive: after.interactive, total: after.total },
+    saved, percent: before.interactive ? +((100 * saved) / before.interactive).toFixed(1) : 0,
+    changes, background: (after.unmeasured ?? []).filter((w) => w.on && bg[w.id] === false).map((w) => w.name),
+    // Rows only the after report has: usually an MCP server that connected in one
+    // capture and not the other. They are the first place to look for a gap.
+    added: rows(after).filter((r) => !beforeKeys.has(key(r))).map((r) => ({ kind: r.kind, name: r.name, tokens: cost(r) })),
+    outside: outside.map((r) => ({ name: r.name, tokens: r.tokens })),
+    unexplained, check: Math.abs(unexplained) <= Math.max(300, 0.1 * Math.abs(saved)) ? 'ok' : 'mismatch',
+  };
+}
+
 // ---------- cli ----------
 
 function arg(args, name, dflt = null) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; }
@@ -713,6 +946,10 @@ async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'report') {
     await report({ days: Number(arg(args, '--days', Infinity)), json: arg(args, '--json'), estimate: args.includes('--estimate') });
+  } else if (cmd === 'compare') {
+    if (args.length < 2) throw new Error('compare needs <before.json> <after.json>');
+    const [before, after] = args.slice(0, 2).map((f) => JSON.parse(readFileSync(f, 'utf8')));
+    process.stdout.write(JSON.stringify(compare(before, after), null, 1) + '\n');
   } else if (cmd === 'stretch') {
     const r = await stretch(Number(arg(args, '--saved', 0)), Number(arg(args, '--days', Infinity)));
     process.stdout.write(r ? JSON.stringify(r, null, 1) + '\n' : 'no transcripts in the window\n');
@@ -722,7 +959,7 @@ async function main() {
     if (out) writeFileSync(out, JSON.stringify(req));
     else process.stdout.write(JSON.stringify(breakdown(req).map(({ cut, ...i }) => i), null, 1) + '\n');
   } else {
-    process.stdout.write('usage: lean.mjs report [--days N] [--json out.json] [--estimate] | stretch --saved N [--days N] | capture [--out f] [--settings json]\n');
+    process.stdout.write('usage: lean.mjs report [--days N] [--json out.json] [--estimate] | stretch --saved N [--days N] | compare before.json after.json | capture [--out f] [--settings json]\n');
     process.exitCode = cmd ? 2 : 0;
   }
 }
