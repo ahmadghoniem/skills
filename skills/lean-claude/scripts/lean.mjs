@@ -273,6 +273,7 @@ const WEIGHTS = { price: cacheRead, readsFree: () => 0, readsFull: () => 1 };
 const SUGGESTION_GATE = 1e4; // the CLI skips a suggestion when the turn wrote more than this
 const PATCH_RULE_TOKENS = 130; // the rule a batch-edit tool needs, loaded on every request
 const SHORT_DESC = 200; // characters a rewritten skill description is aimed at
+const RECAP_INSTRUCTION = 600, RECAP_OUTPUT = 80; // tokens: recap instruction, summary (about 60 words)
 
 export async function stretch(saved, days = Infinity) {
   const cutoff = Date.now() - days * 864e5;
@@ -280,19 +281,30 @@ export async function stretch(saved, days = Infinity) {
   const seen = new Map();
   const total = { price: 0, readsFree: 0, readsFull: 0 }, cut = { ...total };
   let calls = 0, suggestions = 0, suggestionCost = 0, ruleUnit = 0, w1All = 0, w5All = 0, first = Infinity, last = 0;
-  let readTokens = 0, readCost = 0;
+  let readTokens = 0, readCost = 0, recaps = 0, recapCost = 0, recapContext = 0;
   const misses = [], active = {}, titles = {}, compacted = [];
   const convs = [], compactions = [], main = { calls: 0, written: 0, output: 0 };
   if (!existsSync(root)) return null;
   for (const { p, mtime } of walk(root)) {
     if (mtime < cutoff) continue;
-    let replies = 0, prev = null, compactAt = 0;
+    let replies = 0, prev = null, prevModel = null, compactAt = 0;
     const sid = sessionOf(p), conv = [];
     convs.push(conv);
     for await (const line of createInterface({ input: createReadStream(p) })) {
-      if (!line.includes('"usage"') && !line.includes('compact_boundary') && !line.includes('"ai-title"')) continue;
+      if (!line.includes('"usage"') && !line.includes('compact_boundary') && !line.includes('"ai-title"') && !line.includes('away_summary')) continue;
       let e; try { e = JSON.parse(line); } catch { continue; }
       if (e.type === 'ai-title') { titles[sid] = e.aiTitle; continue; }
+      // A session recap is a side request that reads the conversation from the cache
+      // (it fires minutes after the last reply, well inside the cache lifetime) and
+      // writes a short summary. Not logged with usage, so priced from the context at
+      // that point, plus its instruction and about 80 tokens of output.
+      if (e.subtype === 'away_summary') {
+        if (prev && Date.parse(e.timestamp) >= cutoff) {
+          recaps++; recapContext += prev.ctx;
+          recapCost += cacheRead(prevModel) * prev.ctx + RECAP_INSTRUCTION + 5 * RECAP_OUTPUT;
+        }
+        continue;
+      }
       if (e.subtype === 'compact_boundary') {
         compactAt = Date.parse(e.timestamp);
         const c = e.compactMetadata;
@@ -353,7 +365,7 @@ export async function stretch(saved, days = Infinity) {
         const tokens = Math.min(written, prev.ctx), rate = (1.25 * w5 + 2 * w1) / written;
         misses.push({ sid, from: prev.t, to: t, tokens, rate, ctx: prev.ctx, project: basename(e.cwd ?? '') });
       }
-      prev = { t, ctx: input + written + read + output };
+      prev = { t, ctx: input + written + read + output }; prevModel = m.model;
       replies++;
       // A prompt suggestion runs after a turn ends, once the conversation holds two
       // assistant messages, and only when the turn left the cache warm. It reads the
@@ -397,6 +409,7 @@ export async function stretch(saved, days = Infinity) {
     share: pct('price'), stretch: further('price') + 1,
     range: Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, { share: pct(k), further: further(k) }])),
     suggestionShareMax: (readRate * suggestionCost) / total.price,
+    recaps: { count: recaps, meanContext: recaps ? Math.round(recapContext / recaps) : 0, share: recapCost / total.price },
     cacheExpiry: {
       ttlMinutes: ttl / 6e4, returns: back.length, sessions: new Set(back.map((x) => x.sid)).size,
       afterOtherSession: back.filter((x) => x.elsewhere).length, medianTokens: sizes[sizes.length >> 1] ?? 0,
@@ -530,7 +543,7 @@ async function textCounter() {
 }
 
 async function editScripts(cutoff, total, ruleCost, readRate) {
-  const r = { scripts: 0, replacements: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
+  const r = { scripts: 0, replacements: 0, single: 0, failed: 0, edits: 0, editsFailed: 0, patches: 0 };
   const texts = [];
   for (const { p, mtime } of walk(join(CLAUDE_DIR, 'projects'))) {
     if (mtime < cutoff) continue;
@@ -555,7 +568,9 @@ async function editScripts(cutoff, total, ruleCost, readRate) {
       if (!SCRIPT.test(cmd) || !WRITES.test(cmd) || !LITERAL.test(cmd) || REGEX.test(cmd)) continue;
       r.scripts++;
       // Each replace() is an edit the Edit tool would have taken one call for.
-      r.replacements += cmd.split('.replace(').length - 1;
+      const n = cmd.split('.replace(').length - 1;
+      r.replacements += n;
+      if (n <= 1) r.single++;
       // written once as output, cached, then read on every later request
       const later = calls.filter((x) => x > t).length;
       // The script minus its long string literals and the ~120 characters an Edit call
@@ -785,6 +800,12 @@ async function report({ days = Infinity, json = null, estimate = false }) {
   await pool(deferredRows.map((r) => async () => { r.nameTokens = Math.max(0, (await count(say(`ok\n${r.name}`))) - bare); }));
   const interactive = total - rows.filter((r) => r.headlessOnly).reduce((a, r) => a + r.tokens, 0)
     - deferredRows.reduce((a, r) => a + r.tokens - r.nameTokens, 0);
+  // Switch deltas come from headless captures, which send deferred tools in full; an
+  // interactive session only pays their names.
+  for (const w of switches) {
+    const re = w.id === 'claude-ai-connectors' ? /^mcp__claude_ai_/ : SWITCHES.find((x) => x.id === w.id)?.tools;
+    if (re && w.saves > 0) w.saves = Math.max(0, w.saves - deferredRows.filter((r) => re.test(r.name)).reduce((a, r) => a + r.tokens - r.nameTokens, 0));
+  }
 
   // The skill listing has a character budget (1% of the context window by default).
   // Over it, the least-used skills are listed by name only, and removing a skill mostly

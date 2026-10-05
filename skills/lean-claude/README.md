@@ -1,12 +1,23 @@
 # lean-claude
 
 `/lean-claude` measures what every Claude Code request carries before you type
-anything, shows how often you used each piece, and applies the cuts you pick.
+anything, recommends cuts with the reason for each from your own transcripts, and
+applies the ones you pick. It also covers what you pay for outside the request: the
+compaction point, prompt suggestions and session recaps.
 
 On a stock install with Opus 5.5 (Claude Code 2.1.284), the first request went from
-30,875 tokens to 7,093 (−77%): Artifact, PowerShell and unused tools off, bundled
-skills made typable-only, claude.ai skills and connectors off, built-in git
-instructions and Explore/Plan off.
+30,875 tokens to 7,093 (−77%): Artifact, PowerShell, Grep, Glob and three
+single-feature tools removed, bundled skills made user-invoked, the Claude Docs
+connector and claude.ai skill sync off, built-in git instructions and Explore/Plan off.
+
+## Install
+
+```
+npx skills add ahmadghoniem/skills --skill lean-claude -g
+```
+
+or copy this folder to `~/.claude/skills/lean-claude`, then run `/lean-claude` in
+Claude Code from the project you work in.
 
 ## How it measures
 
@@ -34,6 +45,7 @@ old ones (`cleanupPeriodDays`), so what's left is the most data there is.
 
 `stretch` replays the same transcripts at API prices: how much further the usage limit
 goes once `--saved` tokens leave every request, what prompt suggestions cost at most,
+what session recaps cost,
 what returning to a conversation after its cache expired cost (and what `/compact`
 before leaving would have saved), how often Claude wrote one-off edit scripts and
 how many failed, and what compacting at 130k, 165k or 200k would cost against where
