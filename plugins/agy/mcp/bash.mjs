@@ -6,10 +6,10 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { BUDGET, shorten } from './shorten.mjs';
+import { BUDGET, readTarget, shorten } from './shorten.mjs';
 
 const BASH = process.env.AGY_BASH || 'C:/Program Files/Git/bin/bash.exe';
 // tools/apply-patch at the repo root, reached in scripts as the `apply-patch` function.
@@ -23,6 +23,9 @@ const MAX_TIMEOUT_MS = 1_200_000;
 const MAX_DIFF_LINES = 400;
 // Full outputs of shortened results, kept for a day so the model can read them.
 const KEEP_OUTPUT_MS = 24 * 60 * 60 * 1000;
+// rg flags added to the user's own rg config: show a preview of a minified or
+// generated line instead of the whole line.
+const RG_FLAGS = ['--max-columns=300', '--max-columns-preview'];
 
 const TOOL = {
   name: 'bash',
@@ -85,6 +88,7 @@ function runBash(command, timeoutMs) {
       '__agy_script=$2; set --; . "$__agy_script"';
     const child = spawn(BASH, ['-c', boot, 'bash', pidFile.replace(/\\/g, '/'), script.replace(/\\/g, '/'), APPLY_PATCH], {
       cwd: CWD,
+      env: RG_CONFIG ? { ...process.env, RIPGREP_CONFIG_PATH: RG_CONFIG } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',
@@ -157,11 +161,39 @@ function patchDiff(snap, id) {
 }
 
 /**
- * Shorten an over-long result, saving the full text where the note says.
- * @param {string} text
+ * The user's rg config plus any of RG_FLAGS it does not set, written to
+ * OUT_DIR. Returns the user's own path when it already sets them all.
+ * @returns {string | undefined}
  */
-function fitResult(text) {
+function rgConfig() {
+  let own = '';
+  try { own = readFileSync(process.env.RIPGREP_CONFIG_PATH ?? '', 'utf8'); } catch { /* none */ }
+  const set = new Set(own.split('\n').map((l) => l.trim().split('=')[0]));
+  const add = RG_FLAGS.filter((f) => !set.has(f.split('=')[0]));
+  if (!add.length) return process.env.RIPGREP_CONFIG_PATH;
+  const path = join(OUT_DIR, `ripgreprc-${process.pid}`);
+  try {
+    mkdirSync(OUT_DIR, { recursive: true });
+    writeFileSync(path, `${own.trimEnd()}\n${add.join('\n')}\n`.trimStart(), 'utf8');
+    return path;
+  } catch {
+    return process.env.RIPGREP_CONFIG_PATH;
+  }
+}
+
+/**
+ * Shorten an over-long result, saving the full text where the note says.
+ * When the command only prints a file, the note points at the file instead.
+ * @param {string} text
+ * @param {string} command
+ */
+function fitResult(text, command) {
   if (text.length <= BUDGET) return text;
+  const target = readTarget(command);
+  if (target) {
+    const file = resolve(CWD, target.file).split(sep).join('/');
+    if (existsSync(file)) return shorten(text, '', BUDGET, { read: { file, first: target.first } });
+  }
   const saved = join(OUT_DIR, `${process.pid}-${Date.now()}-${++seq}.out`);
   try {
     mkdirSync(OUT_DIR, { recursive: true });
@@ -175,7 +207,7 @@ function fitResult(text) {
 function pruneOutputs() {
   try {
     for (const f of readdirSync(OUT_DIR)) {
-      if (!f.endsWith('.out')) continue;
+      if (!f.endsWith('.out') && !f.startsWith('ripgreprc-')) continue;
       const p = join(OUT_DIR, f);
       if (Date.now() - statSync(p).mtimeMs > KEEP_OUTPUT_MS) unlinkSync(p);
     }
@@ -209,7 +241,7 @@ async function handle(msg) {
       const snap = snapshotPatchTargets(command);
       let { text, isError } = await runBash(command, Math.min(Math.max(t, 1000), MAX_TIMEOUT_MS));
       if (snap && !isError && /^ok: \d+ file/m.test(text)) text += patchDiff(snap, `${process.pid}-${++seq}`);
-      return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: fitResult(text) || '(no output)' }], isError } });
+      return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: fitResult(text, command) || '(no output)' }], isError } });
     }
     default:
       return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });
@@ -217,6 +249,7 @@ async function handle(msg) {
 }
 
 pruneOutputs();
+const RG_CONFIG = rgConfig();
 if (!existsSync(BASH)) process.stderr.write(`agy-bash: ${BASH} not found\n`);
 if (!existsSync(APPLY_PATCH)) process.stderr.write(`agy-bash: ${APPLY_PATCH} not found\n`);
 const rl = createInterface({ input: process.stdin });

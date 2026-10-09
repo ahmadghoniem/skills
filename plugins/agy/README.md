@@ -64,7 +64,18 @@ agy keeps only about the first and last 5,000 characters of an MCP tool's result
 the tool cuts an output over 9,000 characters itself, keeping whole lines from both ends,
 and puts a note where the middle was: which lines are missing, how many `rg` matches each
 file had there (or how many paths each directory had, for a listing), and the path of the
-full output, kept for a day. agy's own `view_file` is not cut this way, so it stays.
+full output, kept for a day. When the command only printed a file (`cat`, `head`,
+`sed -n`), the note gives that file's missing line range for `view_file` instead. agy's own
+`view_file` is not cut this way, so it stays, and the agents are told to read with it.
+
+Output split by `== <label>` lines is cut section by section: a section that fits an even
+share of the 9,000 characters is kept whole, and the long ones split the rest. `agy-chore`
+is told to run independent searches in one call this way, since the model makes one tool
+call per turn; in a 5-task benchmark that cut turns by 40% with recall unchanged.
+
+The tool's `rg` runs with `--max-columns=300 --max-columns-preview`, so a minified line
+shows as a preview. These are added to the user's own `RIPGREP_CONFIG_PATH` file when it
+does not set them already.
 
 `delegate.mjs` and `/agy:setup` register it as the `agy` server in agy's global
 `~/.gemini/config/mcp_config.json`, next to any servers already there, and update the

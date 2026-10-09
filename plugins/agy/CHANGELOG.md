@@ -17,7 +17,20 @@
 - **The bash tool cuts long output itself.** Past 9,000 characters it keeps whole lines
   from both ends and notes which lines are missing, how many `rg` matches each file had
   in them, and where the full output is saved. agy dropped the middle of 19% of bash
-  results with only a file link, which the model never opened.
+  results with only a file link, which the model never opened. The note also counts
+  `rg` output without line numbers, `-C` context lines, single-file matches and listings
+  with root files; when the command only printed a file, it names the file's missing
+  lines for `view_file`. The tool's `rg` adds `--max-columns=300 --max-columns-preview`
+  to the user's rg config when it lacks them.
+- **Labelled sections are cut one by one.** Output split by `== <label>` lines shares the
+  9,000 characters between sections, so one long result no longer hides the others.
+  `agy-chore` is told to run independent searches in one bash call this way: the model
+  made one tool call per turn, and in 5 lookups turns fell from 294 to 176 with recall
+  unchanged (0.61 against 0.62).
+- **The agents read with `view_file`.** `agy-chore` and `agy-delegate` are told to read
+  files with `view_file` (800 lines, not cut) rather than `cat` or `sed`, and in one large
+  window rather than slices: a third of file reads in a benchmark re-read a file already
+  read.
 - **`--chore`** runs the new `agy-chore` agent: it investigates, runs scratch scripts in
   a `mktemp -d` directory, reports with `path:line` citations, and is told not to change
   the workspace. Defaults to `low` effort.
