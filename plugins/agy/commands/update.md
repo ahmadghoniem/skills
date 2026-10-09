@@ -17,7 +17,7 @@ Then review, and report findings only; the user picks which to apply:
   `agy-agents/`): which workarounds, retry logic, or documented caveats are no longer
   needed given what changed upstream.
 - **The open papercuts** it prints, one cluster at a time. A cluster this release fixes:
-  propose closing its cuts with `/agy:papercut --resolve <id> --note "..."`. A cluster of
+  propose closing it with `/agy:papercut --resolve <key> --note "..."`. A cluster of
   three or more that is still open: propose a fix. Read "Recurred after a recorded fix"
   first and do not re-propose a fix that did not hold. Judge from the evidence rows, not
   by re-running delegations. A cluster at one agy version only is an upstream

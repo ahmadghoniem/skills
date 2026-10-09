@@ -4,11 +4,12 @@
 // this runs Git Bash in the foreground until the command ends or times out.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { BUDGET, shorten } from './shorten.mjs';
 
 const BASH = process.env.AGY_BASH || 'C:/Program Files/Git/bin/bash.exe';
 // tools/apply-patch at the repo root, reached in scripts as the `apply-patch` function.
@@ -20,6 +21,8 @@ const OUT_DIR = join(tmpdir(), 'agy-bash');
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 1_200_000;
 const MAX_DIFF_LINES = 400;
+// Full outputs of shortened results, kept for a day so the model can read them.
+const KEEP_OUTPUT_MS = 24 * 60 * 60 * 1000;
 
 const TOOL = {
   name: 'bash',
@@ -101,7 +104,6 @@ function runBash(command, timeoutMs) {
       child.stdout.destroy();
       child.stderr.destroy();
       for (const f of [script, pidFile]) try { unlinkSync(f); } catch { /* ignore */ }
-      // agy shortens long tool output itself and saves the full text to a file.
       const out = Buffer.concat(chunks).toString('utf8');
       if (err) return resolve({ text: `Failed to start ${BASH}: ${err.message}`, isError: true });
       if (timedOut) return resolve({ text: `${out}\n[timed out after ${timeoutMs} ms; process killed]`, isError: true });
@@ -154,6 +156,32 @@ function patchDiff(snap, id) {
   return `\nDiff of the updated files (this call's changes only):\n${parts.slice(0, MAX_DIFF_LINES).join('\n')}${cut}\n`;
 }
 
+/**
+ * Shorten an over-long result, saving the full text where the note says.
+ * @param {string} text
+ */
+function fitResult(text) {
+  if (text.length <= BUDGET) return text;
+  const saved = join(OUT_DIR, `${process.pid}-${Date.now()}-${++seq}.out`);
+  try {
+    mkdirSync(OUT_DIR, { recursive: true });
+    writeFileSync(saved, text, 'utf8');
+  } catch {
+    return shorten(text, '(could not be saved)');
+  }
+  return shorten(text, saved.replace(/\\/g, '/'));
+}
+
+function pruneOutputs() {
+  try {
+    for (const f of readdirSync(OUT_DIR)) {
+      if (!f.endsWith('.out')) continue;
+      const p = join(OUT_DIR, f);
+      if (Date.now() - statSync(p).mtimeMs > KEEP_OUTPUT_MS) unlinkSync(p);
+    }
+  } catch { /* nothing to prune */ }
+}
+
 function send(msg) {
   process.stdout.write(JSON.stringify(msg) + '\n');
 }
@@ -181,13 +209,14 @@ async function handle(msg) {
       const snap = snapshotPatchTargets(command);
       let { text, isError } = await runBash(command, Math.min(Math.max(t, 1000), MAX_TIMEOUT_MS));
       if (snap && !isError && /^ok: \d+ file/m.test(text)) text += patchDiff(snap, `${process.pid}-${++seq}`);
-      return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: text || '(no output)' }], isError } });
+      return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: fitResult(text) || '(no output)' }], isError } });
     }
     default:
       return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });
   }
 }
 
+pruneOutputs();
 if (!existsSync(BASH)) process.stderr.write(`agy-bash: ${BASH} not found\n`);
 if (!existsSync(APPLY_PATCH)) process.stderr.write(`agy-bash: ${APPLY_PATCH} not found\n`);
 const rl = createInterface({ input: process.stdin });

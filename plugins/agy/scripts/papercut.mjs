@@ -12,22 +12,24 @@ import { readJob } from './lib/jobs.mjs';
 
 const USAGE = `Usage: /agy:papercut --source narrated --text "<what went wrong>"
                     [--fix "<what would have prevented it>"]
-                    [--severity warn|info] [--job <job-id>]
-                    [--quote "<the delegatee's own words>"]
-       /agy:papercut --resolve <id> --note "<what was changed>"
+                    [--job <job-id>] [--quote "<the delegatee's own words>"]
+       /agy:papercut --resolve <key|id> --note "<what was changed>"
 `;
 
 /**
- * Append a resolution row for one cut. The log is never rewritten: a fix that
- * stops working shows up as its cluster reappearing after this row's date.
+ * Append a resolution row. A key closes every cut in that group recorded
+ * before now; an id closes one cut. The log is never rewritten: a fix that
+ * stops working shows up as its key reappearing after this row's date.
  *
  * @param {string} target
  * @param {unknown} rawNote
  * @returns {number}
  */
 function resolveCut(target, rawNote) {
-  if (!readPapercuts().some((c) => c.id === target)) {
-    process.stderr.write(`Error: no papercut \`${target}\` in ${papercutsPath()}.\n`);
+  const cuts = readPapercuts().filter((c) => !c.resolves);
+  const byKey = cuts.some((c) => c.key === target);
+  if (!byKey && !cuts.some((c) => c.id === target)) {
+    process.stderr.write(`Error: no papercut key or id \`${target}\` in ${papercutsPath()}.\n`);
     return 2;
   }
   const note = typeof rawNote === 'string' ? rawNote.trim() : '';
@@ -38,13 +40,11 @@ function resolveCut(target, rawNote) {
   const id = appendPapercut({
     ts: new Date().toISOString(),
     source: 'resolution',
-    severity: 'info',
-    tool: 'agy',
     pluginVersion,
     text: note,
     resolves: target,
   });
-  process.stdout.write(`resolved \`${target}\` (recorded as \`${id}\`).\n`);
+  process.stdout.write(`resolved ${byKey ? 'key' : 'cut'} \`${target}\` (recorded as \`${id}\`).\n`);
   return 0;
 }
 
@@ -91,20 +91,17 @@ export async function main(rawArgv) {
   const evidence = {};
   if (typeof flags.quote === 'string' && flags.quote.trim()) evidence.quote = flags.quote.trim();
 
-  const severity = flags.severity === 'info' ? 'info' : 'warn';
-
   const id = appendPapercut({
     ts: new Date().toISOString(),
     source,
-    severity,
-    tool: 'agy',
+    key: 'narrated',
+    text,
     toolVersion: cachedToolVersion() ?? undefined,
     pluginVersion,
     model: typeof job?.model === 'string' && job.model ? job.model : undefined,
     repo: root,
     jobId: job ? job.id : undefined,
     conversationId: typeof job?.conversationId === 'string' ? job.conversationId : undefined,
-    text,
     fix: typeof flags.fix === 'string' && flags.fix.trim() ? flags.fix.trim() : undefined,
     evidence: Object.keys(evidence).length ? evidence : undefined,
   });

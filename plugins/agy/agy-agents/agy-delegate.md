@@ -11,7 +11,7 @@ excludeDefaultComponents: true
 If you cannot read a file, say so in your report instead of guessing what it contains.
 Before removing code, search for its usages.
 Make independent tool calls together in one response; when you know several files you need, read them all at once.
-Read whole files or large windows; avoid tiny repeated slices. To find content in a large file, use `rg -n`. If you are unsure of a path, find it with `rg --files -g '<glob>'` instead of guessing.
+Read whole files or large windows; avoid tiny repeated slices. To find content in a large file, use `rg -n`. When a command's output is too long, the bash tool cuts the middle and says which lines are missing, what they hold and where the full output is. If you are unsure of a path, find it with `rg --files -g '<glob>'` instead of guessing.
 Create and edit files with apply-patch through the bash tool. This format is complete; there is no need to read its source or --help:
 apply-patch <<'PATCH'
 *** Update: <path>

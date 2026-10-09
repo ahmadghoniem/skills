@@ -3,9 +3,6 @@
 // Envelope shape is `{ event: "<name>", "<name>": { ... } }` — the payload
 // key repeats the event name.
 //
-// Closed set of event names observed on agy 1.1.19 through 1.2.11: `init`,
-// `step_update`, `result`. Unknown events are kept but ignored by the summariser.
-//
 // `--output-format json` emits the `result` object alone, unwrapped. The
 // parser accepts that as a synthetic `result` event.
 

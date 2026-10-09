@@ -60,6 +60,12 @@ until it exits or its `timeout_ms` passes (default 2 min, max 20 min), and kills
 whole process tree on timeout. agy's own `run_command` runs PowerShell and moves
 anything past 10 s to the background.
 
+agy keeps only about the first and last 5,000 characters of an MCP tool's result. So
+the tool cuts an output over 9,000 characters itself, keeping whole lines from both ends,
+and puts a note where the middle was: which lines are missing, how many `rg` matches each
+file had there (or how many paths each directory had, for a listing), and the path of the
+full output, kept for a day. agy's own `view_file` is not cut this way, so it stays.
+
 `delegate.mjs` and `/agy:setup` register it as the `agy` server in agy's global
 `~/.gemini/config/mcp_config.json`, next to any servers already there, and update the
 entry when the plugin's path changes. agy lists it to the model directly as
@@ -125,7 +131,9 @@ The warnings below fire on runs agy reports as finished:
 ## The friction log
 
 Every run ending in an actionable `⚠` warning appends a row to
-`~/.cad/papercuts.jsonl` (or `CAD_HOME`). `agy-status`, `exit`, `compaction`,
+`~/.cad/papercuts.jsonl` (or `CAD_HOME`). Each row has a `key` naming its group
+(the warning id, or `tool-errors:<tool>` with one row per failing tool) and a
+`text` holding the failure itself. `agy-status`, `exit`, `compaction`,
 `denied` and `resume` are excluded: they describe the run rather than friction, and most
 fire on runs that worked.
 
@@ -137,8 +145,9 @@ the open clusters after each agy update, for Claude to review against the
 release.
 
 Rows are append-only and never edited or deduplicated. Resolving via
-`/agy:papercut --resolve <id> --note "…"` appends a resolution, allowing
-subsequent recurrences to be detected.
+`/agy:papercut --resolve <key> --note "…"` appends a resolution that closes every
+cut under that key recorded before it, so a later cut under the same key shows as
+a recurrence. `--resolve <id>` closes one cut.
 
 Each row copies necessary evidence rather than linking to the job record,
 because `pruneOlderThanDays` deletes job directory files older than 30 days

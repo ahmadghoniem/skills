@@ -14,6 +14,10 @@
 - **`apply-patch` in the bash tool.** The repo's `tools/apply-patch` runs as the
   `apply-patch` bash function. After a patch that applies, the tool appends the diff of
   that call's changes.
+- **The bash tool cuts long output itself.** Past 9,000 characters it keeps whole lines
+  from both ends and notes which lines are missing, how many `rg` matches each file had
+  in them, and where the full output is saved. agy dropped the middle of 19% of bash
+  results with only a file link, which the model never opened.
 - **`--chore`** runs the new `agy-chore` agent: it investigates, runs scratch scripts in
   a `mktemp -d` directory, reports with `path:line` citations, and is told not to change
   the workspace. Defaults to `low` effort.
@@ -22,6 +26,12 @@
 
 ### Changed
 
+- **Papercuts are grouped by key.** Each row now carries a `key` (the warning id, or
+  `tool-errors:<tool>` with one row per failing tool) and its `text` is the failure
+  itself, not the `⚠` heading. `/agy:papercut --resolve <key>` closes a whole group;
+  `--resolve <id>` still closes one cut. `/agy:update` prints one block per key with
+  its distinct messages. Rows drop `severity`, `tool` and the `evidence.detail` copy.
+  A failure in one tool no longer counts as a recurrence of a fix to another.
 - **One agent.** `agy-delegate` now has only `view_file`, `search_web` and
   `read_url_content` of its own, plus the bash tool, and edits files with `apply-patch`.
   agy still loads `AGENTS.md` and `GEMINI.md` itself; `excludeDefaultComponents` does

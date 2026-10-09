@@ -1,6 +1,6 @@
 ---
 description: Record one friction point in the agy papercut log, or close one once it is fixed.
-argument-hint: '--source narrated --text "..." [--job <id>] | --resolve <id> --note "..."'
+argument-hint: '--source narrated --text "..." [--job <id>] | --resolve <key|id> --note "..."'
 allowed-tools: Bash(node:*)
 ---
 
@@ -19,5 +19,7 @@ Pass `--job <id>` and the run's model and conversation are filled in
 from the record instead of being retyped.
 
 Once the user has applied a fix, close the cuts it addresses with
-`--resolve <id> --note "what changed"`. This appends a row and never edits the
-log, so a cluster that comes back after its fix is flagged at the next review.
+`--resolve <key> --note "what changed"`, which closes every cut under that key
+(`tool-errors:view_file`, `stderr`, ...) recorded so far. `--resolve <id>` closes
+one cut. This appends a row and never edits the log, so a key that comes back
+after its fix is flagged at the next review.

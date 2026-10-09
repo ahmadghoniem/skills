@@ -1,6 +1,11 @@
 // The friction log. One JSON object per line in `~/.cad/papercuts.jsonl`,
 // append-only, machine-wide. This module records and groups; `/agy:update`
-// reviews the open clusters against each new agy release.
+// reviews the open groups against each new agy release.
+//
+// Every cut carries a `key`, the group it belongs to: the warning id,
+// `tool-errors:<tool>` for failed calls to one tool, or `narrated`. A
+// resolution names a key, closing every cut in that group recorded before it,
+// or a single cut's id.
 //
 // Rows copy their evidence rather than pointing at the job record:
 // `pruneOlderThanDays` runs on every dispatch and permanently deletes every
@@ -29,31 +34,23 @@ export const pluginVersion = (() => {
 })();
 
 /**
- * Which renderer warnings become papercuts, and how each is filed.
+ * Which renderer warnings become papercuts.
  *
  * `agy-status` and `exit` fire on runs that worked and `resume` is an offer
  * rather than a problem, so the three of them are left out.
  *
- * `warn` means the run's output cannot be trusted as it stands; `info` means
- * something went wrong mid-run and agy carried on.
- *
- * @type {Readonly<Record<string, {severity: 'warn'|'info'}>>}
+ * @type {readonly string[]}
  */
-export const DETECTED_WARNINGS = Object.freeze({
-  stderr: { severity: 'warn' },
-  'agy-error': { severity: 'warn' },
-  watchdog: { severity: 'warn' },
-  timeout: { severity: 'warn' },
-  'tool-errors': { severity: 'info' },
-});
+export const DETECTED_WARNINGS = Object.freeze(['stderr', 'agy-error', 'watchdog', 'timeout', 'tool-errors']);
 
 /**
  * @typedef {Object} Papercut
  * @property {string} id
  * @property {string} ts
- * @property {'detected'|'narrated'|'resolution'} source   old logs may also hold 'orchestrator'
- * @property {'warn'|'info'} severity
- * @property {string} tool
+ * @property {'detected'|'narrated'|'resolution'} source
+ * @property {string} [key]       the group a cut belongs to; absent on resolutions
+ * @property {string} text        the failure itself: agy's error, the stderr line, the tool's message
+ * @property {number} [count]     failed calls behind a `tool-errors:<tool>` cut
  * @property {string} [toolVersion]
  * @property {string} [pluginVersion]
  * @property {string} [model]
@@ -61,11 +58,9 @@ export const DETECTED_WARNINGS = Object.freeze({
  * @property {string} [jobId]
  * @property {string} [conversationId]
  * @property {number} [toolCalls]
- * @property {string} [warningId] which ⚠ line produced this, for detected rows
- * @property {string} text
  * @property {string} [fix]
- * @property {Record<string, unknown>} [evidence]
- * @property {string} [resolves] id of a cut this one closes
+ * @property {Record<string, unknown>} [evidence]  `more` holds further distinct lines after `text`
+ * @property {string} [resolves]  a key, or the id of one cut
  */
 
 /**
@@ -126,26 +121,14 @@ export function readPapercuts() {
 }
 
 /**
- * Evidence for one warning, drawn from the run summary. Narrow per warning
- * kind: enough to judge the row cold in three weeks, not a second copy of the
- * event stream.
+ * A message on one line. Whole, not just its first line: agy often puts the
+ * cause on the second ("invalid arguments:\n- missing properties ...").
  *
- * @param {string} warningId
- * @param {{line: string, detail?: string[]}} anomaly
- * @param {Record<string, unknown>} ctx run summary fields
- * @returns {Record<string, unknown>}
+ * @param {unknown} s
+ * @returns {string}
  */
-function evidenceFor(warningId, anomaly, ctx) {
-  /** @type {Record<string, unknown>} */
-  const ev = { agyStatus: ctx.agyStatus ?? null, exitCode: ctx.exitCode ?? null };
-  if (warningId === 'tool-errors' && Array.isArray(ctx.toolErrors)) {
-    ev.toolErrors = ctx.toolErrors.slice(0, 5);
-  }
-  if (warningId === 'stderr' && Array.isArray(ctx.stderrTail)) {
-    ev.stderrTail = ctx.stderrTail.slice(0, 10);
-  }
-  if (anomaly.detail?.length) ev.detail = anomaly.detail.slice(0, 5);
-  return ev;
+function oneLine(s) {
+  return String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
 /**
@@ -153,32 +136,63 @@ function evidenceFor(warningId, anomaly, ctx) {
  *
  * Takes the anomalies the renderer already computed, so the log and the ⚠ lines
  * the user saw cannot drift apart. Only `DETECTED_WARNINGS` ids produce rows.
+ * Failed tool calls become one row per tool, so each tool's failures group,
+ * and close, on their own.
  *
  * @param {{id: string, line: string, detail?: string[]}[]} anomalyList
- * @param {Record<string, unknown>} ctx
+ * @param {Record<string, unknown>} ctx run summary fields
  * @returns {Omit<Papercut, 'id'>[]}
  */
 export function detectedCuts(anomalyList, ctx) {
+  const ts = new Date().toISOString();
+  /**
+   * @param {string} key
+   * @param {string} text
+   * @param {string[]} more further distinct lines, kept as evidence
+   * @param {number} [count]
+   */
+  const row = (key, text, more, count) => ({
+    ts,
+    source: /** @type {const} */ ('detected'),
+    key,
+    text,
+    count,
+    toolVersion: ctx.toolVersion || undefined,
+    pluginVersion: ctx.pluginVersion || undefined,
+    model: ctx.model || undefined,
+    repo: ctx.repo || undefined,
+    jobId: ctx.jobId || undefined,
+    conversationId: ctx.conversationId || undefined,
+    toolCalls: typeof ctx.toolCalls === 'number' ? ctx.toolCalls : undefined,
+    evidence: {
+      agyStatus: ctx.agyStatus ?? null,
+      exitCode: ctx.exitCode ?? null,
+      more: more.length ? more : undefined,
+    },
+  });
+
   const out = [];
   for (const a of anomalyList ?? []) {
-    const spec = DETECTED_WARNINGS[a.id];
-    if (!spec) continue;
-    out.push({
-      ts: new Date().toISOString(),
-      source: 'detected',
-      severity: spec.severity,
-      tool: 'agy',
-      toolVersion: ctx.toolVersion || undefined,
-      pluginVersion: ctx.pluginVersion || undefined,
-      model: ctx.model || undefined,
-      repo: ctx.repo || undefined,
-      jobId: ctx.jobId || undefined,
-      conversationId: ctx.conversationId || undefined,
-      toolCalls: typeof ctx.toolCalls === 'number' ? ctx.toolCalls : undefined,
-      warningId: a.id,
-      text: a.line.split('\n')[0].trim(),
-      evidence: evidenceFor(a.id, a, ctx),
-    });
+    if (!DETECTED_WARNINGS.includes(a.id)) continue;
+    const toolErrors = Array.isArray(ctx.toolErrors) ? ctx.toolErrors : [];
+    const stderrTail = Array.isArray(ctx.stderrTail) ? ctx.stderrTail.map(oneLine).filter(Boolean) : [];
+    if (a.id === 'tool-errors' && toolErrors.length) {
+      /** @type {Map<string, string[]>} */
+      const byTool = new Map();
+      for (const e of toolErrors) {
+        const tool = String(e?.tool ?? 'unknown');
+        if (!byTool.has(tool)) byTool.set(tool, []);
+        byTool.get(tool).push(oneLine(e?.message));
+      }
+      for (const [tool, messages] of byTool) {
+        const distinct = [...new Set(messages)];
+        out.push(row(`tool-errors:${tool}`, distinct[0], distinct.slice(1, 4), messages.length));
+      }
+    } else if (a.id === 'stderr' && stderrTail.length) {
+      out.push(row('stderr', stderrTail[0], stderrTail.slice(1, 10)));
+    } else {
+      out.push(row(a.id, oneLine(a.line), (a.detail ?? []).map(oneLine).filter(Boolean).slice(0, 5)));
+    }
   }
   return out;
 }
@@ -203,81 +217,90 @@ export function recordDetected(anomalyList, ctx) {
 }
 
 /**
- * A cut's cluster key: the id of the ⚠ line that produced it, or — for the
- * hand-written rows, which have no machine id — where it came from.
+ * Whether a resolution closes a cut: it names the cut's id, or the cut's key
+ * and was recorded after it.
  *
+ * @param {Record<string, unknown>} fix
  * @param {Record<string, unknown>} cut
- * @returns {string}
+ * @returns {boolean}
  */
-function clusterKey(cut) {
-  if (typeof cut.warningId === 'string' && cut.warningId) return cut.warningId;
-  return typeof cut.source === 'string' ? cut.source : 'unknown';
+export function closes(fix, cut) {
+  return fix.resolves === cut.id || (fix.resolves === cut.key && String(fix.ts) > String(cut.ts));
 }
 
+// agy wraps a rejected tool call's error in the same ~130 characters every
+// time, which pushes the cause (usually a path) to the end of the line.
+const PERMISSION_WRAPPER = /^declaring permissions: cortex tool [\w-]+: convert tool call for permissions: (?:model output error: )?(?:invalid tool call error \(\w+\) )?/;
+
 /**
- * @param {Record<string, unknown>} cut
- * @returns {string}
+ * Compare version strings by their numeric parts, so 1.2.11 sorts after 1.2.2.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
  */
-function formatCut(cut) {
-  const bits = [`  \`${cut.id}\``, String(cut.ts ?? '').slice(0, 10)];
-  if (cut.toolVersion) bits.push(String(cut.toolVersion));
-  if (typeof cut.toolCalls === 'number') bits.push(`${cut.toolCalls} calls`);
-  const out = [bits.join('  '), `      ${String(cut.text ?? '').trim()}`];
-  if (cut.fix) out.push(`      fix: ${String(cut.fix).trim()}`);
-  const ev = cut.evidence;
-  if (ev && typeof ev === 'object') {
-    const keys = Object.keys(ev).filter((k) => k !== 'agyStatus' && k !== 'exitCode');
-    for (const k of keys.slice(0, 3)) {
-      const v = /** @type {Record<string, unknown>} */ (ev)[k];
-      const rendered = Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; ') : String(v);
-      out.push(`      ${k}: ${rendered.slice(0, 200)}`);
-    }
+function byVersion(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
   }
-  return out.join('\n');
+  return 0;
 }
 
 /**
- * The open cuts, grouped by cluster, largest first, plus the clusters that
- * came back after a recorded fix. Empty string when nothing is open.
+ * The open cuts, one block per key, largest first, plus the keys that came
+ * back after a recorded fix. Empty string when nothing is open.
  *
  * @param {Record<string, unknown>[]} [all]
  * @returns {string}
  */
 export function formatOpenPapercuts(all = readPapercuts()) {
-  const closed = new Set(all.map((c) => c.resolves).filter((r) => typeof r === 'string' && r));
-  const open = all.filter((c) => !c.resolves && !closed.has(String(c.id)));
+  const fixes = all.filter((c) => c.resolves);
+  const open = all.filter((c) => !c.resolves && !fixes.some((f) => closes(f, c)));
   if (open.length === 0) return '';
 
   /** @type {Map<string, Record<string, unknown>[]>} */
-  const clusters = new Map();
+  const groups = new Map();
   for (const c of open) {
-    const k = clusterKey(c);
-    if (!clusters.has(k)) clusters.set(k, []);
-    clusters.get(k).push(c);
+    const k = String(c.key);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(c);
   }
 
-  const ordered = [...clusters.entries()].sort((a, b) => b[1].length - a[1].length);
+  const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   const out = [`${open.length} open papercut${open.length === 1 ? '' : 's'} in ${ordered.length} cluster${ordered.length === 1 ? '' : 's'}:`, ''];
   for (const [key, cuts] of ordered) {
     cuts.sort((a, b) => (String(a.ts) < String(b.ts) ? 1 : -1));
-    const sources = [...new Set(cuts.map((c) => c.source))].join('/');
-    const versions = [...new Set(cuts.map((c) => c.toolVersion).filter(Boolean))];
-    const span = versions.length ? `, ${versions.join(' ')}` : '';
-    out.push(`## ${key} — ${cuts.length}× (${sources}${span})`);
-    for (const c of cuts) out.push(formatCut(c));
+    const versions = [...new Set(cuts.map((c) => String(c.toolVersion ?? '')).filter(Boolean))].sort(byVersion);
+    const span = `${String(cuts.at(-1).ts).slice(0, 10)} to ${String(cuts[0].ts).slice(0, 10)}`;
+    out.push(`## ${key} — ${cuts.length}×, ${span}${versions.length ? `, agy ${versions.join(' ')}` : ''}`);
+
+    // One line per distinct message, most frequent first, naming its newest cut.
+    /** @type {Map<string, Record<string, unknown>[]>} */
+    const byText = new Map();
+    for (const c of cuts) {
+      const t = String(c.text ?? '').trim().replace(PERMISSION_WRAPPER, '');
+      if (!byText.has(t)) byText.set(t, []);
+      byText.get(t).push(c);
+    }
+    const texts = [...byText.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [text, same] of texts.slice(0, 3)) {
+      const c = same[0];
+      out.push(`  ${same.length}×  \`${c.id}\`  ${String(c.ts).slice(0, 10)}  ${text.slice(0, 300)}`);
+      if (c.fix) out.push(`      fix: ${String(c.fix).trim()}`);
+    }
+    if (texts.length > 3) out.push(`  … and ${texts.length - 3} more distinct messages`);
     out.push('');
   }
 
-  // Recurrence after a resolution is the only feedback this loop has.
+  // Recurrence after a resolution is the only feedback this loop has. Every
+  // open cut under a resolved key postdates the fix, or the fix would close it.
   const reappeared = [];
   for (const [key, cuts] of ordered) {
-    const fixes = all.filter(
-      (c) => c.resolves && all.some((o) => o.id === c.resolves && clusterKey(o) === key),
-    );
-    if (!fixes.length) continue;
-    const lastFix = fixes.map((c) => String(c.ts)).sort().at(-1);
-    const after = cuts.filter((c) => String(c.ts) > lastFix);
-    if (after.length) reappeared.push(`  ${key}: ${after.length} new since the ${lastFix.slice(0, 10)} fix`);
+    const fix = fixes.filter((f) => f.resolves === key).sort((a, b) => (String(a.ts) < String(b.ts) ? -1 : 1)).at(-1);
+    if (fix) reappeared.push(`  ${key}: ${cuts.length} new since the ${String(fix.ts).slice(0, 10)} fix (${String(fix.text ?? '').trim()})`);
   }
   if (reappeared.length) {
     out.push('Recurred after a recorded fix — the fix did not hold:', ...reappeared, '');

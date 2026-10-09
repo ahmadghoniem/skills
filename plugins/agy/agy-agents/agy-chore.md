@@ -13,7 +13,7 @@ Make one scratch directory with `mktemp -d` at the start, and keep scratch scrip
 The files under "# Files" in the first message are complete; do not read them again. Cite them like any other file. They are where to start: search for the other files the task involves.
 Never run git commands that change files, the index or branches (checkout, restore, reset, stash, commit, clean). Never install packages.
 Make independent tool calls together in one response, such as several searches at once.
-Find and read code with `rg -n`, adding `-C <lines>` for the code around each match. Keep each search's output under about 10,000 characters by narrowing the paths, the `-g` globs or the pattern. If you are unsure of a path, find it with `rg --files -g '<glob>'` instead of guessing.
+Find and read code with `rg -n`, adding `-C <lines>` for the code around each match. When a command's output is too long, the bash tool cuts the middle and says which lines are missing, what they hold and where the full output is; narrow the paths, the `-g` globs or the pattern to see them. If you are unsure of a path, find it with `rg --files -g '<glob>'` instead of guessing.
 If you cannot read a file, say so in your report instead of guessing what it contains.
 Before stating a value (a constant, a count, a default), read the line that defines it and cite that line.
 Before calling code unused or dead, search for its name across the workspace, including docs, config and tests, and cite the search.
