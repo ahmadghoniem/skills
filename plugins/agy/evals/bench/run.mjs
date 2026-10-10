@@ -74,7 +74,7 @@ if (o.arm === 'stock' && existsSync(mcpConfigPath())) {
 }
 
 /** Stock agy: its default agent and tools, the brief sent as is. */
-function runStock(brief) {
+function runStock(id, brief) {
   const args = ['--output-format', 'stream-json', '--input-format', 'stream-json', '--disable-slash-commands',
     '--add-dir', REPO, '--print-timeout', `${Math.ceil(TIMEOUT / 60)}m`, '--model', o.model, '--dangerously-skip-permissions'];
   const since = Date.now();
@@ -97,6 +97,7 @@ function runStock(brief) {
     c.on('close', (code) => {
       clearTimeout(dog);
       const s = summariseEvents(events);
+      writeFileSync(join(OUT, `${id}.stock.ndjson`), events.map((e) => JSON.stringify(e)).join('\n'));
       res({ wall: (Date.now() - since) / 1000, answeredAt, exit: code, killed, stderrTail: err.slice(-600),
         conversationId: s.conversationId, report: s.response, agyStatus: s.status, toolCalls: s.toolCalls });
     });
@@ -140,7 +141,8 @@ async function runCustom(id, brief) {
     toolCalls = summariseEvents(readFileSync(rawLogPath(REPO, job.id), 'utf8').split('\n').map(parseLine).filter(Boolean)).toolCalls;
   } catch { /* no job or no log */ }
   return { wall, exit: r.code, killed: r.killed, stdoutTail: r.out.slice(-600),
-    conversationId: job?.conversationId, report: job?.summary, agyStatus: job?.agyStatus, toolCalls, job };
+    conversationId: job?.conversationId, report: job?.summary, agyStatus: job?.agyStatus,
+    timedOut: job?.timedOut ?? false, toolCalls, job };
 }
 
 let next = 0;
@@ -150,7 +152,7 @@ async function worker(n) {
     const brief = t.brief.replaceAll('{REPO}', REPO);
     console.log(`[w${n}] start ${t.id}.${o.arm} ${new Date().toISOString()}`);
     try {
-      const r = o.arm === 'stock' ? await runStock(brief) : await runCustom(t.id, brief);
+      const r = o.arm === 'stock' ? await runStock(t.id, brief) : await runCustom(t.id, brief);
       writeFileSync(join(OUT, `${t.id}.${o.arm}.json`), JSON.stringify({ task: t.id, arm: o.arm, model: o.model, agy: VERSION, ...r }, null, 1));
       console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
       if (/quota|RESOURCE_EXHAUSTED|429/i.test(`${r.stderrTail ?? ''}${r.stdoutTail ?? ''}${r.job?.error ?? ''}`)) {

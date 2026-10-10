@@ -110,8 +110,11 @@ export function summariseEvents(events) {
   let deniedActions;
   /** @type {unknown} */
   let usage;
-  // Total tool steps during the run, successful or failed.
+  // Total tool steps during the run, successful or failed. agy sends one
+  // step_update when a tool starts (ACTIVE) and another when it ends, both with
+  // the same step_index, so a step is counted once by its index.
   let toolCalls = 0;
+  const toolSteps = new Set();
   /** @type {string|undefined} */
   let lastTool;
   /** @type {{tool: string, message: string}[]} */
@@ -148,7 +151,11 @@ export function summariseEvents(events) {
       else if (su.step_type === 'checkpoint' && sawWork) compactions += 1;
 
       if (su.step_type === 'tool') {
-        toolCalls += 1;
+        if (typeof su.step_index !== 'number') toolCalls += 1;
+        else if (!toolSteps.has(su.step_index)) {
+          toolSteps.add(su.step_index);
+          toolCalls += 1;
+        }
         if (typeof su.tool_name === 'string') lastTool = su.tool_name;
         const info = su.tool_info;
 

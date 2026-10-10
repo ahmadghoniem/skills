@@ -67,6 +67,8 @@
   instead of the newest flash. 3.8 used 1.4 to 3.2 times the input tokens.
 - A task whose first word is longer than 40 characters no longer fails on a job file
   name too long to open.
+- The tool-call count no longer counts each call twice. agy sends a step update when a
+  tool starts and another when it ends; the count now goes by step index.
 
 ### Removed
 

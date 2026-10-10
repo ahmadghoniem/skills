@@ -161,6 +161,11 @@ describe('toolCalls', () => {
     expect(s.toolErrors).toHaveLength(1);
   });
 
+  it('counts a tool once across its ACTIVE and DONE updates', () => {
+    // find_by_name twice and run_command once, each sent as ACTIVE then DONE.
+    expect(summariseEvents(load(READ_AND_COMMAND)).toolCalls).toBe(3);
+  });
+
   it('is zero for a run that called no tools', () => {
     expect(summariseEvents([]).toolCalls).toBe(0);
   });
