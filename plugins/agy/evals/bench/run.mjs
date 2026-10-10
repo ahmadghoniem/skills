@@ -4,9 +4,10 @@
 //   node run.mjs --arm stock|custom --tasks <file> --repo <dir> --out <dir>
 //                [--only id,id] [--workers 3] [--timeout 900] [--model gemini-3.7-flash-low]
 //
-// The tasks file is {"tasks": [{"id", "brief"}]}; "{REPO}" in a brief becomes the
-// repo path. Each task writes <out>/<id>.<arm>.json. A task whose result exists is
-// skipped, so a rerun picks up where a quota stop left off.
+// The tasks file is {"tasks": [{"id", "brief", "repo"?}]}; a task's own "repo"
+// overrides --repo, and "{REPO}" in a brief becomes the repo path. Each task writes
+// <out>/<id>.<arm>.json. A task whose result exists is skipped, so a rerun picks up
+// where a quota stop left off.
 //
 // The stock arm takes the plugin's bash server out of agy's MCP config for the run
 // and puts it back after, so run one arm at a time.
@@ -35,16 +36,22 @@ const { values: o } = parseArgs({
     model: { type: 'string', default: 'gemini-3.7-flash-low' },
   },
 });
-if (!['stock', 'custom'].includes(o.arm ?? '') || !o.tasks || !o.repo || !o.out) {
-  console.error('usage: node run.mjs --arm stock|custom --tasks <file> --repo <dir> --out <dir> [--only a,b] [--workers 3] [--timeout 900] [--model id]');
+const usage = 'usage: node run.mjs --arm stock|custom --tasks <file> --repo <dir> --out <dir> [--only a,b] [--workers 3] [--timeout 900] [--model id]';
+if (!['stock', 'custom'].includes(o.arm ?? '') || !o.tasks || !o.out) {
+  console.error(usage);
   process.exit(2);
 }
-const REPO = resolve(o.repo).replace(/\\/g, '/');
+const { tasks } = JSON.parse(readFileSync(o.tasks, 'utf8'));
+if (!o.repo && !tasks.every((t) => t.repo)) {
+  console.error(`--repo is required unless every task has its own repo\n${usage}`);
+  process.exit(2);
+}
+/** @param {string} dir */
+const repoPath = (dir) => resolve(dir).replace(/\\/g, '/');
 const OUT = resolve(o.out);
 const TIMEOUT = Number(o.timeout);
 const DELEGATE = fileURLToPath(new URL('../../scripts/delegate.mjs', import.meta.url));
 const only = o.only.split(',').filter(Boolean);
-const { tasks } = JSON.parse(readFileSync(o.tasks, 'utf8'));
 mkdirSync(OUT, { recursive: true });
 const queue = tasks.filter((t) => (!only.length || only.includes(t.id)) && !existsSync(join(OUT, `${t.id}.${o.arm}.json`)));
 const BIN = await resolveBin();
@@ -74,12 +81,12 @@ if (o.arm === 'stock' && existsSync(mcpConfigPath())) {
 }
 
 /** Stock agy: its default agent and tools, the brief sent as is. */
-function runStock(id, brief) {
+function runStock(id, brief, repo) {
   const args = ['--output-format', 'stream-json', '--input-format', 'stream-json', '--disable-slash-commands',
-    '--add-dir', REPO, '--print-timeout', `${Math.ceil(TIMEOUT / 60)}m`, '--model', o.model, '--dangerously-skip-permissions'];
+    '--add-dir', repo, '--print-timeout', `${Math.ceil(TIMEOUT / 60)}m`, '--model', o.model, '--dangerously-skip-permissions'];
   const since = Date.now();
   return new Promise((res) => {
-    const c = spawnDirect(BIN, args, { cwd: REPO, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const c = spawnDirect(BIN, args, { cwd: repo, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     const events = [];
     let err = '';
     /** Seconds until agy's result event; the process may stay alive well past it. */
@@ -99,14 +106,14 @@ function runStock(id, brief) {
       const s = summariseEvents(events);
       writeFileSync(join(OUT, `${id}.stock.ndjson`), events.map((e) => JSON.stringify(e)).join('\n'));
       res({ wall: (Date.now() - since) / 1000, answeredAt, exit: code, killed, stderrTail: err.slice(-600),
-        conversationId: s.conversationId, report: s.response, agyStatus: s.status, toolCalls: s.toolCalls });
+        conversationId: s.conversationId, report: s.response, agyStatus: s.status, toolCalls: s.toolCalls, usage: s.usage });
     });
   });
 }
 
 /** The job record delegate.mjs wrote for this brief, if any. */
-function findJob(brief, since) {
-  const dir = jobsDir(REPO);
+function findJob(brief, since, repo) {
+  const dir = jobsDir(repo);
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return undefined; }
   for (const f of files) {
@@ -119,13 +126,13 @@ function findJob(brief, since) {
 }
 
 /** The plugin's path: delegate.mjs --chore, which runs the agy-chore agent with the bash tool. */
-async function runCustom(id, brief) {
+async function runCustom(id, brief, repo) {
   const file = join(OUT, `${id}.custom.brief.md`);
   writeFileSync(file, `${brief}\n`);
   const since = Date.now();
   const r = await new Promise((res) => {
     const c = spawn(process.execPath, [DELEGATE, '--model', o.model, '--timeout', String(TIMEOUT), '--chore', '--prompt-file', file], {
-      cwd: REPO, env: { ...process.env, CAD_RELEASE_CHECK: 'off' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+      cwd: repo, env: { ...process.env, CAD_RELEASE_CHECK: 'off' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     let out = '';
     c.stdout.on('data', (d) => (out += d));
@@ -135,24 +142,25 @@ async function runCustom(id, brief) {
     c.on('close', (code) => { clearTimeout(dog); res({ code, out, killed }); });
   });
   const wall = (Date.now() - since) / 1000;
-  const job = findJob(brief, since);
-  let toolCalls;
+  const job = findJob(brief, since, repo);
+  let s = {};
   try {
-    toolCalls = summariseEvents(readFileSync(rawLogPath(REPO, job.id), 'utf8').split('\n').map(parseLine).filter(Boolean)).toolCalls;
+    s = summariseEvents(readFileSync(rawLogPath(repo, job.id), 'utf8').split('\n').map(parseLine).filter(Boolean));
   } catch { /* no job or no log */ }
   return { wall, exit: r.code, killed: r.killed, stdoutTail: r.out.slice(-600),
     conversationId: job?.conversationId, report: job?.summary, agyStatus: job?.agyStatus,
-    timedOut: job?.timedOut ?? false, toolCalls, job };
+    timedOut: job?.timedOut ?? false, toolCalls: s.toolCalls, usage: s.usage, job };
 }
 
 let next = 0;
 async function worker(n) {
   while (next < queue.length) {
     const t = queue[next++];
-    const brief = t.brief.replaceAll('{REPO}', REPO);
+    const repo = repoPath(t.repo ?? o.repo);
+    const brief = t.brief.replaceAll('{REPO}', repo);
     console.log(`[w${n}] start ${t.id}.${o.arm} ${new Date().toISOString()}`);
     try {
-      const r = o.arm === 'stock' ? await runStock(t.id, brief) : await runCustom(t.id, brief);
+      const r = o.arm === 'stock' ? await runStock(t.id, brief, repo) : await runCustom(t.id, brief, repo);
       writeFileSync(join(OUT, `${t.id}.${o.arm}.json`), JSON.stringify({ task: t.id, arm: o.arm, model: o.model, agy: VERSION, ...r }, null, 1));
       console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
       if (/quota|RESOURCE_EXHAUSTED|429/i.test(`${r.stderrTail ?? ''}${r.stdoutTail ?? ''}${r.job?.error ?? ''}`)) {

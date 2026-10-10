@@ -73,3 +73,48 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
    stopped near 20 s, and `pgrep -af 'agy|bash.mjs'` afterwards must list nothing
    from the run.
 8. **Sign out.** At the end of the session, `agy` then `/logout`.
+
+## Part C: ContextBench pilot
+
+[ContextBench](https://github.com/anonymousUser2026/ContextBench) scores how much
+of the code needed for a fix an agent found (coverage) and how much of what it
+returned was needed (precision), at file, symbol and line-span level. The pilot
+takes 20 tasks from its 500-task verified subset, spread across languages, and
+runs both arms three times. Each brief asks for the context only, ending in a
+`<CONTEXT>` block of `path:start-end` lines; `contextbench/score.mjs` turns those
+blocks into the evaluator's input. Only the final context is scored, so the
+evaluator's trajectory metrics (AUC-coverage, redundancy) don't apply.
+
+Network: the default allowed domains must reach `huggingface.co` and its file
+CDN for the parquet; if the download is blocked, report the host it was
+redirected to.
+
+1. **Python 3.11 and the evaluator.** Its `tree-sitter-languages` pin has no
+   wheels past 3.11.
+   ```
+   uv venv -p 3.11 /opt/cbenv
+   git clone -q --depth 1 https://github.com/anonymousUser2026/ContextBench /opt/cb-eval
+   uv pip install -p /opt/cbenv -r /opt/cb-eval/Context-Bench/requirements.txt pandas
+   curl -fsSL -o /opt/cb-eval/verified.parquet \
+     https://huggingface.co/datasets/Contextbench/ContextBench/resolve/main/data/contextbench_verified.parquet
+   ```
+2. **Tasks and repos.** From `plugins/agy/evals/bench/contextbench`:
+   ```
+   /opt/cbenv/bin/python prepare.py --gold /opt/cb-eval/verified.parquet --repos /opt/bench/cb --out /tmp/cb/tasks.json
+   ```
+3. **Runs.** From `plugins/agy`, one arm at a time:
+   ```
+   for r in 1 2 3; do for a in stock custom; do
+     . /tmp/agy-keyring.env && node evals/bench/run.mjs --arm $a --tasks /tmp/cb/tasks.json \
+       --out /tmp/cb/r$r --workers 3 --timeout 900
+   done; done
+   ```
+   A quota stop prints `QUOTA - stopping`; rerunning the same command resumes.
+4. **Score.** From `plugins/agy/evals/bench/contextbench`, for each run and arm:
+   ```
+   node score.mjs pred --tasks /tmp/cb/tasks.json --run /tmp/cb/r1 --arm stock
+   (cd /opt/cb-eval/Context-Bench && /opt/cbenv/bin/python -m contextbench.evaluate \
+     --gold /opt/cb-eval/verified.parquet --pred /tmp/cb/r1/preds.stock.jsonl \
+     --cache /opt/cb-cache --out /tmp/cb/r1/eval.stock.jsonl)
+   ```
+   then `node score.mjs report --tasks /tmp/cb/tasks.json --run /tmp/cb/r1 --run /tmp/cb/r2 --run /tmp/cb/r3`.
