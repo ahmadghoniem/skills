@@ -139,7 +139,7 @@ function report(runs) {
     console.log(`file    ${level('file')}`);
     console.log(`symbol  ${level('symbol')}`);
     console.log(`span    ${level('span')}`);
-    console.log(`fix site: line recall ${fmt(mean(rows.map(({ d }) => d?.edit_recall ?? 0)))}  file recall ${fmt(mean(rows.map(({ d }) => d?.edit_file_recall ?? 0)))}`);
+    console.log(`fix site: line recall ${fmt(mean(rows.map(({ d }) => d?.edit_recall ?? 0)))}  file recall ${fmt(mean(rows.map(({ d }) => d?.edit_file_recall ?? 0)))}  predicted lines mean ${fmt(mean(rows.map(({ d }) => d?.pred_lines ?? 0)), 0)}`);
     console.log(`files predicted ${fmt(mean(g((e) => e.final?.file?.pred_size ?? 0)), 1)}`);
     console.log(`wall mean ${fmt(mean(walls), 0)}s median ${fmt(median(walls), 0)}s max ${fmt(Math.max(...walls), 0)}s`);
     console.log(`tool calls mean ${fmt(mean(tools), 1)}  input tokens mean ${fmt(mean(tok), 0)}  output tokens mean ${fmt(mean(out), 0)}`);

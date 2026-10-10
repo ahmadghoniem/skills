@@ -15,15 +15,34 @@ import re
 
 import pandas as pd
 
-HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 
 def edit_sites(patch):
-    """{path: set(old line numbers)} from a unified diff."""
+    """{path: set(old line numbers)} from a unified diff.
+
+    Lines are read as hunk content while the hunk's line counts last, so a
+    removed line that itself starts with "-- " is not taken for a file header.
+    """
     sites = {}
     path = None
     old = 0
+    old_left = new_left = 0
     for line in patch.splitlines():
+        if old_left > 0 or new_left > 0:
+            tag = line[:1]
+            if tag == "-":
+                sites.setdefault(path, set()).add(old)
+                old += 1
+                old_left -= 1
+            elif tag == "+":
+                sites.setdefault(path, set()).add(max(old - 1, 1))
+                new_left -= 1
+            elif tag in (" ", ""):
+                old += 1
+                old_left -= 1
+                new_left -= 1
+            continue
         if line.startswith("--- "):
             p = line[4:].split("\t")[0].strip()
             path = None if p == "/dev/null" else re.sub(r"^a/", "", p)
@@ -33,18 +52,10 @@ def edit_sites(patch):
                 path = re.sub(r"^b/", "", line[4:].split("\t")[0].strip())
             continue
         m = HUNK.match(line)
-        if m:
+        if m and path is not None:
             old = int(m.group(1))
-            continue
-        if path is None or not line:
-            continue
-        if line[0] == "-":
-            sites.setdefault(path, set()).add(old)
-            old += 1
-        elif line[0] == "+":
-            sites.setdefault(path, set()).add(max(old - 1, 1))
-        elif line[0] == " ":
-            old += 1
+            old_left = int(m.group(2) if m.group(2) is not None else 1)
+            new_left = int(m.group(3) if m.group(3) is not None else 1)
     return sites
 
 
@@ -73,6 +84,7 @@ def main():
                 if any(s["start"] <= n <= s["end"] for s in spans.get(path, []))
             )
             files_hit = sum(1 for path in sites if path in spans)
+            pred_lines = sum(s["end"] - s["start"] + 1 for v in spans.values() for s in v)
             rows.append({
                 "instance_id": p["instance_id"],
                 "edit_lines": total,
@@ -80,6 +92,7 @@ def main():
                 "edit_recall": hit / total if total else 0.0,
                 "edit_files": len(sites),
                 "edit_file_recall": files_hit / len(sites) if sites else 0.0,
+                "pred_lines": pred_lines,
             })
     out = os.path.join(a.run, f"edits.{a.arm}.jsonl")
     with open(out, "w", encoding="utf-8") as f:
