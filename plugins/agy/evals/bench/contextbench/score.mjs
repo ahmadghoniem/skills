@@ -10,8 +10,11 @@
 // Then run, in the ContextBench checkout:
 //   python -m contextbench.evaluate --gold <parquet> --pred <run>/preds.<arm>.jsonl \
 //     --cache <dir> --out <run>/eval.<arm>.jsonl
-// `report` joins <run>/eval.<arm>.jsonl with the bench results and prints one
-// table per arm, averaged over tasks and runs.
+//   /opt/cbenv/bin/python editsites.py --gold <parquet> --run <run> --arm <arm>
+// `report` joins <run>/eval.<arm>.jsonl and <run>/edits.<arm>.jsonl with the bench
+// results and prints one table per arm, averaged over tasks and runs. The
+// evaluator's EditLoc is left out: with no model patch it scores the gold patch,
+// the same for both arms; editsites.py measures the fix location instead.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -101,6 +104,14 @@ function report(runs) {
           ev.set(e.instance_id, e);
         }
       }
+      const editsFile = join(run, `edits.${arm}.jsonl`);
+      const ed = new Map();
+      if (existsSync(editsFile)) {
+        for (const l of readFileSync(editsFile, 'utf8').split('\n').filter(Boolean)) {
+          const e = JSON.parse(l);
+          ed.set(e.instance_id, e);
+        }
+      }
       for (const t of tasks) {
         const f = join(run, `${t.id}.${arm}.json`);
         if (!existsSync(f)) continue;
@@ -110,7 +121,7 @@ function report(runs) {
         const e = ev.get(t.id);
         // An evaluator error (usually no context extracted) scores zero, not missing.
         if (!e || e.error) errors += 1;
-        rows.push({ r, e: e && !e.error ? e : undefined });
+        rows.push({ r, e: e && !e.error ? e : undefined, d: ed.get(t.id) });
       }
     }
     if (!rows.length) continue;
@@ -128,7 +139,7 @@ function report(runs) {
     console.log(`file    ${level('file')}`);
     console.log(`symbol  ${level('symbol')}`);
     console.log(`span    ${level('span')}`);
-    console.log(`editloc recall ${fmt(mean(g((e) => e.editloc?.recall ?? 0)))}  prec ${fmt(mean(g((e) => e.editloc?.precision ?? 0)))}`);
+    console.log(`fix site: line recall ${fmt(mean(rows.map(({ d }) => d?.edit_recall ?? 0)))}  file recall ${fmt(mean(rows.map(({ d }) => d?.edit_file_recall ?? 0)))}`);
     console.log(`files predicted ${fmt(mean(g((e) => e.final?.file?.pred_size ?? 0)), 1)}`);
     console.log(`wall mean ${fmt(mean(walls), 0)}s median ${fmt(median(walls), 0)}s max ${fmt(Math.max(...walls), 0)}s`);
     console.log(`tool calls mean ${fmt(mean(tools), 1)}  input tokens mean ${fmt(mean(tok), 0)}  output tokens mean ${fmt(mean(out), 0)}`);

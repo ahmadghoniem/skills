@@ -117,4 +117,9 @@ redirected to.
      --gold /opt/cb-eval/verified.parquet --pred /tmp/cb/r1/preds.stock.jsonl \
      --cache /opt/cb-cache --out /tmp/cb/r1/eval.stock.jsonl)
    ```
+   and `/opt/cbenv/bin/python editsites.py --gold /opt/cb-eval/verified.parquet --run /tmp/cb/r1 --arm stock`,
    then `node score.mjs report --tasks /tmp/cb/tasks.json --run /tmp/cb/r1 --run /tmp/cb/r2 --run /tmp/cb/r3`.
+   The evaluator's EditLoc numbers are not used: with no model patch it scores
+   the gold patch, so they come out the same for both arms. `editsites.py`
+   measures instead how many of the lines the real fix changes fall inside the
+   predicted context.
