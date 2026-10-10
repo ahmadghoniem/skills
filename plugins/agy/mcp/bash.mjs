@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 // A `bash` tool for agy, served over MCP stdio (newline-delimited JSON-RPC).
 // agy's own run_command runs PowerShell and backgrounds anything over 10 s;
-// this runs Git Bash in the foreground until the command ends or times out.
+// this runs bash (Git Bash on Windows) in the foreground until the command ends
+// or times out.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { BUDGET, readTarget, shorten } from './shorten.mjs';
 
-const BASH = process.env.AGY_BASH || 'C:/Program Files/Git/bin/bash.exe';
+const WIN = process.platform === 'win32';
+const BASH = process.env.AGY_BASH || (WIN ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash');
 // tools/apply-patch at the repo root, reached in scripts as the `apply-patch` function.
 const APPLY_PATCH = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), '../../../tools/apply-patch/apply-patch.mjs').replace(/\\/g, '/');
 // Git Bash's own kill.exe, which can signal an MSYS process group.
@@ -30,7 +32,7 @@ const RG_FLAGS = ['--max-columns=300', '--max-columns-preview'];
 const TOOL = {
   name: 'bash',
   description:
-    `Run a bash script (Git Bash) and return its combined stdout and stderr when it finishes. ` +
+    `Run a bash script${WIN ? ' (Git Bash)' : ''} and return its combined stdout and stderr when it finishes. ` +
     `Each call starts a fresh shell in ${CWD.replace(/\\/g, '/')}. ` +
     `Multi-line scripts and heredocs work. Use forward slashes in paths. ` +
     `The command runs in the foreground until it exits or timeout_ms passes ` +
@@ -54,7 +56,7 @@ let seq = 0;
  * process group (bash's own `$$`) reaches them.
  */
 function killTree(pid, pidFile) {
-  if (process.platform !== 'win32') {
+  if (!WIN) {
     try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
     return;
   }
@@ -91,7 +93,7 @@ function runBash(command, timeoutMs) {
       env: RG_CONFIG ? { ...process.env, RIPGREP_CONFIG_PATH: RG_CONFIG } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: process.platform !== 'win32',
+      detached: !WIN,
     });
     child.stdout.on('data', (d) => chunks.push(d));
     child.stderr.on('data', (d) => chunks.push(d));
@@ -128,7 +130,7 @@ function snapshotPatchTargets(command) {
   if (!command.includes('apply-patch')) return null;
   let text = command;
   const file = command.match(/--file\s+("[^"]+"|'[^']+'|\S+)/)?.[1].replace(/^["']|["']$/g, '');
-  if (file) try { text += '\n' + readFileSync(resolve(CWD, file.replace(/^~(?=\/)/, process.env.USERPROFILE ?? '~')), 'utf8'); } catch { /* not readable yet */ }
+  if (file) try { text += '\n' + readFileSync(resolve(CWD, file.replace(/^~(?=\/)/, homedir())), 'utf8'); } catch { /* not readable yet */ }
   const snap = new Map();
   for (const m of text.matchAll(/^\*\*\* Update: (.+?)\s*$/gm)) {
     const abs = resolve(CWD, m[1].replace(/\\/g, '/'));

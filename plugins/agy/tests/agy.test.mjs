@@ -495,7 +495,8 @@ describe('resolveBin: cached path (T1, "store the resolved path")', () => {
       join(dir, 'nonexistent-agy.exe'),
     );
     resetBinCache();
-    const bin = await resolveBin();
+    // Throws on a machine with no agy installed, which also skips the stale path.
+    const bin = await resolveBin().catch(() => null);
     expect(bin).not.toBe(join(dir, 'nonexistent-agy.exe'));
   });
 });

@@ -25,7 +25,8 @@
     "agy": ">=1.2.11"
   },
   "os": [
-    "win32"
+    "win32",
+    "linux"
   ],
   "scripts": {
     "test": "vitest run",

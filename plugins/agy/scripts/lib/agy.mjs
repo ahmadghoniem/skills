@@ -407,7 +407,8 @@ export function resetBinCache() {
 /**
  * Resolve the agy binary path. Precedence: `AGY_BIN`, the path stored in the
  * model cache (if it still exists on disk), PATH, then the default installer
- * location under `%LOCALAPPDATA%\agy\bin\agy.exe`.
+ * location: `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows, `~/.local/bin/agy`
+ * elsewhere.
  *
  * @returns {Promise<string>}
  */
@@ -423,14 +424,16 @@ export async function resolveBin() {
     cachedBin = stored;
     return cachedBin;
   }
-  const res = await run('where', ['agy'], { timeoutMs: 5_000 });
+  const win = process.platform === 'win32';
+  const res = await run(win ? 'where' : 'which', ['agy'], { timeoutMs: 5_000 });
   const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
   if (res.exitCode === 0 && hit) {
     cachedBin = hit.trim();
     return cachedBin;
   }
-  const localApp = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
-  const fallback = join(localApp, 'agy', 'bin', 'agy.exe');
+  const fallback = win
+    ? join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
+    : join(homedir(), '.local', 'bin', 'agy');
   if (existsSync(fallback)) {
     cachedBin = fallback;
     return cachedBin;

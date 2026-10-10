@@ -14,7 +14,7 @@ import {
 import { run } from './lib/run.mjs';
 
 const INSTALL_HINT =
-  'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n' +
+  'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe on Windows, ~/.local/bin/agy elsewhere), or set AGY_BIN to its full path.\n' +
   'Then re-run `/agy:setup`.';
 
 /** Effort levels in the order they print, when a family has any. */

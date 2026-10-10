@@ -15,7 +15,7 @@ claude plugin marketplace add ahmadghoniem/skills
 claude plugin install agy@ahmadghoniem
 ```
 
-**Windows only.** Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.
+**Windows**, and Linux for benchmark runs (`evals/bench/`). Requires the Antigravity CLI on `PATH` (or at `%LOCALAPPDATA%\agy\bin\agy.exe`), Node 18.18+.
 
 If Claude Code was opened before installing agy, `PATH` may lack the binary; the plugin falls back to `%LOCALAPPDATA%\agy\bin\agy.exe`, and `AGY_BIN` overrides both.
 
@@ -55,7 +55,7 @@ A resumed conversation keeps the agent it started with.
 
 ### The bash tool
 
-`mcp/bash.mjs` gives agy a `bash` tool (Git Bash) that runs a command in the foreground
+`mcp/bash.mjs` gives agy a `bash` tool (Git Bash on Windows) that runs a command in the foreground
 until it exits or its `timeout_ms` passes (default 2 min, max 20 min), and kills the
 whole process tree on timeout. agy's own `run_command` runs PowerShell and moves
 anything past 10 s to the background.

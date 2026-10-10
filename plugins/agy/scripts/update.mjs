@@ -211,7 +211,7 @@ export async function main(rawArgv) {
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     process.stderr.write(
-      'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n',
+      'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe on Windows, ~/.local/bin/agy elsewhere), or set AGY_BIN to its full path.\n',
     );
     return 1;
   }

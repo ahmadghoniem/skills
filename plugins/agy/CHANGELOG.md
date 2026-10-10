@@ -36,6 +36,11 @@
   the workspace. Defaults to `low` effort.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
+- **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`
+  and then at `~/.local/bin/agy`, and a timeout or cancel kills the whole process tree
+  with SIGKILL. Checked on Ubuntu 24.04 (WSL): unit tests, tree kills, bash tool timeout.
+- **`evals/bench/`** runs stock agy and the `agy-chore` agent on the same tasks, with a
+  setup script and first-session checks for a Claude Code cloud environment.
 
 ### Changed
 
