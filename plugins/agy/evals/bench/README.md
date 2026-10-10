@@ -15,10 +15,11 @@ One-time, at claude.ai/code > environment settings:
   antigravity.google
   antigravity.google.com
   antigravity-cli-auto-updater-974169037036.us-central1.run.app
+  lh3.googleusercontent.com
   ```
   The defaults already cover `*.googleapis.com` and `accounts.google.com`.
-  Without `lh3.googleusercontent.com` agy warns `Eligibility check failed:
-  failed to get profile picture`; sign-in still works.
+  Without `lh3.googleusercontent.com`, agy's account check fails fetching the
+  profile picture: a warning in the TUI, but headless runs exit on it.
 - **Setup script:** the contents of `cloud-setup.sh`.
 
 Start the session on this repo's `agy-chore` branch.
@@ -47,7 +48,12 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
    unless the user says otherwise), and folder trust (Yes). Quit with `/quit` and
    kill the tmux session. Then confirm the sign-in was stored: a new `agy` in tmux
    must open without the login menu.
-4. **Headless run, run_command's shell, path-less rg.** From `plugins/agy`:
+   If the container restarts, the keyring daemon dies and agy asks to sign in
+   again; re-run `keyring.sh` and the stored sign-in comes back.
+4. **Plugin setup.** From `plugins/agy`: `. /tmp/agy-keyring.env && node scripts/setup.mjs`.
+   It installs the bash tool in `~/.gemini/config/mcp_config.json`; the custom arm
+   refuses to run without it.
+5. **Headless run, run_command's shell, path-less rg.** From `plugins/agy`:
    ```
    . /tmp/agy-keyring.env && node evals/bench/run.mjs --arm stock \
      --tasks evals/bench/tasks/smoke.json --repo /opt/bench/plannotator \
@@ -55,7 +61,7 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
    ```
    Report for each probe the `report`, `answeredAt` and `wall`. A `wall` far
    past `answeredAt` in stall-probe means path-less `rg` still hangs on Linux.
-5. **Both arms, one task.**
+6. **Both arms, one task.**
    ```
    . /tmp/agy-keyring.env && node evals/bench/run.mjs --arm custom \
      --tasks evals/bench/tasks/smoke.json --repo /opt/bench/plannotator \
@@ -63,7 +69,7 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
    ```
    and the same with `--arm stock`. Report wall time, status and tool calls, and
    whether each report cites `path:line`.
-6. **Kill.** The custom arm with `--timeout 20` and a new `--out`. agy must be
+7. **Kill.** The custom arm with `--timeout 20` and a new `--out`. agy must be
    stopped near 20 s, and `pgrep -af 'agy|bash.mjs'` afterwards must list nothing
    from the run.
-7. **Sign out.** At the end of the session, `agy` then `/logout`.
+8. **Sign out.** At the end of the session, `agy` then `/logout`.

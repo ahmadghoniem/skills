@@ -50,11 +50,22 @@ const queue = tasks.filter((t) => (!only.length || only.includes(t.id)) && !exis
 const BIN = await resolveBin();
 const VERSION = (await run(BIN, ['--version'], { timeoutMs: 30_000 })).stdout.trim();
 
+/** agy's MCP config; a first agy run leaves it as an empty file. */
+function readMcpConfig() {
+  const raw = existsSync(mcpConfigPath()) ? readFileSync(mcpConfigPath(), 'utf8') : '';
+  return raw.trim() ? JSON.parse(raw) : {};
+}
+
+if (o.arm === 'custom' && !readMcpConfig().mcpServers?.agy) {
+  console.error('the custom arm needs the plugin bash tool; run node scripts/setup.mjs first');
+  process.exit(1);
+}
+
 if (o.arm === 'stock' && existsSync(mcpConfigPath())) {
   const cfg = mcpConfigPath();
   const bak = join(OUT, 'mcp_config.backup.json');
   copyFileSync(cfg, bak);
-  const c = JSON.parse(readFileSync(cfg, 'utf8'));
+  const c = readMcpConfig();
   delete c.mcpServers?.agy;
   writeFileSync(cfg, `${JSON.stringify(c, null, 2)}\n`);
   process.on('exit', () => copyFileSync(bak, cfg));
