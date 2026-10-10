@@ -154,6 +154,7 @@ coverage/
 .claude/settings.local.json
 
 tasks/
+!plugins/agy/evals/bench/tasks/
 
 # graphify analysis output (local tooling artifact)
 graphify-out/

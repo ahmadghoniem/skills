@@ -1,0 +1,17 @@
+{
+ "repo": "https://github.com/backnotprop/plannotator.git@b381ecbe",
+ "tasks": [
+  {
+   "id": "share",
+   "brief": "READ-ONLY lookup. Do not modify any file.\n\nRepo root: {REPO}. It is a bun monorepo with apps/* and packages/*.\n\nFind how share links are made: the base URL constant (share.plannotator.ai or similar), every function that builds a share URL, and every UI call site that copies or opens one. Cite each place as path:line, with one line on what it does."
+  },
+  {
+   "id": "shell-probe",
+   "brief": "Use your run_command tool exactly once to run this command: echo \"ZERO=$0 BASH=$BASH_VERSION\"\n\nThen reply with three lines and nothing else:\n1. The command's output, verbatim.\n2. The 'Operating System:' value stated in your run_command tool's description, verbatim.\n3. The 'Shell:' value stated in your run_command tool's description, verbatim."
+  },
+  {
+   "id": "stall-probe",
+   "brief": "Use your run_command tool exactly once to run this command verbatim, with no path argument added: rg -l -i plannotator --glob '*.md'\n\nIf it has not finished after 30 seconds, stop waiting and reply. Reply with the first 5 lines of its output, or say it printed nothing. Run nothing else."
+  }
+ ]
+}

@@ -17,6 +17,8 @@ One-time, at claude.ai/code > environment settings:
   antigravity-cli-auto-updater-974169037036.us-central1.run.app
   ```
   The defaults already cover `*.googleapis.com` and `accounts.google.com`.
+  Without `lh3.googleusercontent.com` agy warns `Eligibility check failed:
+  failed to get profile picture`; sign-in still works.
 - **Setup script:** the contents of `cloud-setup.sh`.
 
 Start the session on this repo's `agy-chore` branch.
@@ -30,8 +32,8 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
 1. **Install.** `agy --version` and `ls /opt/bench/plannotator` both work.
 2. **Keyring.** `bash plugins/agy/evals/bench/keyring.sh`.
 3. **Sign-in.** agy's first screen is a login menu with "1. Google OAuth" selected;
-   Enter shows a sign-in URL and an "authorization code" field. agy takes about
-   10 s to draw each screen, so wait that long before each of the last two commands:
+   Enter shows a sign-in URL and an "authorization code" field. Wait a few seconds
+   for each screen before the last two commands:
    ```
    tmux new-session -d -s login -x 250 -y 50 ". /tmp/agy-keyring.env && agy"
    tmux send-keys -t login Enter
@@ -39,9 +41,12 @@ report if one fails. Each Bash call is a fresh shell, so start agy commands with
    ```
    agy wraps the URL over several lines itself; join them with no spaces. Send the
    user the URL, wait for the code they paste back, then
-   `tmux send-keys -t login '<code>' Enter` and capture the pane again to confirm
-   the sign-in. Quit agy and kill the tmux session. Then confirm the sign-in was
-   stored: a new `agy` in tmux must open without the login menu.
+   `tmux send-keys -t login '<code>' Enter` and capture the pane again. Three
+   screens follow: colour scheme (Enter), Terms (Enter only toggles a checkbox;
+   reach `[Done]` with Down then Right, and leave the data-sharing box unticked
+   unless the user says otherwise), and folder trust (Yes). Quit with `/quit` and
+   kill the tmux session. Then confirm the sign-in was stored: a new `agy` in tmux
+   must open without the login menu.
 4. **Headless run, run_command's shell, path-less rg.** From `plugins/agy`:
    ```
    . /tmp/agy-keyring.env && node evals/bench/run.mjs --arm stock \
