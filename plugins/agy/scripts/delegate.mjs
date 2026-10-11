@@ -25,7 +25,6 @@ import {
   agyLogPath,
   createJob,
   promptPath,
-  pruneOlderThanDays,
   rawLogPath as rawLogPathFor,
   readJob,
   scratchPath,
@@ -360,8 +359,6 @@ export async function main(rawArgv) {
       return 2;
     }
   }
-
-  pruneOlderThanDays(root, 30);
 
   // Resolve default model from cache. Omitted on resume because
   // `--conversation` preserves the initial model (e.g. pro), avoiding

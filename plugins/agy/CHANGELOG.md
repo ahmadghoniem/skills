@@ -38,7 +38,7 @@
   record and names it in the first message, as agy's default prompt does with
   `brain/<conversation-id>/scratch/`. The plugin's agents leave that prompt out, so
   `agy-chore` was told to run `mktemp -d` first; in a 60-run benchmark it made 71 such
-  calls and almost never wrote anything there. Pruned with the job after 30 days.
+  calls and almost never wrote anything there.
 - **`agy-chore` cites tests only when asked, and names gaps only in what was asked.** In
   60 ContextBench runs, 31% of the spans outside the gold context were tests, and the
   closing "what I did not check" section never named a file the agent had missed. It is
@@ -87,6 +87,9 @@
 
 ### Removed
 
+- **Pruning of old jobs.** Every dispatch deleted the repo's job files older than 30
+  days, raw event streams included. Job records, prompts, logs and scratch directories
+  are now kept until removed by hand: they are the record of each run's tool calls.
 - **`--read-only`**, the `agy-delegate-readonly` agent and the `read-only` warning.
 - **`CAD_AGY_AGENT=default`**, which ran agy's own agent instead of `agy-delegate`.
 

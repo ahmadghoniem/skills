@@ -7,10 +7,8 @@
 // resolution names a key, closing every cut in that group recorded before it,
 // or a single cut's id.
 //
-// Rows copy their evidence rather than pointing at the job record:
-// `pruneOlderThanDays` runs on every dispatch and permanently deletes every
-// file in the job directory older than 30 days, the raw NDJSON event stream
-// included. A row has to be judgeable on its own three weeks later.
+// Rows copy their evidence rather than pointing at the job record, so a row
+// can be judged on its own even if the job directory is cleared by hand.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';

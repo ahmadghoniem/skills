@@ -160,9 +160,8 @@ Rows are append-only and never edited or deduplicated. Resolving via
 cut under that key recorded before it, so a later cut under the same key shows as
 a recurrence. `--resolve <id>` closes one cut.
 
-Each row copies necessary evidence rather than linking to the job record,
-because `pruneOlderThanDays` deletes job directory files older than 30 days
-(including raw event streams) on every dispatch.
+Each row copies necessary evidence rather than linking to the job record, so it
+can be judged on its own even if the job directory is cleared by hand.
 
 ## Design notes
 

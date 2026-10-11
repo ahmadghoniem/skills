@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -10,10 +9,8 @@ import {
   jobFilePath,
   listJobs,
   mostRecentFinishedJob,
-  pruneOlderThanDays,
   readJob,
   resolveJob,
-  scratchPath,
   uniqueJobName,
   updateJob,
 } from '../scripts/lib/jobs.mjs';
@@ -137,31 +134,6 @@ describe('jobs registry', () => {
     expect(repoHash(other)).not.toBe(repoHash(repo));
     expect(listJobs(repo).map((j) => j.id)).toEqual(['h1-aaaa']);
     expect(listJobs(other).map((j) => j.id)).toEqual(['h2-bbbb']);
-  });
-
-  it('prunes stale job files', () => {
-    createJob({ id: 'old-aaaa', repoPath: repo, prompt: 'old', model: 'x' });
-    createJob({ id: 'new-bbbb', repoPath: repo, prompt: 'new', model: 'x' });
-    const stalePath = jobFilePath(repo, 'old-aaaa');
-    const past = new Date('2020-01-01T00:00:00.000Z');
-    utimesSync(stalePath, past, past);
-    const removed = pruneOlderThanDays(repo, 30);
-    expect(removed).toBeGreaterThanOrEqual(1);
-    expect(readJob(repo, 'old-aaaa')).toBeNull();
-    expect(readJob(repo, 'new-bbbb')).not.toBeNull();
-  });
-
-  it('prunes stale scratch directories and keeps fresh ones', () => {
-    const old = scratchPath(repo, 'old-cccc');
-    const fresh = scratchPath(repo, 'new-dddd');
-    mkdirSync(old, { recursive: true });
-    mkdirSync(fresh, { recursive: true });
-    writeFileSync(join(old, 'count.py'), 'print(1)\n');
-    const past = new Date('2020-01-01T00:00:00.000Z');
-    utimesSync(old, past, past);
-    pruneOlderThanDays(repo, 30);
-    expect(existsSync(old)).toBe(false);
-    expect(existsSync(fresh)).toBe(true);
   });
 
   it('cancelJob SIGTERMs a live pid and marks cancelled', async () => {

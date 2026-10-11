@@ -3,8 +3,6 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
-  rmSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -356,34 +354,6 @@ export function listJobs(repoPath, opts = {}) {
   records.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   const filtered = opts.status ? records.filter((r) => r.status === opts.status) : records;
   return typeof opts.limit === 'number' ? filtered.slice(0, opts.limit) : filtered;
-}
-
-/**
- * @param {string} repoPath
- * @param {number} [days]
- * @returns {number}
- */
-export function pruneOlderThanDays(repoPath, days = 30) {
-  const dir = jobsDir(repoPath);
-  if (!existsSync(dir)) return 0;
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  let removed = 0;
-  for (const f of readdirSync(dir)) {
-    const p = join(dir, f);
-    try {
-      const st = statSync(p);
-      if (st.isFile() && st.mtimeMs < cutoff) {
-        unlinkSync(p);
-        removed += 1;
-      } else if (st.isDirectory() && f.endsWith('.scratch') && st.mtimeMs < cutoff) {
-        rmSync(p, { recursive: true, force: true });
-        removed += 1;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return removed;
 }
 
 /**
