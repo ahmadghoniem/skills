@@ -39,6 +39,11 @@
   `brain/<conversation-id>/scratch/`. The plugin's agents leave that prompt out, so
   `agy-chore` was told to run `mktemp -d` first; in a 60-run benchmark it made 71 such
   calls and almost never wrote anything there. Pruned with the job after 30 days.
+- **`agy-chore` cites tests only when asked, and names gaps only in what was asked.** In
+  60 ContextBench runs, 31% of the spans outside the gold context were tests, and the
+  closing "what I did not check" section never named a file the agent had missed. It is
+  also told to search a file whose matches a cut note hid (3 runs lost a gold file that
+  way) and, as an example of batching, to search every name the task mentions in one call.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 - **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`
