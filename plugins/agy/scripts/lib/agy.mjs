@@ -123,8 +123,8 @@ export function taskMessage({ workspace, isGit, rulesFile, scratch, files, task 
   if (scratch) {
     parts.push(
       '# Scratch files\n\nFor a script too long for `python -c` or `node -e`, or a temporary data file, ' +
-        `write it to \`${scratch.replace(/\\/g, '/')}\`. Create that directory with \`mkdir -p\` in the ` +
-        'same bash call as the first file, and never write scratch files in the workspace.',
+        `write it to \`${scratch.replace(/\\/g, '/')}\`. The directory already exists; do not create ` +
+        'another, and never write scratch files in the workspace.',
     );
   }
   if (files) parts.push(`# Files\n\n${files}`);

@@ -34,13 +34,11 @@
 - **`--chore`** runs the new `agy-chore` agent: it investigates, runs scratch scripts in
   the job's scratch directory, reports with `path:line` citations, and is told not to
   change the workspace. Defaults to `low` effort.
-- **A scratch directory per job.** The first message names `<job>.scratch`, next to the
-  job record, as agy's default prompt names `brain/<conversation-id>/scratch/`. The
-  plugin's agents leave that prompt out, so `agy-chore` was told to run `mktemp -d` first;
-  in a 60-run benchmark it made 71 such calls and almost never wrote anything there. The
-  model creates the directory with `mkdir -p` in the same call as its first file, since 60
-  pre-created directories in a later round all stayed empty. Pruned with the job after
-  30 days.
+- **A scratch directory per job.** `delegate.mjs` creates `<job>.scratch` next to the job
+  record and names it in the first message, as agy's default prompt does with
+  `brain/<conversation-id>/scratch/`. The plugin's agents leave that prompt out, so
+  `agy-chore` was told to run `mktemp -d` first; in a 60-run benchmark it made 71 such
+  calls and almost never wrote anything there. Pruned with the job after 30 days.
 - **`agy-chore` cites tests only when asked, and names gaps only in what was asked.** In
   60 ContextBench runs, 31% of the spans outside the gold context were tests, and the
   closing "what I did not check" section never named a file the agent had missed. It is
