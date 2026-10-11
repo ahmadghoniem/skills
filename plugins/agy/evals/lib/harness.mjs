@@ -2,18 +2,20 @@
 // plugin's scripts as real child processes, bounded concurrency, and a results
 // directory that is written case by case.
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pluginHome } from '../../scripts/lib/paths.mjs';
 
 export const PLUGIN = fileURLToPath(new URL('../../', import.meta.url));
 export const SCRIPTS = join(PLUGIN, 'scripts');
 export const REPLAY_STUB = fileURLToPath(new URL('./replay-stub.mjs', import.meta.url));
 export const REPLAY_DIR = fileURLToPath(new URL('../fixtures/replay/', import.meta.url));
 export const RESULTS_ROOT = fileURLToPath(new URL('../results/', import.meta.url));
-
 export const LIVE = process.env.AGY_EVAL_LIVE === '1';
+/** Where a live eval repo's job records are kept after the repo is deleted. */
+export const KEPT_JOBS_ROOT = join(pluginHome(), 'eval-jobs');
 
 /** A git repository with one commit, and a private CAD_HOME beside it. */
 export function makeRepo(files = { 'README.md': '# eval repo\n' }) {
@@ -39,7 +41,13 @@ export function makeRepo(files = { 'README.md': '# eval repo\n' }) {
     repo,
     cadHome,
     git,
-    cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    // The repo is thrown away. A live run's job records and event streams are
+    // kept, as the record of its tool calls; a replay's come from a fixture.
+    cleanup: () => {
+      const jobs = join(cadHome, 'jobs');
+      if (LIVE && existsSync(jobs)) cpSync(jobs, join(KEPT_JOBS_ROOT, basename(dir)), { recursive: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    },
   };
 }
 

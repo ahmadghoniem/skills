@@ -90,6 +90,8 @@
 - **Pruning of old jobs.** Every dispatch deleted the repo's job files older than 30
   days, raw event streams included. Job records, prompts, logs and scratch directories
   are now kept until removed by hand: they are the record of each run's tool calls.
+  Live evals (`AGY_EVAL_LIVE=1`) likewise copy their job folders to `~/.cad/eval-jobs/`
+  before deleting the throwaway repo.
 - **`--read-only`**, the `agy-delegate-readonly` agent and the `read-only` warning.
 - **`CAD_AGY_AGENT=default`**, which ran agy's own agent instead of `agy-delegate`.
 
