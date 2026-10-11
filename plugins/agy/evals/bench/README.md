@@ -162,6 +162,5 @@ Other findings:
   compare arms only in rounds run alternately on the same day.
 - Sonnet 5.5 at low effort through `claude -p`, on 5 of the tasks, for
   reference: 2 to 11 turns, 11 s mean and 19 s maximum wall time, file F1
-  .868. It streams
-  about 130 tokens/s against about 490 for 3.7 flash low, and wins on turns:
-  it makes parallel calls in about half its tool turns.
+  .868. It streams about 130 tokens/s against about 490 for 3.7 flash low,
+  and wins on turns: it makes parallel calls in about half its tool turns.
