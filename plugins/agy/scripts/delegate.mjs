@@ -20,7 +20,7 @@ import {
   taskMessage,
 } from './lib/agy.mjs';
 import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
-import { repoRoot } from './lib/git.mjs';
+import { repoRoot, shortHistory } from './lib/git.mjs';
 import {
   agyLogPath,
   createJob,
@@ -149,11 +149,13 @@ async function runAndRecord(flags, prompt, jobId, root) {
   // A resumed conversation already has the environment note and scratch directory.
   const scratch = isResume(flags) ? undefined : resolvePath(scratchPath(root, jobId));
   if (scratch) mkdirSync(scratch, { recursive: true });
+  const isGit = existsSync(join(root, '.git'));
   const message = isResume(flags)
     ? [flags.files, prompt].filter(Boolean).join('\n\n')
     : taskMessage({
         workspace: root,
-        isGit: existsSync(join(root, '.git')),
+        isGit,
+        history: isGit ? await shortHistory(root) : undefined,
         rulesFile: jobKind(flags) === 'task' ? rulesPointer(root) : undefined,
         scratch,
         files: flags.files,

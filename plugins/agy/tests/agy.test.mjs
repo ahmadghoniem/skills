@@ -525,6 +525,11 @@ describe('taskMessage', () => {
     );
   });
 
+  it('notes a short git history after "yes"', () => {
+    const msg = taskMessage({ workspace: '/w', isGit: true, history: '1 commit, so no history to search', task: 'Do X.' });
+    expect(msg.split('\n')[2]).toBe('- Git repository: yes (1 commit, so no history to search)');
+  });
+
   it('leaves the rules pointer out when there is none', () => {
     const msg = taskMessage({ workspace: '/w', isGit: false, task: 'Do X.' });
     expect(msg).toBe('Environment\n- Working directory: /w\n- Git repository: no\n\n# Task\n\nDo X.');

@@ -50,6 +50,12 @@
   issue and fix; those runs took 139 s on average against 28 s for the rest. It now has
   only `view_file` and the bash tool, and the example says to search the workspace with
   `rg -n`.
+- **`agy-chore` searches git history only when asked, and stays in the workspace.** In
+  the next 60 runs it made 85 `git log`/`git show` calls (7 in the first 60), many with
+  `--grep` for the issue number, on one-commit benchmark clones where none could find
+  anything; some runs also ran `find /`. The environment note now says when a repository
+  has one commit or is a shallow clone. The tests rule names test file patterns and
+  fixtures, after `*.test.js` files and fixtures kept being cited.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 - **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`

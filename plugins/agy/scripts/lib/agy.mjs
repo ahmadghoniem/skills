@@ -112,11 +112,12 @@ export function sidecarPrint(absPromptPath) {
  * with `--read`, then the brief. agy loads AGENTS.md and GEMINI.md itself but
  * not CLAUDE.md, so `rulesFile` names a CLAUDE.md for the agent to read.
  *
- * @param {{workspace: string, isGit: boolean, rulesFile?: string, files?: string, task: string}} opts
+ * @param {{workspace: string, isGit: boolean, history?: string, rulesFile?: string, scratch?: string, files?: string, task: string}} opts
  * @returns {string}
  */
-export function taskMessage({ workspace, isGit, rulesFile, scratch, files, task }) {
-  let env = `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`;
+export function taskMessage({ workspace, isGit, history, rulesFile, scratch, files, task }) {
+  const git = isGit ? (history ? `yes (${history})` : 'yes') : 'no';
+  let env = `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${git}`;
   if (rulesFile) env += `\n- Repository rules: ${rulesFile}; read it before you change anything.`;
   const parts = [env];
   // Follows the "Scratch Scripts and Files" section of agy's default prompt.
