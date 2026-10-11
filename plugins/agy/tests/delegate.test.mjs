@@ -214,11 +214,11 @@ describe('delegate.mjs: the message agy receives', () => {
     );
   });
 
-  it('creates the job scratch directory before the run and names it in the message', async () => {
+  it('names the job scratch directory in the message and leaves creating it to the model', async () => {
     const [, stdin] = await dispatch(['do the thing']);
     const dir = /write it to `([^`]+\.scratch)`/.exec(JSON.parse(stdin).message.content)?.[1];
     expect(dir).toBeTruthy();
-    expect(existsSync(dir)).toBe(true);
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('points a task at CLAUDE.md when there is no AGENTS.md or GEMINI.md', async () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
@@ -148,8 +148,8 @@ function isModelCached(model, models) {
  */
 async function runAndRecord(flags, prompt, jobId, root) {
   // A resumed conversation already has the environment note and scratch directory.
+  // The model creates the directory only if it writes a file; most chores never do.
   const scratch = isResume(flags) ? undefined : resolvePath(scratchPath(root, jobId));
-  if (scratch) mkdirSync(scratch, { recursive: true });
   const message = isResume(flags)
     ? [flags.files, prompt].filter(Boolean).join('\n\n')
     : taskMessage({
