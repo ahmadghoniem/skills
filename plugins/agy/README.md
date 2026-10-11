@@ -64,7 +64,8 @@ agy keeps only about the first and last 5,000 characters of an MCP tool's result
 the tool cuts an output over 9,000 characters itself, keeping whole lines from both ends,
 and puts a note where the middle was: which lines are missing, how many `rg` matches each
 file had there (or how many paths each directory had, for a listing), and the path of the
-full output, kept for a day. When the command only printed a file (`cat`, `head`,
+full output, kept for a week (for good when `AGY_BASH_KEEP_DIR` names a directory to
+save it in). When the command only printed a file (`cat`, `head`,
 `sed -n`), the note gives that file's missing line range for `view_file` instead. agy's own
 `view_file` is not cut this way, so it stays, and the agents are told to read with it.
 

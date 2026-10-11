@@ -16,7 +16,8 @@
   that call's changes.
 - **The bash tool cuts long output itself.** Past 9,000 characters it keeps whole lines
   from both ends and notes which lines are missing, how many `rg` matches each file had
-  in them, and where the full output is saved. agy dropped the middle of 19% of bash
+  in them, and where the full output is saved for a week, or for good in
+  `AGY_BASH_KEEP_DIR` when a benchmark sets it. agy dropped the middle of 19% of bash
   results with only a file link, which the model never opened. The note also counts
   `rg` output without line numbers, `-C` context lines, single-file matches and listings
   with root files; when the command only printed a file, it names the file's missing

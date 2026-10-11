@@ -97,7 +97,7 @@ describe.skipIf(!LIVE)('eval: agy subagent fan-out (live agy)', () => {
         if (existsSync(realCache)) copyFileSync(realCache, join(env.cadHome, 'models.json'));
         const run = await runScript('delegate.mjs', ['--timeout', String(TIMEOUT_SEC), VARIANTS[variant]], {
           cwd: env.repo,
-          env: { CAD_HOME: env.cadHome },
+          env: { CAD_HOME: env.cadHome, AGY_BASH_KEEP_DIR: env.bashKeepDir },
           timeoutMs: (TIMEOUT_SEC + 120) * 1000,
         });
         const rec = readJobs(env.cadHome)[0] ?? {};

@@ -40,6 +40,8 @@ export function makeRepo(files = { 'README.md': '# eval repo\n' }) {
     dir,
     repo,
     cadHome,
+    // Pass as AGY_BASH_KEEP_DIR so the bash tool's full outputs are kept with the jobs.
+    bashKeepDir: join(cadHome, 'jobs', 'bash-outputs'),
     git,
     // The repo is thrown away. A live run's job records and event streams are
     // kept, as the record of its tool calls; a replay's come from a fixture.

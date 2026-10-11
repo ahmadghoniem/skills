@@ -23,8 +23,11 @@ const OUT_DIR = join(tmpdir(), 'agy-bash');
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 1_200_000;
 const MAX_DIFF_LINES = 400;
-// Full outputs of shortened results, kept for a day so the model can read them.
-const KEEP_OUTPUT_MS = 24 * 60 * 60 * 1000;
+// Full outputs of shortened results, kept for a week so the model can still read
+// them in a resumed conversation. Benchmarks and evals set AGY_BASH_KEEP_DIR to
+// keep them for good, beside their job records.
+const KEEP_OUTPUT_MS = 7 * 24 * 60 * 60 * 1000;
+const KEEP_DIR = process.env.AGY_BASH_KEEP_DIR?.trim();
 // rg flags added to the user's own rg config: show a preview of a minified or
 // generated line instead of the whole line.
 const RG_FLAGS = ['--max-columns=300', '--max-columns-preview'];
@@ -196,9 +199,10 @@ function fitResult(text, command) {
     const file = resolve(CWD, target.file).split(sep).join('/');
     if (existsSync(file)) return shorten(text, '', BUDGET, { read: { file, first: target.first } });
   }
-  const saved = join(OUT_DIR, `${process.pid}-${Date.now()}-${++seq}.out`);
+  const dir = KEEP_DIR || OUT_DIR;
+  const saved = join(dir, `${process.pid}-${Date.now()}-${++seq}.out`);
   try {
-    mkdirSync(OUT_DIR, { recursive: true });
+    mkdirSync(dir, { recursive: true });
     writeFileSync(saved, text, 'utf8');
   } catch {
     return shorten(text, '(could not be saved)');

@@ -209,7 +209,7 @@ describe.skipIf(!LIVE)('eval: delegation outcomes (live agy)', () => {
         const head = env.git('rev-parse', 'HEAD').stdout.trim();
         const run = await runScript('delegate.mjs', ['--timeout', String(TIMEOUT_SEC), c.brief], {
           cwd: env.repo,
-          env: { CAD_HOME: env.cadHome },
+          env: { CAD_HOME: env.cadHome, AGY_BASH_KEEP_DIR: env.bashKeepDir },
           timeoutMs: (TIMEOUT_SEC + 120) * 1000,
         });
         const record = readJobs(env.cadHome)[0] ?? {};
