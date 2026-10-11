@@ -44,6 +44,11 @@
   closing "what I did not check" section never named a file the agent had missed. It is
   also told to search a file whose matches a cut note hid (3 runs lost a gold file that
   way) and, as an example of batching, to search every name the task mentions in one call.
+- **`agy-chore` has no web tools.** After the batching example above, 13 of 60 benchmark
+  runs called `search_web` (212 calls) and `read_url_content`, looking up the upstream
+  issue and fix; those runs took 139 s on average against 28 s for the rest. It now has
+  only `view_file` and the bash tool, and the example says to search the workspace with
+  `rg -n`.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 - **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`

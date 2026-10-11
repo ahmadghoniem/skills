@@ -40,8 +40,8 @@ missing or differs:
 | `agy-delegate` | a task (the default) | implements a brief and edits files |
 | `agy-chore` | `--chore` or `--read` | investigates, runs scratch scripts in the job's scratch directory, and reports with `path:line` citations; told not to change the workspace |
 
-The rest of this section describes `agy-delegate`; `agy-chore` has the same tools and
-no `apply-patch` instructions.
+The rest of this section describes `agy-delegate`; `agy-chore` has no `apply-patch`
+instructions and no web tools, only `view_file` and the bash tool.
 
 Its own tools are `view_file`, `search_web` and `read_url_content`; everything else goes
 through the bash tool below (`inheritMcp`). Files are created and edited with
