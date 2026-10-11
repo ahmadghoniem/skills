@@ -54,8 +54,10 @@
   the next 60 runs it made 85 `git log`/`git show` calls (7 in the first 60), many with
   `--grep` for the issue number, on one-commit benchmark clones where none could find
   anything; some runs also ran `find /`. The environment note now says when a repository
-  has one commit or is a shallow clone. The tests rule names test file patterns and
-  fixtures, after `*.test.js` files and fixtures kept being cited.
+  has one commit or is a shallow clone, and that commits the task names are not in it:
+  told only "no history", it still ran 27 history commands on a task whose issue cites
+  two commit hashes. The tests rule names test file patterns and fixtures, after
+  `*.test.js` files and fixtures kept being cited.
 - **`agy-chore` views files whole and does not re-read.** Its median `view_file` window
   was 35 lines, and 70% of a re-read window had already been shown, while every earlier
   view was still in its context. It now views a file of up to 800 lines whole, a longer

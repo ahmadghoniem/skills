@@ -32,14 +32,14 @@ function repoWithCommits(n) {
 
 describe('shortHistory', () => {
   it('notes a single commit', async () => {
-    expect(await shortHistory(repoWithCommits(1))).toBe('1 commit, so no history to search');
+    expect(await shortHistory(repoWithCommits(1))).toBe('1 commit, so no history to search: commits the task names are not in it');
   });
 
   it('notes a shallow clone', async () => {
     const src = repoWithCommits(3).split('\\').join('/');
     const dst = join(tempDir(), 'clone');
     spawnSync('git', ['clone', '-q', '--depth', '1', `file:///${src.replace(/^\//, '')}`, dst]);
-    expect(await shortHistory(dst)).toBe('1 commit, shallow clone, so no history to search');
+    expect(await shortHistory(dst)).toBe('1 commit, shallow clone, so no history to search: commits the task names are not in it');
   });
 
   it('says nothing for a full history or no repository', async () => {

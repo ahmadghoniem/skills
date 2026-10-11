@@ -27,6 +27,6 @@ export async function shortHistory(cwd) {
   const shallow = await run('git', ['rev-parse', '--is-shallow-repository'], { cwd, timeoutMs: 3_000 });
   const isShallow = shallow.stdout.trim() === 'true';
   if (!isShallow && n > 1) return undefined;
-  if (n === 1) return `1 commit${isShallow ? ', shallow clone' : ''}, so no history to search`;
-  return `${n} commits, shallow clone`;
+  if (n === 1) return `1 commit${isShallow ? ', shallow clone' : ''}, so no history to search: commits the task names are not in it`;
+  return `${n} commits, shallow clone: older commits, including any the task names, may be missing`;
 }
