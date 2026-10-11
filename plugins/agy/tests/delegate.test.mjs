@@ -2,7 +2,7 @@
 // binary (never the real CLI) so the never-started rule, the resume offer,
 // and the exit code are exercised through the real dispatch path rather than
 // re-implemented against a mock.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -209,7 +209,16 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(args).toContain('--input-format');
     expect(args).toContain('--disable-slash-commands');
     const { content } = JSON.parse(stdin).message;
-    expect(content).toMatch(/^Environment\n- Working directory: .+\n- Git repository: no\n\n# Task\n\ndo the thing$/);
+    expect(content).toMatch(
+      /^Environment\n- Working directory: .+\n- Git repository: no\n\n# Scratch files\n\n.+\n\n# Task\n\ndo the thing$/,
+    );
+  });
+
+  it('creates the job scratch directory before the run and names it in the message', async () => {
+    const [, stdin] = await dispatch(['do the thing']);
+    const dir = /write it to `([^`]+\.scratch)`/.exec(JSON.parse(stdin).message.content)?.[1];
+    expect(dir).toBeTruthy();
+    expect(existsSync(dir)).toBe(true);
   });
 
   it('points a task at CLAUDE.md when there is no AGENTS.md or GEMINI.md', async () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
@@ -28,6 +28,7 @@ import {
   pruneOlderThanDays,
   rawLogPath as rawLogPathFor,
   readJob,
+  scratchPath,
   uniqueJobName,
   updateJob,
 } from './lib/jobs.mjs';
@@ -146,13 +147,16 @@ function isModelCached(model, models) {
  * @param {string} root
  */
 async function runAndRecord(flags, prompt, jobId, root) {
-  // A resumed conversation already has the environment note.
+  // A resumed conversation already has the environment note and scratch directory.
+  const scratch = isResume(flags) ? undefined : resolvePath(scratchPath(root, jobId));
+  if (scratch) mkdirSync(scratch, { recursive: true });
   const message = isResume(flags)
     ? [flags.files, prompt].filter(Boolean).join('\n\n')
     : taskMessage({
         workspace: root,
         isGit: existsSync(join(root, '.git')),
         rulesFile: jobKind(flags) === 'task' ? rulesPointer(root) : undefined,
+        scratch,
         files: flags.files,
         task: prompt,
       });
@@ -181,6 +185,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     model: flags.model ?? '',
     effort,
     promptPath: absPrompt,
+    scratchDir: scratch,
     sandbox: flags.sandbox || undefined,
     briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });

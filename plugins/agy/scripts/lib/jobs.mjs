@@ -3,6 +3,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -86,6 +87,19 @@ export function agyLogPath(repoPath, id) {
  */
 export function promptPath(repoPath, id) {
   return join(jobsDir(repoPath), `${id}.prompt.md`);
+}
+
+/**
+ * The job's scratch directory, named in its first message. agy's default
+ * prompt gives the model `<appDataDir>/brain/<conversation-id>/scratch/`, but
+ * the plugin's agents leave the default prompt out, and the conversation id is
+ * only known once agy has started.
+ *
+ * @param {string} repoPath
+ * @param {string} id
+ */
+export function scratchPath(repoPath, id) {
+  return join(jobsDir(repoPath), `${id}.scratch`);
 }
 
 /**
@@ -360,6 +374,9 @@ export function pruneOlderThanDays(repoPath, days = 30) {
       const st = statSync(p);
       if (st.isFile() && st.mtimeMs < cutoff) {
         unlinkSync(p);
+        removed += 1;
+      } else if (st.isDirectory() && f.endsWith('.scratch') && st.mtimeMs < cutoff) {
+        rmSync(p, { recursive: true, force: true });
         removed += 1;
       }
     } catch {

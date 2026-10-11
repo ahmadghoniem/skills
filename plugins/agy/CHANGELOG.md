@@ -32,8 +32,13 @@
   window rather than slices: a third of file reads in a benchmark re-read a file already
   read.
 - **`--chore`** runs the new `agy-chore` agent: it investigates, runs scratch scripts in
-  a `mktemp -d` directory, reports with `path:line` citations, and is told not to change
-  the workspace. Defaults to `low` effort.
+  the job's scratch directory, reports with `path:line` citations, and is told not to
+  change the workspace. Defaults to `low` effort.
+- **A scratch directory per job.** `delegate.mjs` creates `<job>.scratch` next to the job
+  record and names it in the first message, as agy's default prompt does with
+  `brain/<conversation-id>/scratch/`. The plugin's agents leave that prompt out, so
+  `agy-chore` was told to run `mktemp -d` first; in a 60-run benchmark it made 71 such
+  calls and almost never wrote anything there. Pruned with the job after 30 days.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 - **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`

@@ -25,7 +25,8 @@ const { values: o, positionals: [mode] } = parseArgs({
 });
 const { tasks } = JSON.parse(readFileSync(o.tasks, 'utf8'));
 const ARMS = ['stock', 'custom'];
-const RANGE = /^(.+?):(\d+)(?:\s*-\s*(\d+))?$/;
+// `path:A-B`, and `path:A:B`, which some reports use.
+const RANGE = /^(.+?):(\d+)(?:\s*[-:]\s*(\d+))?$/;
 /** A path:line or path:start-end anywhere in prose. */
 const CITE = /([\w@.~/-]+\.[\w]+):(\d+)(?:\s*-\s*L?(\d+))?/g;
 

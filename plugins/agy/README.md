@@ -38,7 +38,7 @@ missing or differs:
 | Agent | Runs for | Does |
 | --- | --- | --- |
 | `agy-delegate` | a task (the default) | implements a brief and edits files |
-| `agy-chore` | `--chore` or `--read` | investigates, runs scratch scripts in a `mktemp -d` directory, and reports with `path:line` citations; told not to change the workspace |
+| `agy-chore` | `--chore` or `--read` | investigates, runs scratch scripts in the job's scratch directory, and reports with `path:line` citations; told not to change the workspace |
 
 The rest of this section describes `agy-delegate`; `agy-chore` has the same tools and
 no `apply-patch` instructions.

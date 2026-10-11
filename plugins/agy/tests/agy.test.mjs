@@ -529,6 +529,13 @@ describe('taskMessage', () => {
     const msg = taskMessage({ workspace: '/w', isGit: false, task: 'Do X.' });
     expect(msg).toBe('Environment\n- Working directory: /w\n- Git repository: no\n\n# Task\n\nDo X.');
   });
+
+  it('names the scratch directory after the environment note, with forward slashes', () => {
+    const msg = taskMessage({ workspace: '/w', isGit: false, scratch: 'C:\\h\\jobs\\x.scratch', files: 'F', task: 'Do X.' });
+    const parts = msg.split('\n\n# ');
+    expect(parts.map((p) => p.split('\n')[0])).toEqual(['Environment', 'Scratch files', 'Files', 'Task']);
+    expect(parts[1]).toContain('write it to `C:/h/jobs/x.scratch`. The directory already exists');
+  });
 });
 
 describe('stdinLine', () => {

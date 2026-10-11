@@ -115,10 +115,18 @@ export function sidecarPrint(absPromptPath) {
  * @param {{workspace: string, isGit: boolean, rulesFile?: string, files?: string, task: string}} opts
  * @returns {string}
  */
-export function taskMessage({ workspace, isGit, rulesFile, files, task }) {
+export function taskMessage({ workspace, isGit, rulesFile, scratch, files, task }) {
   let env = `Environment\n- Working directory: ${workspace.replace(/\\/g, '/')}\n- Git repository: ${isGit ? 'yes' : 'no'}`;
   if (rulesFile) env += `\n- Repository rules: ${rulesFile}; read it before you change anything.`;
   const parts = [env];
+  // Follows the "Scratch Scripts and Files" section of agy's default prompt.
+  if (scratch) {
+    parts.push(
+      '# Scratch files\n\nFor a script too long for `python -c` or `node -e`, or a temporary data file, ' +
+        `write it to \`${scratch.replace(/\\/g, '/')}\`. The directory already exists; do not create ` +
+        'another, and never write scratch files in the workspace.',
+    );
+  }
   if (files) parts.push(`# Files\n\n${files}`);
   parts.push(`# Task\n\n${task}`);
   return parts.join('\n\n');
