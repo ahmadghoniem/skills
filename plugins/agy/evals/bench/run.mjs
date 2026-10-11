@@ -163,7 +163,9 @@ async function worker(n) {
       const r = o.arm === 'stock' ? await runStock(t.id, brief, repo) : await runCustom(t.id, brief, repo);
       writeFileSync(join(OUT, `${t.id}.${o.arm}.json`), JSON.stringify({ task: t.id, arm: o.arm, model: o.model, agy: VERSION, ...r }, null, 1));
       console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
-      if (/quota|RESOURCE_EXHAUSTED|429/i.test(`${r.stderrTail ?? ''}${r.stdoutTail ?? ''}${r.job?.error ?? ''}`)) {
+      // Only a failed run can be a quota stop: a report's citation such as `color.h:411-429` matched before.
+      const failed = r.exit !== 0 || r.job?.error;
+      if (failed && /quota|RESOURCE_EXHAUSTED|429/i.test(`${r.stderrTail ?? ''}${r.stdoutTail ?? ''}${r.job?.error ?? ''}`)) {
         console.log('QUOTA - stopping');
         next = queue.length;
       }
