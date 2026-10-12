@@ -105,7 +105,7 @@ function runStock(id, brief, repo) {
       clearTimeout(dog);
       const s = summariseEvents(events);
       writeFileSync(join(OUT, `${id}.stock.ndjson`), events.map((e) => JSON.stringify(e)).join('\n'));
-      res({ wall: (Date.now() - since) / 1000, answeredAt, exit: code, killed, stderrTail: err.slice(-600),
+      res({ wall: (Date.now() - since) / 1000, answeredAt, exit: code, killed, stderrTail: err.slice(-600), error: s.error,
         conversationId: s.conversationId, report: s.response, agyStatus: s.status, toolCalls: s.toolCalls, usage: s.usage });
     });
   });
@@ -147,7 +147,7 @@ async function runCustom(id, brief, repo) {
   try {
     s = summariseEvents(readFileSync(rawLogPath(repo, job.id), 'utf8').split('\n').map(parseLine).filter(Boolean));
   } catch { /* no job or no log */ }
-  return { wall, exit: r.code, killed: r.killed, stdoutTail: r.out.slice(-600),
+  return { wall, exit: r.code, killed: r.killed, stdoutTail: r.out.slice(-600), error: job?.error,
     conversationId: job?.conversationId, report: job?.summary, agyStatus: job?.agyStatus,
     timedOut: job?.timedOut ?? false, toolCalls: s.toolCalls, usage: s.usage, job };
 }
@@ -163,9 +163,9 @@ async function worker(n) {
       const r = o.arm === 'stock' ? await runStock(t.id, brief, repo) : await runCustom(t.id, brief, repo);
       writeFileSync(join(OUT, `${t.id}.${o.arm}.json`), JSON.stringify({ task: t.id, arm: o.arm, model: o.model, agy: VERSION, ...r }, null, 1));
       console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
-      // Only a failed run can be a quota stop: a report's citation such as `color.h:411-429` matched before.
-      const failed = r.exit !== 0 || r.job?.error;
-      if (failed && /quota|RESOURCE_EXHAUSTED|429/i.test(`${r.stderrTail ?? ''}${r.stdoutTail ?? ''}${r.job?.error ?? ''}`)) {
+      // agy's quota error reads "RESOURCE_EXHAUSTED (code 429): Individual quota reached". Look only at
+      // the run's error and stderr: the report can contain "429" or "quota" (`color.h:411-429`).
+      if (/RESOURCE_EXHAUSTED/.test(`${r.error ?? ''}${r.stderrTail ?? ''}`)) {
         console.log('QUOTA - stopping');
         next = queue.length;
       }

@@ -3,6 +3,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -333,6 +334,15 @@ export function updateJob(repoPath, id, patch) {
       writeFileSync(join(dirname(file), `${id}.done`), '', 'utf8');
     } catch {
       // noop
+    }
+    // Most jobs never write a script. rmdir refuses a non-empty directory, so
+    // only an unused scratch directory goes.
+    if (merged.scratchDir) {
+      try {
+        rmdirSync(merged.scratchDir);
+      } catch {
+        // kept: it has files, or is already gone
+      }
     }
   }
   return merged;

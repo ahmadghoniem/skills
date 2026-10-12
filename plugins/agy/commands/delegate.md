@@ -65,9 +65,9 @@ edit, or a number you will have to verify anyway. Ask follow-ups with `/agy:resu
 
 ## Model and effort
 
-Omit `--model`. The plugin uses `gemini-3.7-flash` at the `--effort` you pass (`medium`
-if you pass none). Pass `--effort low` for mechanical edits and `--effort high` for work
-that needs more reasoning. Pass a model only when the user names one. Never invent an
+Omit `--model`. The plugin uses `gemini-3.8-flash` at the `--effort` you pass (`low`
+if you pass none). Pass `--effort medium` or `--effort high` only for work that needs
+more reasoning: they take several times as long. Pass a model only when the user names one. Never invent an
 id; the ids agy accepts are listed below.
 
 Models agy accepts right now (family, then the effort levels it takes):
@@ -94,7 +94,7 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
-| `--effort <level>` | `low`, `medium`, or `high`. Picks the `gemini-3.7-flash` id at that level. Defaults to `medium`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
+| `--effort <level>` | `low`, `medium`, or `high`. Picks the `gemini-3.8-flash` id at that level. Defaults to `low`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
 | `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 3600 (60m); the watchdog is that plus 60s grace. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |

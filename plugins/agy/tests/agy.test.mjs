@@ -196,12 +196,17 @@ describe('pickDefaultModel', () => {
     expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-medium');
   });
 
-  it('prefers 3.7 flash over a newer flash while agy lists it', () => {
-    const newer = [...list, { id: 'gemini-3.8-flash-medium', label: 'a' }, { id: 'gemini-3.8-flash-low', label: 'b' }];
-    expect(pickDefaultModel(newer)).toBe('gemini-3.7-flash-medium');
-    expect(pickDefaultModel(newer, null, 'low')).toBe('gemini-3.7-flash-low');
-    const without = newer.filter((m) => !m.id.startsWith('gemini-3.7-flash'));
-    expect(pickDefaultModel(without)).toBe('gemini-3.8-flash-medium');
+  it('prefers 3.8 flash over a newer flash while agy lists it', () => {
+    const newer = [
+      ...list,
+      { id: 'gemini-3.8-flash-medium', label: 'a' },
+      { id: 'gemini-3.8-flash-low', label: 'b' },
+      { id: 'gemini-3.9-flash-medium', label: 'c' },
+    ];
+    expect(pickDefaultModel(newer)).toBe('gemini-3.8-flash-medium');
+    expect(pickDefaultModel(newer, null, 'low')).toBe('gemini-3.8-flash-low');
+    const without = newer.filter((m) => !m.id.startsWith('gemini-3.8-flash'));
+    expect(pickDefaultModel(without)).toBe('gemini-3.9-flash-medium');
   });
 
   it('honours the requested effort within the newest flash version', () => {

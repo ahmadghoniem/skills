@@ -24,6 +24,8 @@ import { repoRoot, shortHistory } from './lib/git.mjs';
 import {
   agyLogPath,
   createJob,
+  listJobs,
+  mostRecentFinishedJob,
   promptPath,
   rawLogPath as rawLogPathFor,
   readJob,
@@ -39,9 +41,9 @@ import { latestRelease, updateNotice } from './update.mjs';
 
 // Runs in the foreground of its child process; the orchestrator invokes it
 // under a backgrounded bash call to receive exit notifications without
-// detaching. agy models encode effort (e.g. `gemini-3.7-flash-low`); medium is
-// default unless overridden by `--effort`. Chores default to low.
-const DEFAULT_EFFORT = 'medium';
+// detaching. agy models encode effort (e.g. `gemini-3.8-flash-low`); low is
+// the default for tasks and chores unless overridden by `--effort`.
+const DEFAULT_EFFORT = 'low';
 const HELPER_EFFORT = 'low';
 
 /** The agy agent each kind of job runs. */
@@ -146,9 +148,16 @@ function isModelCached(model, models) {
  * @param {string} root
  */
 async function runAndRecord(flags, prompt, jobId, root) {
-  // A resumed conversation already has the environment note and scratch directory.
+  // A resumed conversation already has the environment note and names its first
+  // job's scratch directory, which was removed if that job left it empty.
   const scratch = isResume(flags) ? undefined : resolvePath(scratchPath(root, jobId));
   if (scratch) mkdirSync(scratch, { recursive: true });
+  if (isResume(flags)) {
+    const first = flags.conversation
+      ? listJobs(root).findLast((j) => j.conversationId === flags.conversation && j.scratchDir)
+      : mostRecentFinishedJob(root);
+    if (first?.scratchDir) mkdirSync(first.scratchDir, { recursive: true });
+  }
   const isGit = existsSync(join(root, '.git'));
   const message = isResume(flags)
     ? [flags.files, prompt].filter(Boolean).join('\n\n')

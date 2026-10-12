@@ -33,10 +33,10 @@ const SIDECAR_INSTRUCTION =
 export const MAX_STDIN_CHARS = 150_000;
 
 /**
- * Default flash family. 3.8 used 1.4 to 3.2 times the input tokens of 3.7 on
- * the same replayed jobs, so 3.7 wins while agy lists it.
+ * Default flash family. agy dropped 3.7 flash in October 2026; 3.8 flash low
+ * is the only level that keeps 3.7 low's turn count and wall time.
  */
-export const PREFERRED_FLASH = 'gemini-3.7-flash';
+export const PREFERRED_FLASH = 'gemini-3.8-flash';
 
 /**
  * True when the model id already encodes an effort level. Sending `--effort`
