@@ -75,6 +75,11 @@
   with SIGKILL. Checked on Ubuntu 24.04 (WSL): unit tests, tree kills, bash tool timeout.
 - **`evals/bench/`** runs stock agy and the `agy-chore` agent on the same tasks, with a
   setup script and first-session checks for a Claude Code cloud environment.
+  `evals/bench/recall.mjs` scores a results dir: recall against reference answers,
+  broken citations, answered time, time until exit and model turns. Stock results now
+  keep agy's own `duration_seconds` as `agyDuration`, since stock agy can sit idle after
+  answering until `--print-timeout` (one Sonnet 5.5 run answered at 117 s and exited at
+  903 s).
 
 ### Changed
 
@@ -118,6 +123,10 @@
   name too long to open.
 - The tool-call count no longer counts each call twice. agy sends a step update when a
   tool starts and another when it ends; the count now goes by step index.
+- **`agy-chore` writes the full workspace-relative path in every citation**, repeated
+  ones included, and no longer pipes searches into `head`. On five Plannotator lookups,
+  bare names such as `App.tsx:12` cost 0.12 of recall on one task, and `| head` hid
+  matches the model then marked as inferred. The bash tool's own cut says what it left out.
 
 ### Removed
 

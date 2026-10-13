@@ -4,7 +4,17 @@
 tools) or `custom` (`delegate.mjs --chore`: the agy-chore agent with the
 plugin's bash tool). Results go to `<out>/<task>.<arm>.json`, with `wall`
 (seconds until the process exited) and, for stock, `answeredAt` (seconds until
-agy's result event).
+agy's result event) and `agyDuration` (agy's own `duration_seconds` from that
+event). Stock agy can sit idle after answering until `--print-timeout`, so
+compare stock by `agyDuration`, not `wall`.
+
+`recall.mjs --tasks <file> --results <out> [--repo <dir>]` scores a results
+dir against reference answers: each task's `ref` names a file whose cited
+files are the ones to find. Per run and per arm it prints the answered time,
+time until exit, model turns from agy's brain transcript, recall (the share of
+reference files the report cites), recall also counting bare file names that
+match one tracked file, and broken citations (no matching file, or a line past
+the end).
 
 ## Cloud environment (Claude Code on the web)
 

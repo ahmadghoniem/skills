@@ -104,8 +104,10 @@ function runStock(id, brief, repo) {
     c.on('close', (code) => {
       clearTimeout(dog);
       const s = summariseEvents(events);
+      // agy's own active time; answeredAt also counts its startup.
+      const agyDuration = events.find((e) => e.event === 'result')?.result?.duration_seconds;
       writeFileSync(join(OUT, `${id}.stock.ndjson`), events.map((e) => JSON.stringify(e)).join('\n'));
-      res({ wall: (Date.now() - since) / 1000, answeredAt, exit: code, killed, stderrTail: err.slice(-600), error: s.error,
+      res({ wall: (Date.now() - since) / 1000, answeredAt, agyDuration, exit: code, killed, stderrTail: err.slice(-600), error: s.error,
         conversationId: s.conversationId, report: s.response, agyStatus: s.status, toolCalls: s.toolCalls, usage: s.usage });
     });
   });
@@ -159,7 +161,7 @@ async function worker(n) {
     try {
       const r = o.arm === 'stock' ? await runStock(t.id, brief, repo) : await runCustom(t.id, brief, repo);
       writeFileSync(join(OUT, `${t.id}.${o.arm}.json`), JSON.stringify({ task: t.id, arm: o.arm, model: o.model, agy: VERSION, ...r }, null, 1));
-      console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
+      console.log(`[w${n}] done  ${t.id}.${o.arm} wall=${r.wall.toFixed(0)}s answered=${r.answeredAt?.toFixed(0) ?? '-'}s agy=${r.agyDuration?.toFixed(0) ?? '-'}s status=${r.agyStatus} exit=${r.exit}`);
       // agy's quota error reads "RESOURCE_EXHAUSTED (code 429): Individual quota reached". Look only at
       // the run's error and stderr: the report can contain "429" or "quota" (`color.h:411-429`).
       if (/RESOURCE_EXHAUSTED/.test(`${r.error ?? ''}${r.stderrTail ?? ''}`)) {
