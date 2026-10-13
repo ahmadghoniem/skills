@@ -21,13 +21,9 @@ export const WATCHDOG_GRACE_SEC = 60;
 /** Max age, in days, before the weekly model-cache refresh trigger fires. */
 const MODEL_CACHE_MAX_AGE_DAYS = 7;
 
-const SIDECAR_INSTRUCTION =
-  'Read the file at %PATH% in full and carry out that task exactly.';
-
 /**
  * Longest message sent on stdin. agy cuts a longer one short without an error
- * (a 324,000-char message kept about 191,000), so past this the message goes
- * to the sidecar file instead.
+ * (a 324,000-char message kept about 191,000), so a longer one is refused.
  */
 export const MAX_STDIN_CHARS = 150_000;
 
@@ -91,19 +87,6 @@ export function formatPrintTimeout(seconds) {
   if (m > 0 && s === 0) return `${m}m`;
   if (m > 0) return `${m}m${s}s`;
   return `${s}s`;
-}
-
-/**
- * Generate the `--print=` payload directing agy to read the sidecar file,
- * used only for a message too long for stdin. The sidecar file is written to
- * `~/.cad/jobs/<repo-hash>/<job>.prompt.md`, which is outside the directory
- * passed to `--add-dir`, and agy reads it anyway.
- *
- * @param {string} absPromptPath
- * @returns {string}
- */
-export function sidecarPrint(absPromptPath) {
-  return SIDECAR_INSTRUCTION.replace('%PATH%', absPromptPath);
 }
 
 /**
@@ -235,8 +218,6 @@ export function installBashServer(configPath = mcpConfigPath()) {
 /**
  * @typedef {Object} BuildArgsInput
  * @property {string=} addDir              Absolute workspace path. Mandatory on fresh.
- * @property {string=} print               `--print` text; omitted, the message
- *                                         goes on stdin as stream-json.
  * @property {number=} printTimeoutSec
  * @property {string=} logFile
  * @property {string=} model
@@ -260,8 +241,7 @@ export function installBashServer(configPath = mcpConfigPath()) {
  * Resume omits `--add-dir` and specifies `--conversation <uuid>` or `--continue`.
  *
  * The message goes on stdin (`--input-format stream-json`), which `runHeadless`
- * closes after one line; agy exits once that turn ends. With `opts.print` it
- * goes in `--print=<text>` instead, attached last. `--disable-slash-commands`
+ * closes after one line; agy exits once that turn ends. `--disable-slash-commands`
  * stops a message that starts with `/usage` or similar from running a command.
  *
  * @param {BuildArgsInput} opts
@@ -274,9 +254,7 @@ export function buildArgs(opts) {
   }
 
   /** @type {string[]} */
-  const args = ['--output-format', 'stream-json'];
-  if (!opts.print) args.push('--input-format', 'stream-json');
-  args.push('--disable-slash-commands');
+  const args = ['--output-format', 'stream-json', '--input-format', 'stream-json', '--disable-slash-commands'];
   if (!isResume) {
     args.push('--add-dir', opts.addDir);
   }
@@ -296,7 +274,6 @@ export function buildArgs(opts) {
     if (opts.conversationId) args.push('--conversation', opts.conversationId);
     else args.push('--continue');
   }
-  if (opts.print) args.push(`--print=${opts.print}`);
   return args;
 }
 

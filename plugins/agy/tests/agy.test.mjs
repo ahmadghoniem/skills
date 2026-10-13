@@ -17,14 +17,12 @@ import {
   resolveBin,
   resolveDefaultModel,
   runHeadless,
-  sidecarPrint,
   stdinLine,
   taskMessage,
   writeModelCache,
 } from '../scripts/lib/agy.mjs';
 import { STUB_BIN, ADD_DIR_WORKS } from './helpers.mjs';
 
-const PROMPT = 'C:\\Users\\Ahmed Ibrahim\\.cad\\jobs\\deadbeef\\add-retry-to-fetchuser-a7f3.prompt.md';
 const ADD_DIR = 'C:\\Users\\Ahmed Ibrahim\\Desktop\\app';
 const LOG = 'C:\\Users\\Ahmed Ibrahim\\.cad\\jobs\\deadbeef\\add-retry-to-fetchuser-a7f3.agy.log';
 
@@ -54,7 +52,6 @@ describe('formatPrintTimeout', () => {
 describe('buildArgs', () => {
   const fresh = {
     addDir: ADD_DIR,
-    promptPath: PROMPT,
     printTimeoutSec: 900,
     logFile: LOG,
   };
@@ -72,13 +69,6 @@ describe('buildArgs', () => {
     expect(args[args.indexOf('--print-timeout') + 1]).toBe('15m');
     expect(args.some((a) => a.startsWith('--print='))).toBe(false);
     expect(args.some((a) => a === '--effort' || a.startsWith('--effort='))).toBe(false);
-  });
-
-  it('with print: --print last, no --input-format, slash commands still off', () => {
-    const args = buildArgs({ ...fresh, print: sidecarPrint(PROMPT) });
-    expect(args.at(-1)).toBe(`--print=${sidecarPrint(PROMPT)}`);
-    expect(args).not.toContain('--input-format');
-    expect(args).toContain('--disable-slash-commands');
   });
 
   it('never sends --effort when the model id encodes it', () => {
@@ -157,7 +147,6 @@ describe('buildArgs', () => {
       '--effort',
       '--dangerously-skip-permissions',
       '--sandbox',
-      '--print',
       '--conversation',
       '--continue',
     ]);

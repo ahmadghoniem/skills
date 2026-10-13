@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
@@ -16,7 +16,6 @@ import {
   refreshModelCache,
   resolveDefaultModel,
   runHeadless,
-  sidecarPrint,
   stdinLine,
   taskMessage,
 } from './lib/agy.mjs';
@@ -27,7 +26,6 @@ import {
   createJob,
   listJobs,
   mostRecentFinishedJob,
-  promptPath,
   readJob,
   scratchPath,
   uniqueJobName,
@@ -170,11 +168,11 @@ async function runAndRecord(flags, prompt, jobId, root) {
         files: flags.files,
         task: prompt,
       });
-  // agy's brain transcript keeps the message. A message too long for stdin
-  // goes through a file instead, removed once the run ends.
-  const absPrompt = resolvePath(promptPath(root, jobId));
-  const viaFile = message.length > MAX_STDIN_CHARS;
-  if (viaFile) writeFileSync(absPrompt, message, 'utf8');
+  if (message.length > MAX_STDIN_CHARS) {
+    throw new Error(
+      `message is ${message.length} chars, over the ${MAX_STDIN_CHARS} agy reads from stdin, so agy was not started: shorten the brief or split the task`,
+    );
+  }
 
   // `buildArgs` drops `--effort` when the model id already encodes a level.
   // Any other mismatch goes to agy, whose error names the levels the model has.
@@ -208,7 +206,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
 
   const args = buildArgs({
     addDir: isResume(flags) ? undefined : root,
-    print: viaFile ? sidecarPrint(absPrompt) : undefined,
     printTimeoutSec: flags.timeout,
     logFile: agyLogPath(root, jobId),
     model: flags.model,
@@ -219,34 +216,29 @@ async function runAndRecord(flags, prompt, jobId, root) {
     continueLatest: flags.continueLatest && !flags.conversation,
   });
 
-  let result;
-  try {
-    result = await runHeadless({
-      args,
-      input: viaFile ? undefined : stdinLine(message),
-      cwd: root,
-      timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
-      onSpawn: (cliPid) => {
+  const result = await runHeadless({
+    args,
+    input: stdinLine(message),
+    cwd: root,
+    timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
+    onSpawn: (cliPid) => {
+      try {
+        updateJob(root, jobId, { cliPid });
+      } catch {
+        // A failed pid write must not tear down a running agy.
+      }
+    },
+    onEvent: (ev) => {
+      // `/agy:result` finds the brain transcript of a running job by this id.
+      if (ev.event === 'init' && typeof ev.conversation_id === 'string') {
         try {
-          updateJob(root, jobId, { cliPid });
+          updateJob(root, jobId, { conversationId: ev.conversation_id });
         } catch {
-          // A failed pid write must not tear down a running agy.
+          // noop
         }
-      },
-      onEvent: (ev) => {
-        // `/agy:result` finds the brain transcript of a running job by this id.
-        if (ev.event === 'init' && typeof ev.conversation_id === 'string') {
-          try {
-            updateJob(root, jobId, { conversationId: ev.conversation_id });
-          } catch {
-            // noop
-          }
-        }
-      },
-    });
-  } finally {
-    if (viaFile) rmSync(absPrompt, { force: true });
-  }
+      }
+    },
+  });
 
   const summary = summariseEvents(result.events);
 

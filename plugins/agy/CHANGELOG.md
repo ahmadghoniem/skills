@@ -83,9 +83,8 @@
   record of the conversation. The job record now stores the `agent` it ran.
   `/agy:result` on a running job reads its progress line (tool calls, last tool,
   tool failures) from the brain transcript, and the bench and evals read brain too.
-  The prompt file is written only for a message over 150,000 characters and is
-  deleted when the run ends. `build-fixtures.mjs` now rebuilds only the `live-*`
-  fixtures and keeps the recorded ones.
+  `build-fixtures.mjs` now rebuilds only the `live-*` fixtures and keeps the
+  recorded ones.
 
 - **Papercuts are grouped by key.** Each row now carries a `key` (the warning id, or
   `tool-errors:<tool>` with one row per failing tool) and its `text` is the failure
@@ -126,6 +125,12 @@
   event stream, which duplicated the brain transcript) or `<job>.done`, which
   nothing read. `rawLogPath` and `jobDonePath` are gone from `jobs.mjs`, and
   `runHeadless` no longer takes `logPath`.
+
+- **The prompt file route.** A message over 150,000 characters, which agy would
+  cut short on stdin, used to be written to `<job>.prompt.md` and passed as
+  `--print=Read the file at …`. It now fails the job before agy starts; the
+  longest of 494 recorded jobs was 15,466 characters. `sidecarPrint`,
+  `promptPath` and `buildArgs`'s `print` option are gone.
 
 - **Pruning of old jobs.** Every dispatch deleted the repo's job files older than 30
   days, raw event streams included. Job records, prompts, logs and scratch directories

@@ -72,16 +72,6 @@ export function agyLogPath(repoPath, id) {
 }
 
 /**
- * Only written for a message too long for stdin, and removed when the run ends.
- *
- * @param {string} repoPath
- * @param {string} id
- */
-export function promptPath(repoPath, id) {
-  return join(jobsDir(repoPath), `${id}.prompt.md`);
-}
-
-/**
  * The job's scratch directory, named in its first message. agy's default
  * prompt gives the model `<appDataDir>/brain/<conversation-id>/scratch/`, but
  * the plugin's agents leave the default prompt out, and the conversation id is

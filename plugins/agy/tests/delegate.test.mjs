@@ -242,13 +242,12 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(JSON.parse(stdin).message.content).toBe('and now this');
   });
 
-  it('moves a message too long for stdin to a file, removed when the run ends', async () => {
-    const [args, stdin] = await dispatch(['x'.repeat(MAX_STDIN_CHARS + 1)]);
-    expect(stdin).toBe(null);
-    expect(args).not.toContain('--input-format');
-    const file = /^--print=Read the file at (.+\.prompt\.md) in full/.exec(args.at(-1))?.[1];
-    expect(file).toBeTruthy();
-    expect(existsSync(file)).toBe(false);
+  it('refuses a message too long for stdin without starting agy', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    await expect(main(['x'.repeat(MAX_STDIN_CHARS + 1)])).rejects.toThrow(/over the 150000 agy reads from stdin/);
+    const [job] = listJobs(repo);
+    expect(job.status).toBe('failed');
+    expect(job.conversationId).toBeUndefined();
   });
 
   it('leaves only the job record behind, with the agent it ran', async () => {

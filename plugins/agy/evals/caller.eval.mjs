@@ -12,7 +12,7 @@
 //   noPolling    no sleep/wait loops, no reads of job logs, no /agy:result
 //                while the job was still running
 //   relayed      the final answer carries what the ⚠ lines said (warning cases)
-//   briefIntact  the sidecar prompt agy read contains the end of a long brief
+//   briefIntact  the job record's prompt contains the end of a long brief
 //   noToolErrors no Bash call failed on the way to dispatch
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
