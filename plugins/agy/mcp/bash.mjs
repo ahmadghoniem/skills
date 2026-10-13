@@ -45,6 +45,10 @@ const TOOL = {
     properties: {
       command: { type: 'string', description: 'The bash script to run.' },
       timeout_ms: { type: 'integer', description: `Timeout in milliseconds (max ${MAX_TIMEOUT_MS}).` },
+      // agy asks for these two on its own tools, and the model sometimes adds
+      // them here too. Accepted and ignored, so the call is not rejected.
+      toolAction: { type: 'string', description: 'Ignored.' },
+      toolSummary: { type: 'string', description: 'Ignored.' },
     },
     required: ['command'],
     additionalProperties: false,

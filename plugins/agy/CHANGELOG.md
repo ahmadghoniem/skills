@@ -99,6 +99,10 @@
   is always passed.
 - **Default model `gemini-3.7-flash`** at the requested effort, while agy lists it,
   instead of the newest flash. 3.8 used 1.4 to 3.2 times the input tokens.
+- **The bash tool accepts `toolAction` and `toolSummary`.** gemini-3.8-flash often adds
+  them, as agy's own tools require, and the tool's schema rejected the call, costing a
+  turn: 10 of 24 benchmark runs had one. Both are now optional and ignored; in the next
+  8 runs, 6 of 17 bash calls carried `toolAction` and none was rejected.
 - **A run stops if the bash tool cannot be installed.** It used to print a warning and
   start agy anyway, leaving both agents with `view_file` only. Now the job is marked
   failed with the reason and agy is not started.
