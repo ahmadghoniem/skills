@@ -10,6 +10,7 @@ import {
   cachedToolVersion,
   familyLevels,
   installAgent,
+  bashServerEntry,
   installBashServer,
   modelCacheStale,
   refreshModelCache,
@@ -183,11 +184,16 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const agent = isResume(flags) ? undefined : AGENTS[jobKind(flags)];
   if (agent) installAgent(agent);
   // agy reads its MCP servers from the global config on every start, resume
-  // included, so the bash tool needs no per-run flag.
+  // included, so the bash tool needs no per-run flag. Both agents rely on it
+  // for every search, so a run without it stops here.
   try {
     installBashServer();
   } catch (err) {
-    process.stderr.write(`Warning: bash tool not installed: ${err instanceof Error ? err.message : String(err)}\n`);
+    throw new Error(`bash tool not installed, so agy was not started: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const bashScript = bashServerEntry().args[0];
+  if (!existsSync(bashScript)) {
+    throw new Error(`bash tool not installed, so agy was not started: ${bashScript} is missing`);
   }
 
   updateJob(root, jobId, {

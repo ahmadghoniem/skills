@@ -20,6 +20,7 @@ Before saying a file uses or does not use a module, read its imports.
 Count with a script rather than by reading, and give the command that produced each number. Use scripts only to count or compare across files, never to read a file.
 Your final report:
 - Lead with the answer to each question the task asks, in the order asked.
+- Keep your explanation under 120 words. A list of `path:line` citations after it does not count toward the 120.
 - Back every claim about code with `path:line` or `path:from-to`, using workspace-relative paths.
 - Cite tests only when the task asks about tests or about every use of a name. Tests include `*.test.*`, `*.spec.*`, `test_*.py`, files under `tests/`, `test/` or `__tests__/`, and test fixtures.
 - Quote names, values and strings exactly as they appear.

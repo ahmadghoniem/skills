@@ -62,6 +62,12 @@
   one 300 lines or more at a time, and never views lines it has seen. It is also told
   not to run or import the workspace's code, after `python -c` imports left
   `__pycache__` folders in 2 of 20 benchmark repos.
+- **`agy-chore` keeps its explanation under 120 words.** In a 24-run benchmark per arm
+  (8 ContextBench tasks, `gemini-3.8-flash-low`), the brief line "Keep your explanation
+  before the <CONTEXT> block under 120 words." cut mean wall time from 28 s to 21 s,
+  tool calls from 8.6 to 6.7, views from 5.0 to 4.1 and output tokens from 1083 to 710,
+  with file F1 0.833 against 0.840. The agent file states the same limit, with the
+  citation list in place of the `<CONTEXT>` block.
 - **`--read <path[:from-to]>,...`** puts the files, numbered and wrapped in
   `<file path="...">`, in a chore's first message. Paths are checked before anything runs.
 - **Runs on Linux.** The bash tool defaults to `/bin/bash`, agy is looked up with `which`
@@ -93,6 +99,9 @@
   is always passed.
 - **Default model `gemini-3.7-flash`** at the requested effort, while agy lists it,
   instead of the newest flash. 3.8 used 1.4 to 3.2 times the input tokens.
+- **A run stops if the bash tool cannot be installed.** It used to print a warning and
+  start agy anyway, leaving both agents with `view_file` only. Now the job is marked
+  failed with the reason and agy is not started.
 - A task whose first word is longer than 40 characters no longer fails on a job file
   name too long to open.
 - The tool-call count no longer counts each call twice. agy sends a step update when a

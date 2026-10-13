@@ -2,9 +2,9 @@
 // binary (never the real CLI) so the never-started rule, the resume offer,
 // and the exit code are exercised through the real dispatch path rather than
 // re-implemented against a mock.
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_STDIN_CHARS, resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
 import { listJobs } from '../scripts/lib/jobs.mjs';
@@ -277,5 +277,31 @@ describe('delegate.mjs: --read usage errors', () => {
     writeFileSync(join(repo, 'a.txt'), 'x\n', 'utf8');
     expect(await main(['--read', 'a.txt'])).toBe(2);
     expect(listJobs(repo)).toEqual([]);
+  });
+});
+
+describe('delegate.mjs: bash tool', () => {
+  it('marks the job failed and does not start agy when the bash tool cannot be installed', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+    const { mcpConfigPath } = await import('../scripts/lib/agy.mjs');
+    const config = mcpConfigPath();
+    const prev = existsSync(config) ? readFileSync(config, 'utf8') : undefined;
+    mkdirSync(dirname(config), { recursive: true });
+    writeFileSync(config, '{ not json', 'utf8');
+    process.env.AGY_STUB_FIXTURE = writeFixture(home, 'unused.ndjson', {
+      status: 'SUCCESS',
+      conversation_id: 'c0ffee00-0000-4000-8000-000000000009',
+      response: 'should not run',
+    });
+    try {
+      await expect(main(['a task needing bash'])).rejects.toThrow(/bash tool not installed/);
+      const [job] = listJobs(repo);
+      expect(job.status).toBe('failed');
+      expect(job.error).toMatch(/bash tool not installed, so agy was not started/);
+      expect(job.conversationId).toBeUndefined();
+    } finally {
+      if (prev === undefined) rmSync(config, { force: true });
+      else writeFileSync(config, prev, 'utf8');
+    }
   });
 });
