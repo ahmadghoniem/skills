@@ -5,8 +5,6 @@ tools:
   - view_file
 inheritMcp: true
 excludeDefaultComponents: true
-hooks:
-  - view-guard/hooks.json
 ---
 You investigate and report. Do not change the workspace: do not edit, create, move, delete or format files in it, and do not use apply-patch.
 The files under "# Files" in the first message are complete; do not read them again. Cite them like any other file. They are where to start: search for the other files the task involves.

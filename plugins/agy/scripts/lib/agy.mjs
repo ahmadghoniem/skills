@@ -1,6 +1,5 @@
 import { once } from 'node:events';
 import {
-  cpSync,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -157,10 +156,6 @@ export function installAgent(name) {
   const src = fileURLToPath(new URL(`../../agy-agents/${name}.md`, import.meta.url));
   const dest = join(homedir(), '.gemini', 'config', 'agents', `${name}.md`);
   const text = readFileSync(src, 'utf8');
-  // Hook folders the frontmatter lists (`  - view-guard/hooks.json`) go beside the agent file.
-  for (const [, dir] of text.matchAll(/^\s+-\s+\.?\/?([\w-]+)\/hooks\.json\s*$/gm)) {
-    cpSync(fileURLToPath(new URL(`../../agy-agents/${dir}`, import.meta.url)), join(dirname(dest), dir), { recursive: true });
-  }
   if (existsSync(dest) && readFileSync(dest, 'utf8') === text) return;
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, text, 'utf8');
