@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Turns recorded agy runs into replay fixtures for the reporting eval.
 //
-// Sources: every finished job under ~/.cad/jobs (record + raw NDJSON log), and
-// any capture dropped into evals/fixtures/live/<name>.ndjson with an optional
-// <name>.stderr.txt beside it.
+// Source: any capture dropped into evals/fixtures/live/<name>.ndjson with an
+// optional <name>.stderr.txt beside it. The recorded `rec-*` fixtures were built
+// from job event logs that jobs no longer write; a rebuild keeps them.
 //
 // What a fixture keeps is what the plugin reads: init, tool step states and
 // their error messages, and the result event. Write-ups, tool parameters and
@@ -13,7 +13,7 @@
 // Each fixture carries a `truth` label derived from the raw run alone, never
 // from the plugin's renderer, so the eval can grade the renderer against it.
 //
-//   node evals/build-fixtures.mjs            # rebuild from ~/.cad and fixtures/live
+//   node evals/build-fixtures.mjs            # rebuild the live-* fixtures
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -22,7 +22,6 @@ import { fileURLToPath } from 'node:url';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const OUT = join(here, 'fixtures', 'replay');
 const LIVE = join(here, 'fixtures', 'live');
-const JOBS = join(process.env.CAD_HOME || join(homedir(), '.cad'), 'jobs');
 
 const home = homedir();
 const homeVariants = [home, home.replace(/\\/g, '/'), home.replace(/\\/g, '\\\\')];
@@ -152,54 +151,13 @@ function writeFixture(name, fixture) {
   writeFileSync(join(OUT, `${name}.json`), JSON.stringify(fixture, null, 1) + '\n', 'utf8');
 }
 
-rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
+for (const f of readdirSync(OUT)) {
+  if (f.startsWith('live-')) rmSync(join(OUT, f), { force: true });
+}
 
 const counts = {};
 let n = 0;
-
-if (existsSync(JOBS)) {
-  for (const dir of readdirSync(JOBS)) {
-    const full = join(JOBS, dir);
-    let files;
-    try {
-      files = readdirSync(full);
-    } catch {
-      continue;
-    }
-    for (const f of files) {
-      if (!f.endsWith('.json')) continue;
-      const id = f.slice(0, -5);
-      const logFile = join(full, `${id}.ndjson`);
-      if (!existsSync(logFile)) continue;
-      let rec;
-      try {
-        rec = JSON.parse(readFileSync(join(full, f), 'utf8'));
-      } catch {
-        continue;
-      }
-      if (rec.status === 'running' || rec.status === 'cancelled') continue;
-      const raw = parseLog(readFileSync(logFile, 'utf8'));
-      const stderr = (Array.isArray(rec.stderrTail) ? rec.stderrTail : []).map((l) => cap(l, 300));
-      const truth = label({ events: raw, exitCode: rec.exitCode, killed: Boolean(rec.killed), stderr });
-      const events = raw.map(scrubEvent).filter(Boolean);
-      const name = `rec-${String(n).padStart(3, '0')}-${truth.class}`;
-      writeFixture(name, {
-        source: 'recorded',
-        recordedAt: rec.startedAt ?? null,
-        model: rec.model || null,
-        exitCode: rec.exitCode,
-        killed: Boolean(rec.killed),
-        toolSteps: raw.filter((e) => e.event === 'step_update' && e.step_update?.step_type === 'tool').length,
-        stderr,
-        truth,
-        events,
-      });
-      counts[truth.class] = (counts[truth.class] ?? 0) + 1;
-      n++;
-    }
-  }
-}
 
 if (existsSync(LIVE)) {
   for (const f of readdirSync(LIVE)) {

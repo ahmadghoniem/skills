@@ -7,7 +7,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { isPidGone, killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, pluginHome } from './paths.mjs';
 import { jobName } from './slug.mjs';
@@ -23,6 +23,7 @@ import { jobName } from './slug.mjs';
  * @property {string} prompt
  * @property {string} model
  * @property {string=} effort
+ * @property {string=} agent
  * @property {string=} conversationId
  * @property {number=} pid
  * @property {number=} cliPid
@@ -31,9 +32,7 @@ import { jobName } from './slug.mjs';
  * @property {number=} exitCode
  * @property {string} startedAt
  * @property {string=} finishedAt
- * @property {string} rawLogPath
  * @property {string} agyLogPath
- * @property {string} promptPath
  * @property {string=} briefPath
  * @property {string=} summary
  * @property {string[]=} stderrTail
@@ -68,19 +67,13 @@ export function jobFilePath(repoPath, id) {
  * @param {string} repoPath
  * @param {string} id
  */
-export function rawLogPath(repoPath, id) {
-  return join(jobsDir(repoPath), `${id}.ndjson`);
-}
-
-/**
- * @param {string} repoPath
- * @param {string} id
- */
 export function agyLogPath(repoPath, id) {
   return join(jobsDir(repoPath), `${id}.agy.log`);
 }
 
 /**
+ * Only written for a message too long for stdin, and removed when the run ends.
+ *
  * @param {string} repoPath
  * @param {string} id
  */
@@ -146,9 +139,7 @@ export function createJob(init) {
     model: init.model,
     status: 'running',
     startedAt: new Date().toISOString(),
-    rawLogPath: rawLogPath(init.repoPath, init.id),
     agyLogPath: agyLogPath(init.repoPath, init.id),
-    promptPath: promptPath(init.repoPath, init.id),
   };
   atomicWrite(jobFilePath(init.repoPath, init.id), JSON.stringify(record, null, 2));
   return record;
@@ -211,14 +202,6 @@ function locateJobFile(repoPath, id) {
     if (existsSync(candidate)) return candidate;
   }
   return null;
-}
-
-/**
- * @param {string} repoPath
- * @param {string} id
- */
-export function jobDonePath(repoPath, id) {
-  return join(jobsDir(repoPath), `${id}.done`);
 }
 
 /**
@@ -330,11 +313,6 @@ export function updateJob(repoPath, id, patch) {
   }
   atomicWrite(file, JSON.stringify(merged, null, 2));
   if (merged.status && merged.status !== 'running') {
-    try {
-      writeFileSync(join(dirname(file), `${id}.done`), '', 'utf8');
-    } catch {
-      // noop
-    }
     // Most jobs never write a script. rmdir refuses a non-empty directory, so
     // only an unused scratch directory goes.
     if (merged.scratchDir) {

@@ -2,11 +2,12 @@
 // binary (never the real CLI) so the never-started rule, the resume offer,
 // and the exit code are exercised through the real dispatch path rather than
 // re-implemented against a mock.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_STDIN_CHARS, resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
+import { jobsDir } from '../scripts/lib/paths.mjs';
 import { listJobs } from '../scripts/lib/jobs.mjs';
 import { STUB_BIN } from './helpers.mjs';
 
@@ -241,11 +242,19 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(JSON.parse(stdin).message.content).toBe('and now this');
   });
 
-  it('moves a message too long for stdin to the sidecar file', async () => {
+  it('moves a message too long for stdin to a file, removed when the run ends', async () => {
     const [args, stdin] = await dispatch(['x'.repeat(MAX_STDIN_CHARS + 1)]);
     expect(stdin).toBe(null);
     expect(args).not.toContain('--input-format');
-    expect(args.at(-1)).toMatch(/^--print=Read the file at .+\.prompt\.md in full/);
+    const file = /^--print=Read the file at (.+\.prompt\.md) in full/.exec(args.at(-1))?.[1];
+    expect(file).toBeTruthy();
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it('leaves only the job record behind, with the agent it ran', async () => {
+    await dispatch(['--chore', 'count the casts']);
+    expect(readdirSync(jobsDir(repo)).filter((f) => !f.endsWith('.json'))).toEqual([]);
+    expect(listJobs(repo)[0].agent).toBe('agy-chore');
   });
 
   it('runs a chore on agy-chore at low effort', async () => {

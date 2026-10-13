@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -285,24 +285,18 @@ describe('stubbed spawn (never the real binary)', () => {
     }
   });
 
-  it('runHeadless replays a fixture and captures NDJSON', async () => {
+  it('runHeadless replays a fixture and parses its events', async () => {
     process.env.AGY_BIN = STUB_BIN;
     process.env.AGY_STUB_FIXTURE = ADD_DIR_WORKS;
     resetBinCache();
-    const dir = mkdtempSync(join(tmpdir(), 'cad-spawn-'));
-    dirs.push(dir);
-    const logPath = join(dir, 'run.ndjson');
     const result = await runHeadless({
       args: ['--output-format', 'stream-json'],
-      logPath,
       timeoutSec: 10,
     });
     expect(result.killed).toBe(false);
     expect(result.exitCode).toBe(0);
+    expect(result.events.some((e) => e.event === 'init')).toBe(true);
     expect(result.events.some((e) => e.event === 'result')).toBe(true);
-    const logged = readFileSync(logPath, 'utf8');
-    expect(logged).toContain('"event":"init"');
-    expect(logged).toContain('"event":"result"');
   });
 });
 

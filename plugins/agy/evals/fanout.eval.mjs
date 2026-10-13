@@ -8,10 +8,11 @@
 // together (within the settled fan-out of 3 to 5). The end state is graded:
 // AUDIT.md exists with a section per module naming that module's planted
 // problems. Duration, agy status and warnings are recorded beside it.
-import { copyFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readTranscript } from '../scripts/lib/brain.mjs';
 import { LIVE, makeRepo, openResults, pool, readJobs, runScript, warnLines } from './lib/harness.mjs';
 
 const REPS = 3;
@@ -102,21 +103,10 @@ describe.skipIf(!LIVE)('eval: agy subagent fan-out (live agy)', () => {
         });
         const rec = readJobs(env.cadHome)[0] ?? {};
         const g = grade(env.repo);
-        // Which subagent tools agy actually called, read from the raw event log.
-        const jobsRoot = join(env.cadHome, 'jobs');
-        const logText = existsSync(jobsRoot)
-          ? readdirSync(jobsRoot).flatMap((d) => readdirSync(join(jobsRoot, d)).filter((f) => f.endsWith('.ndjson')).map((f) => readFileSync(join(jobsRoot, d, f), 'utf8'))).join('\n')
-          : '';
-        let subagentCalls = 0;
-        for (const line of logText.split(/\r?\n/)) {
-          if (!line.includes('subagent')) continue;
-          try {
-            const su = JSON.parse(line).step_update;
-            if (su?.step_type === 'tool' && su.state === 'DONE' && /^(invoke|define|manage)_subagents?$/.test(su.tool_name ?? '')) subagentCalls++;
-          } catch {
-            // partial line
-          }
-        }
+        // Which subagent tools agy actually called, read from its brain transcript.
+        const subagentCalls = readTranscript(rec.conversationId)
+          .flatMap((s) => (s.type === 'PLANNER_RESPONSE' ? (s.tool_calls ?? []) : []))
+          .filter((c) => /^(invoke|define|manage)_subagents?$/.test(c.name ?? '')).length;
         const row = {
           case: `${variant}#${rep}`,
           variant,

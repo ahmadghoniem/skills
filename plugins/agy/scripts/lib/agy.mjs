@@ -1,6 +1,5 @@
 import { once } from 'node:events';
 import {
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -600,7 +599,6 @@ export async function refreshModelCache() {
  * @property {string[]} args
  * @property {string=} cwd
  * @property {number=} timeoutSec          Outer watchdog (print-timeout + 60s grace).
- * @property {string} logPath              NDJSON capture path.
  * @property {string=} input               Written to stdin, which is then closed.
  * @property {(ev: Record<string, unknown>) => void=} onEvent
  * @property {(pid: number) => void=} onSpawn
@@ -639,7 +637,7 @@ export function escalateSigkill(child) {
  * Spawn agy in headless mode. Writes `opts.input` to stdin and closes it:
  * with `--input-format stream-json` agy runs a turn per line and exits only
  * when stdin ends. Without input, stdin is ignored.
- * Appends stdout lines to `logPath` and parses JSON events.
+ * Parses stdout into JSON events; agy's brain transcript is the run's record.
  *
  * @param {DelegateOpts} opts
  * @returns {Promise<DelegateResult>}
@@ -665,20 +663,6 @@ export async function runHeadless(opts) {
     opts.onSpawn(child.pid);
   }
 
-  const logStream = createWriteStream(opts.logPath, { flags: 'a' });
-  let logBroken = false;
-  logStream.on('error', () => {
-    logBroken = true;
-  });
-  const logSafe = (s) => {
-    if (logBroken) return;
-    try {
-      logStream.write(s);
-    } catch {
-      logBroken = true;
-    }
-  };
-
   /** @type {Record<string, unknown>[]} */
   const events = [];
   /**
@@ -694,14 +678,12 @@ export async function runHeadless(opts) {
   const stdoutDrained = once(stdoutLines, 'close');
   const stderrDrained = once(stderrLines, 'close');
   stdoutLines.on('line', (line) => {
-    logSafe(line + '\n');
     const ev = parseLine(line);
     if (!ev) return;
     events.push(ev);
     if (opts.onEvent) opts.onEvent(ev);
   });
   stderrLines.on('line', (line) => {
-    logSafe(`# stderr: ${line}\n`);
     if (line.trim().length === 0) return;
     stderr.push(line);
     if (stderr.length > STDERR_TAIL_LINES) stderr.shift();
@@ -728,7 +710,6 @@ export async function runHeadless(opts) {
     };
     child.on('error', (err) => {
       const message = err instanceof Error ? err.message : String(err);
-      logSafe(`# spawn error: ${message}\n`);
       // Record spawn failure message in stderr so callers have context for
       // synthetic exit code 127 (not an agy 0/1/2 code).
       stderr.push(`spawn failed: ${message}`);
@@ -741,12 +722,5 @@ export async function runHeadless(opts) {
 
   if (timeoutHandle) clearTimeout(timeoutHandle);
   await Promise.all([stdoutDrained, stderrDrained]);
-  await new Promise((resolve) => {
-    try {
-      logStream.end(() => resolve());
-    } catch {
-      resolve();
-    }
-  });
   return { exitCode, events, killed, stderr };
 }

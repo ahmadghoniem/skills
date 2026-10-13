@@ -78,6 +78,15 @@
 
 ### Changed
 
+- **One record per job.** A job folder now holds only `<job>.json`, `<job>.agy.log`
+  and the scratch directory; agy's brain transcript, written as the run goes, is the
+  record of the conversation. The job record now stores the `agent` it ran.
+  `/agy:result` on a running job reads its progress line (tool calls, last tool,
+  tool failures) from the brain transcript, and the bench and evals read brain too.
+  The prompt file is written only for a message over 150,000 characters and is
+  deleted when the run ends. `build-fixtures.mjs` now rebuilds only the `live-*`
+  fixtures and keeps the recorded ones.
+
 - **Papercuts are grouped by key.** Each row now carries a `key` (the warning id, or
   `tool-errors:<tool>` with one row per failing tool) and its `text` is the failure
   itself, not the `⚠` heading. `/agy:papercut --resolve <key>` closes a whole group;
@@ -112,6 +121,11 @@
   tool starts and another when it ends; the count now goes by step index.
 
 ### Removed
+
+- **Event logs and `.done` markers.** Jobs no longer write `<job>.ndjson` (the raw
+  event stream, which duplicated the brain transcript) or `<job>.done`, which
+  nothing read. `rawLogPath` and `jobDonePath` are gone from `jobs.mjs`, and
+  `runHeadless` no longer takes `logPath`.
 
 - **Pruning of old jobs.** Every dispatch deleted the repo's job files older than 30
   days, raw event streams included. Job records, prompts, logs and scratch directories

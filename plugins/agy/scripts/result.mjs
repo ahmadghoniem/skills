@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
+import { readTranscript, summariseTranscript } from './lib/brain.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
-import { parseEvents, summariseEvents } from './lib/parse.mjs';
 import { renderResult } from './lib/render.mjs';
 
 function renderList(jobs) {
@@ -29,22 +28,15 @@ function formatElapsed(ms) {
 
 /**
  * A running job has no `result` event yet, so `renderResult` cannot be used.
- * Read what has streamed in so far and print one progress line instead of
- * "still running" alone. Safe on a missing or empty log, or one torn by a
- * write still in progress: `parseEvents`/`parseLine` drop what they cannot
- * parse.
+ * Read the steps agy's brain transcript holds so far and print one progress
+ * line instead of "still running" alone. Before agy has written the
+ * transcript (its first few seconds) the counts are zero.
  *
  * @param {import('./lib/jobs.mjs').JobRecord} job
  * @returns {string}
  */
 function renderRunning(job) {
-  let text = '';
-  try {
-    text = readFileSync(job.rawLogPath, 'utf8');
-  } catch {
-    // No log written yet.
-  }
-  const summary = summariseEvents(parseEvents(text));
+  const summary = summariseTranscript(readTranscript(job.conversationId));
   const elapsed = formatElapsed(Date.now() - Date.parse(job.startedAt));
   const toolCalls = summary.toolCalls;
   const lastTool = summary.lastTool ? `, last tool ${summary.lastTool}` : '';

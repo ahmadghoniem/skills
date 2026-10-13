@@ -237,7 +237,8 @@ describe.skipIf(!LIVE)('eval: caller behaviour (live Claude Code, stub agy)', ()
         const finalText = String(s.results.at(-1)?.result ?? '');
         const cost = s.results.reduce((sum, r) => sum + (r.total_cost_usd ?? 0), 0);
         const files = jobFiles(env.cadHome);
-        const jobCount = files.filter((f) => f.endsWith('.prompt.md')).length;
+        const records = files.filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(f, 'utf8')));
+        const jobCount = records.length;
         const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
         const grades = {};
@@ -267,8 +268,8 @@ describe.skipIf(!LIVE)('eval: caller behaviour (live Claude Code, stub agy)', ()
         const key = errorLine.split(/[.:]/)[0].trim().slice(0, 40);
         grades.relayed = [key.length > 0 && finalText.toLowerCase().includes(key.toLowerCase()) && /ERROR/.test(finalText), `looked for "${key}" and ERROR; final: ${finalText.slice(0, 160)}`];
 
-        const prompts = files.filter((f) => f.endsWith('.prompt.md')).map((f) => readFileSync(f, 'utf8'));
-        grades.briefIntact = [prompts.some((p) => p.includes(SENTINEL)), `${prompts.length} sidecar(s), sentinel ${prompts.some((p) => p.includes(SENTINEL)) ? 'found' : 'missing'}`];
+        const prompts = records.map((r) => String(r.prompt ?? ''));
+        grades.briefIntact = [prompts.some((p) => p.includes(SENTINEL)), `${prompts.length} job record(s), sentinel ${prompts.some((p) => p.includes(SENTINEL)) ? 'found' : 'missing'}`];
 
         const firstDispatch = delegates[0]?.index ?? Infinity;
         const failedBefore = s.toolUses.filter((t) => ['Bash', 'PowerShell', 'Write'].includes(t.name) && t.index < firstDispatch && s.toolResults.get(t.id)?.is_error);

@@ -18,7 +18,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { mcpConfigPath, resolveBin } from '../../scripts/lib/agy.mjs';
-import { rawLogPath } from '../../scripts/lib/jobs.mjs';
+import { readTranscript, summariseTranscript } from '../../scripts/lib/brain.mjs';
 import { killTree } from '../../scripts/lib/killtree.mjs';
 import { parseLine, summariseEvents } from '../../scripts/lib/parse.mjs';
 import { jobsDir } from '../../scripts/lib/paths.mjs';
@@ -143,10 +143,7 @@ async function runCustom(id, brief, repo) {
   });
   const wall = (Date.now() - since) / 1000;
   const job = findJob(brief, since, repo);
-  let s = {};
-  try {
-    s = summariseEvents(readFileSync(rawLogPath(repo, job.id), 'utf8').split('\n').map(parseLine).filter(Boolean));
-  } catch { /* no job or no log */ }
+  const s = summariseTranscript(readTranscript(job?.conversationId));
   return { wall, exit: r.code, killed: r.killed, stdoutTail: r.out.slice(-600), error: job?.error,
     conversationId: job?.conversationId, report: job?.summary, agyStatus: job?.agyStatus,
     timedOut: job?.timedOut ?? false, toolCalls: s.toolCalls, usage: s.usage, job };

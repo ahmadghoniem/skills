@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   DEFAULT_PRINT_TIMEOUT_SEC,
@@ -28,7 +28,6 @@ import {
   listJobs,
   mostRecentFinishedJob,
   promptPath,
-  rawLogPath as rawLogPathFor,
   readJob,
   scratchPath,
   uniqueJobName,
@@ -171,10 +170,11 @@ async function runAndRecord(flags, prompt, jobId, root) {
         files: flags.files,
         task: prompt,
       });
-  // Kept for the record, and read by agy when the message is too long for stdin.
+  // agy's brain transcript keeps the message. A message too long for stdin
+  // goes through a file instead, removed once the run ends.
   const absPrompt = resolvePath(promptPath(root, jobId));
-  writeFileSync(absPrompt, message, 'utf8');
   const viaFile = message.length > MAX_STDIN_CHARS;
+  if (viaFile) writeFileSync(absPrompt, message, 'utf8');
 
   // `buildArgs` drops `--effort` when the model id already encodes a level.
   // Any other mismatch goes to agy, whose error names the levels the model has.
@@ -200,7 +200,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     pid: process.pid,
     model: flags.model ?? '',
     effort,
-    promptPath: absPrompt,
+    agent,
     scratchDir: scratch,
     sandbox: flags.sandbox || undefined,
     briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
@@ -219,29 +219,34 @@ async function runAndRecord(flags, prompt, jobId, root) {
     continueLatest: flags.continueLatest && !flags.conversation,
   });
 
-  const result = await runHeadless({
-    args,
-    input: viaFile ? undefined : stdinLine(message),
-    cwd: root,
-    timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
-    logPath: rawLogPathFor(root, jobId),
-    onSpawn: (cliPid) => {
-      try {
-        updateJob(root, jobId, { cliPid });
-      } catch {
-        // A failed pid write must not tear down a running agy.
-      }
-    },
-    onEvent: (ev) => {
-      if (ev.event === 'init' && typeof ev.conversation_id === 'string') {
+  let result;
+  try {
+    result = await runHeadless({
+      args,
+      input: viaFile ? undefined : stdinLine(message),
+      cwd: root,
+      timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
+      onSpawn: (cliPid) => {
         try {
-          updateJob(root, jobId, { conversationId: ev.conversation_id });
+          updateJob(root, jobId, { cliPid });
         } catch {
-          // noop
+          // A failed pid write must not tear down a running agy.
         }
-      }
-    },
-  });
+      },
+      onEvent: (ev) => {
+        // `/agy:result` finds the brain transcript of a running job by this id.
+        if (ev.event === 'init' && typeof ev.conversation_id === 'string') {
+          try {
+            updateJob(root, jobId, { conversationId: ev.conversation_id });
+          } catch {
+            // noop
+          }
+        }
+      },
+    });
+  } finally {
+    if (viaFile) rmSync(absPrompt, { force: true });
+  }
 
   const summary = summariseEvents(result.events);
 

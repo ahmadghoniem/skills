@@ -5,7 +5,6 @@ import {
   cancelJob,
   createJob,
   findRunningJobs,
-  jobDonePath,
   jobFilePath,
   listJobs,
   mostRecentFinishedJob,
@@ -42,7 +41,6 @@ describe('jobs registry', () => {
       model: 'gemini-3.7-flash-low',
     });
     expect(job.status).toBe('running');
-    expect(job.promptPath).toContain('add-retry-to-fetchuser-a7f3.prompt.md');
     expect(job.agyLogPath).toContain('add-retry-to-fetchuser-a7f3.agy.log');
     const read = readJob(repo, 'add-retry-to-fetchuser-a7f3');
     expect(read?.prompt).toBe('do it');
@@ -213,14 +211,5 @@ describe('jobs registry', () => {
     createJob({ id: 'live2-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
     updateJob(repo, 'live2-aaaa', { pid: process.pid });
     expect(readJob(repo, 'live2-aaaa')?.status).toBe('running');
-  });
-
-  it('updateJob writes a completion sentinel only on a terminal status', () => {
-    createJob({ id: 'sentinel1-aaaa', repoPath: repo, prompt: 'p', model: 'm' });
-    expect(existsSync(jobDonePath(repo, 'sentinel1-aaaa'))).toBe(false);
-    updateJob(repo, 'sentinel1-aaaa', { pid: 123 });
-    expect(existsSync(jobDonePath(repo, 'sentinel1-aaaa'))).toBe(false);
-    updateJob(repo, 'sentinel1-aaaa', { status: 'done', finishedAt: '2026-01-01T00:00:00.000Z' });
-    expect(existsSync(jobDonePath(repo, 'sentinel1-aaaa'))).toBe(true);
   });
 });
