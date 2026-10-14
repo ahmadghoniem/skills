@@ -44,31 +44,6 @@ export function parseLine(line) {
 }
 
 /**
- * Short human label for a tool_call event, for live progress output.
- * Returns null for events that are not tool calls.
- *
- * `root` rebases the path to repo-relative. grok reports absolute paths, so
- * without it every progress line carries the full Windows path and the useful
- * part — which file — is pushed off the right edge of the terminal.
- *
- * @param {GrokEvent} ev
- * @param {string} [root]
- * @returns {string|null}
- */
-export function describeToolCall(ev, root) {
-  if (ev?.type !== 'tool_call') return null;
-  const name = typeof ev.toolName === 'string' ? ev.toolName : 'tool';
-  const input = ev.rawInput;
-  if (input != null && typeof input === 'object') {
-    const path = typeof input.file_path === 'string' ? input.file_path : undefined;
-    if (path) return `${name} → ${normalisePaths([path], root)[0] ?? path}`;
-    const command = typeof input.command === 'string' ? input.command : undefined;
-    if (command) return `${name}: ${command}`;
-  }
-  return name;
-}
-
-/**
  * Collapse the two spellings of the same file into one.
  *
  * A single edit surfaces twice: `tool_call.rawInput.file_path` gives the
@@ -126,6 +101,30 @@ export function normalisePaths(paths, root) {
 export const MAX_SUMMARY_CHARS = 256_000;
 
 /**
+ * True when grok's write-up claims it created or modified files.
+ *
+ * Used only to catch the case where the write-up says work landed and the
+ * working tree disagrees. Conservative on purpose: a `file://` link, or a
+ * create/write verb sitting next to something shaped like a filename. A false
+ * positive here costs a warning line on a run that was fine, which is a worse
+ * trade than it sounds — the whole output contract is quiet-by-default.
+ *
+ * @param {string} response
+ * @returns {boolean}
+ */
+export function claimsFileChanges(response) {
+  const text = String(response ?? '');
+  if (text.length === 0) return false;
+  if (/file:\/\//i.test(text)) return true;
+  if (/\bcreated the file\b/i.test(text)) return true;
+  if (/\bcreated\b/i.test(text) && /\[[^\]]+\]\(/i.test(text)) return true;
+  if (/\b(created|wrote|modified|updated)\b/i.test(text) && /\.[a-z0-9]{1,8}\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * @param {string} text
  * @returns {string}
  */
@@ -151,6 +150,9 @@ function capSummary(text) {
  * @property {string} stopReason
  * @property {string|undefined} errorDetail
  * @property {boolean} success
+ * @property {number} toolCalls
+ * @property {string[]} writeTargets
+ * @property {boolean} claimedFileChanges
  */
 
 /**
@@ -159,9 +161,9 @@ function capSummary(text) {
  * `success` tracks grok's own `stopReason` only. A command exiting non-zero is
  * reported in `failedCommands` but deliberately does NOT flip `success`: a
  * non-zero exit is routinely intentional (`grep` finds nothing, a red test in a
- * TDD cycle, a `command -v` probe), so failing the job on it would cry wolf
- * often enough to be ignored. Surfacing it and letting a human judge is the
- * whole point.
+ * TDD cycle, a `command -v` probe), so failing the job on it would raise false
+ * failures often enough that real ones get ignored. It is listed and left for
+ * a person to judge.
  *
  * @param {GrokEvent[]} events
  * @param {string} [root]   Repo root; absolute paths under it are made relative.
@@ -170,6 +172,13 @@ function capSummary(text) {
 export function summariseEvents(events, root) {
   /** @type {Map<string, CommandRun>} */
   const commandsById = new Map();
+  // Every tool the run invoked, successful or not. The only figure in this
+  // summary not already derivable from something else, and the one that says
+  // how hard grok had to work: forty tool calls to change one file went wrong
+  // somewhere even under a clean stop reason.
+  let toolCalls = 0;
+  /** @type {string[]} */
+  const writeTargets = [];
   const textParts = [];
   let sessionId;
   let stopReason = 'incomplete';
@@ -194,6 +203,9 @@ export function summariseEvents(events, root) {
     if (type === 'tool_call') toolCallSinceText = true;
 
     if (type === 'tool_call') {
+      toolCalls += 1;
+      const wrotePath = ev?.rawInput?.file_path;
+      if (typeof wrotePath === 'string' && wrotePath) writeTargets.push(wrotePath);
       const input = ev.rawInput;
       const command =
         input != null && typeof input === 'object' && typeof input.command === 'string'
@@ -258,6 +270,9 @@ export function summariseEvents(events, root) {
 
   return {
     summary: capSummary(summary || '(no final message captured)'),
+    toolCalls,
+    writeTargets: dedupePaths(writeTargets),
+    claimedFileChanges: claimsFileChanges(summary),
     commands,
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     sessionId,

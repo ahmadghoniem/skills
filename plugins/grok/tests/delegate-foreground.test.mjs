@@ -4,12 +4,9 @@ import { main } from '../scripts/delegate.mjs';
 import { readJob } from '../scripts/lib/jobs.mjs';
 import { HAPPY_FIXTURE, STUB_BIN, makeTempHome } from './helpers.mjs';
 
-// There is one run path now — `main` → `foreground` → `runAndRecord` — so this
-// is the only test that walks it end to end. It replaces the worker test that
-// went with `--background`, and it exists because the path had gone untested:
-// `foreground` read `freshSessionId`, a const scoped to `runAndRecord`, which
-// threw a ReferenceError while rendering the outcome of every completed run.
-describe('/grok:delegate foreground run', () => {
+// The one test that walks the whole run path, `main` → `runAndRecord` →
+// `renderResult`, against the stub binary.
+describe('/grok:delegate', () => {
   let tmp;
   const prevHome = process.env.CGD_HOME;
   const prevBin = process.env.GROK_BIN;
@@ -48,94 +45,88 @@ describe('/grok:delegate foreground run', () => {
     tmp.cleanup();
   });
 
-  // `--help` used to fall through to a real, billed dispatch.
-  it('prints usage and runs nothing on --help, even behind the injected --resume', async () => {
-    expect(await main(['--resume', '--help'])).toBe(0);
+  const jobIdIn = (text) => /grok `([^`]+)`/.exec(text)?.[1];
+
+  it('prints usage and runs nothing on --help', async () => {
+    expect(await main(['--help'])).toBe(0);
     expect(out).toContain('Usage: /grok:delegate');
     expect(out).not.toContain('grok `');
   });
 
-  it('runs, records the job, and renders the write-up without throwing', async () => {
-    const code = await main(['--no-git-check', '--timeout', '15', 'do the thing']);
+  it('refuses an effort grok cannot use on this account', async () => {
+    expect(await main(['--effort', 'high', 'do the thing'])).toBe(2);
+    expect(err).toContain('--effort must be low or medium');
+    expect(out).not.toContain('grok `');
+  });
+
+  it('refuses a dispatch with no task', async () => {
+    expect(await main([])).toBe(2);
+    expect(err).toContain('no task description');
+  });
+
+  it('runs, records the job under a name taken from the task, and renders the write-up', async () => {
+    const code = await main(['--timeout', '15', 'do the thing']);
     expect(code).toBe(0);
 
-    const id = /grok `([^`]+)`/.exec(out)?.[1];
-    expect(id).toBeTruthy();
+    const id = jobIdIn(out);
+    expect(id).toMatch(/^do-the-thing-[0-9a-z]{4}$/);
 
     const job = readJob(tmp.dir, id);
     expect(job?.status).toBe('done');
+    expect(job?.effort).toBe('medium');
     expect(job?.cliPid).toEqual(expect.any(Number));
     expect(readFileSync(`${job.rawLogPath}.prompt.txt`, 'utf8')).toBe('do the thing');
+    expect(out).not.toContain('⚠');
   });
 
-  it('pre-assigns a session id before grok is spawned, so the job is resumable', async () => {
-    await main(['--no-git-check', '--timeout', '15', 'do the thing']);
-    const id = /grok `([^`]+)`/.exec(out)?.[1];
-    expect(readJob(tmp.dir, id)?.grokSessionId).toEqual(expect.any(String));
+  it('reads the brief from --prompt-file', async () => {
+    const brief = `${tmp.dir}/brief.md`;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(brief, '## Goal\nAdd divide.\n', 'utf8');
+    expect(await main(['--timeout', '15', '--prompt-file', brief])).toBe(0);
+    const job = readJob(tmp.dir, jobIdIn(out));
+    expect(job?.briefPath).toBe(brief);
+    expect(readFileSync(`${job.rawLogPath}.prompt.txt`, 'utf8')).toBe('## Goal\nAdd divide.');
   });
 
-  // The collision this exists to stop: two Claude sessions in one directory
-  // share a job store, so "resume the newest" attached to whichever session
-  // dispatched last and answered from a conversation the caller never had —
-  // at exit 0, with no warning.
-  it('refuses a bare --resume rather than guessing which session was meant', async () => {
-    expect(await main(['--no-git-check', '--resume', 'follow up'])).toBe(2);
-    expect(err).toContain('--resume needs a job id');
-    expect(err).toContain('--resume=<job-id>');
-    expect(out).not.toContain('grok `');
+  it('pre-assigns a session id, so the job is resumable', async () => {
+    await main(['--timeout', '15', 'do the thing']);
+    expect(readJob(tmp.dir, jobIdIn(out))?.grokSessionId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('translates a job id into the session it recorded', async () => {
-    await main(['--no-git-check', '--timeout', '15', 'do the thing']);
-    const id = /grok `([^`]+)`/.exec(out)?.[1];
-    const session = readJob(tmp.dir, id)?.grokSessionId;
-
-    out = '';
-    expect(await main(['--no-git-check', '--timeout', '15', `--resume=${id}`, 'and again'])).toBe(0);
-    const second = /grok `([^`]+)`/.exec(out)?.[1];
-    expect(second).not.toBe(id);
-    expect(readJob(tmp.dir, second)?.grokSessionId).toBe(session);
+  it('continues the named session with --session', async () => {
+    const session = '11111111-2222-3333-4444-555555555555';
+    expect(await main(['--timeout', '15', '--session', session, 'and again'])).toBe(0);
+    expect(readJob(tmp.dir, jobIdIn(out))?.grokSessionId).toBe(session);
   });
 
-  it('rejects a --resume id that matches no job', async () => {
-    expect(await main(['--no-git-check', '--resume=notarealjobid', 'x'])).toBe(2);
-    expect(err).toContain('No job');
-    expect(out).not.toContain('grok `');
-  });
-
-  // The killed branch is the one that reads `freshSessionId`; a clean run
-  // short-circuits past it, which is why the scope bug survived. Keep this
-  // asserting on the rendered line, not just on the exit code.
-  it('offers the pre-assigned session when the watchdog kills the run', async () => {
+  it('offers a resume and exits 1 when the watchdog kills a started run', async () => {
     process.env.GROK_STUB_HANG = '1';
+    let code;
     try {
-      await main(['--no-git-check', '--timeout', '1', 'do the thing']);
+      code = await main(['--timeout', '1', 'do the thing']);
     } finally {
       delete process.env.GROK_STUB_HANG;
     }
+    expect(code).toBe(1);
     expect(out).toContain('⚠ run was killed before finishing');
-    const jobId = /grok `([^`]+)`/.exec(out)?.[1];
-    expect(out).toContain(`/grok:resume --resume=${jobId}`);
-    expect(out).not.toContain('cannot be resumed');
+    expect(out).toContain(`/grok:resume ${jobIdIn(out)}`);
   });
 
-  // A refused resume: exits non-zero having emitted nothing. It printed no
-  // resume line while `/grok:result` on the same job did.
-  it('offers the resume on a run that failed without being killed', async () => {
+  // grok refused before starting a session (the stub exits 1 with nothing on
+  // stdout, as a rejected flag does), so there is nothing to resume.
+  it('reports a refused run with its error and offers no resume', async () => {
     process.env.GROK_STUB_FAIL = '1';
+    let code;
     try {
-      await main(['--no-git-check', '--timeout', '15', 'do the thing']);
+      code = await main(['--timeout', '15', 'do the thing']);
     } finally {
       delete process.env.GROK_STUB_FAIL;
     }
-    const jobId = /grok `([^`]+)`/.exec(out)?.[1];
-    expect(out).not.toContain('run was killed');
-    expect(out).toContain(`/grok:resume --resume=${jobId}`);
-  });
-
-  it('stays quiet about resuming on a run that worked', async () => {
-    await main(['--no-git-check', '--timeout', '15', 'do the thing']);
-    expect(out).not.toContain('--resume=');
-    expect(out).not.toContain('⚠');
+    expect(code).toBe(1);
+    expect(out).toContain('⚠ exit 1');
+    expect(out).toContain('⚠ error: stub: forced failure');
+    expect(out).not.toContain('/grok:resume');
+    expect(readJob(tmp.dir, jobIdIn(out))?.status).toBe('failed');
   });
 });

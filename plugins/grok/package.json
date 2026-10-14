@@ -1,6 +1,6 @@
 {
   "name": "claude-grok-delegate",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Use the Grok Build CLI from Claude Code to delegate coding tasks.",
   "type": "module",
   "license": "MIT",
@@ -13,10 +13,27 @@
     "type": "git",
     "url": "https://github.com/ahmadghoniem/skills.git"
   },
-  "keywords": ["claude-code", "claude-code-plugin", "grok", "grok-cli", "xai", "agent-delegation"],
-  "engines": { "node": ">=18.18" },
-  "os": ["win32"],
-  "files": ["plugin.json", "scripts", "commands", "agents"],
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "grok",
+    "grok-cli",
+    "xai",
+    "agent-delegation"
+  ],
+  "engines": {
+    "node": ">=18.18",
+    "grok": ">=1.0.52"
+  },
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "plugin.json",
+    "scripts",
+    "commands",
+    "contract.md"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

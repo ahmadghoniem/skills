@@ -7,14 +7,13 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { isPidGone, killTree } from './killtree.mjs';
 import { ensureDir, jobsDir, logsDir, pluginHome } from './paths.mjs';
-
-export { isPidGone };
+import { jobName } from './slug.mjs';
 
 /**
- * @typedef {'running'|'done'|'failed'|'cancelled'} JobStatus
+ * @typedef {'running'|'done'|'failed'|'cancelled'|'orphaned'} JobStatus
  */
 
 /**
@@ -22,8 +21,9 @@ export { isPidGone };
  * @property {string} id
  * @property {string} repoPath
  * @property {string} prompt
- * @property {string} model
- * @property {string=} grokSessionId
+ * @property {string} model          `''` when grok chose its account default
+ * @property {string=} effort
+ * @property {string=} grokSessionId  set once grok has started the session
  * @property {number=} pid
  * @property {number=} cliPid
  * @property {JobStatus} status
@@ -31,9 +31,16 @@ export { isPidGone };
  * @property {string} startedAt
  * @property {string=} finishedAt
  * @property {string} rawLogPath
+ * @property {string=} briefPath
  * @property {string=} summary
+ * @property {string=} stopReason
  * @property {string=} errorDetail
- * @property {boolean=} cloud
+ * @property {boolean=} killed
+ * @property {{command: string, exitCode: number|null, output: string, timedOut: boolean}[]=} failedCommands
+ * @property {number=} toolCalls
+ * @property {boolean=} gitRepo
+ * @property {{status: string, path: string}[]=} gitFiles
+ * @property {boolean=} claimedFileChanges
  */
 
 /**
@@ -42,7 +49,6 @@ export { isPidGone };
  * @property {string} repoPath
  * @property {string} prompt
  * @property {string} model
- * @property {boolean=} cloud
  */
 
 /**
@@ -61,13 +67,28 @@ export function rawLogPath(repoPath, id) {
   return join(logsDir(repoPath), `${id}.ndjson`);
 }
 
+/**
+ * Allocate a job name that does not collide with an existing record.
+ *
+ * @param {string} repoPath
+ * @param {string} text
+ * @returns {string}
+ */
+export function uniqueJobName(repoPath, text) {
+  ensureDir(jobsDir(repoPath));
+  for (let i = 0; i < 16; i += 1) {
+    const name = jobName(text);
+    if (!existsSync(jobFilePath(repoPath, name))) return name;
+  }
+  throw new Error('could not allocate a unique job name');
+}
+
 function atomicWrite(target, data) {
   const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tmp, data, 'utf8');
   try {
     renameSync(tmp, target);
   } catch (err) {
-    // Don't leave the temp file behind if the rename fails.
     try {
       unlinkSync(tmp);
     } catch {
@@ -93,59 +114,104 @@ export function createJob(init) {
     status: 'running',
     startedAt: new Date().toISOString(),
     rawLogPath: rawLogPath(init.repoPath, init.id),
-    ...(init.cloud ? { cloud: true } : {}),
   };
   atomicWrite(jobFilePath(init.repoPath, init.id), JSON.stringify(record, null, 2));
   return record;
 }
 
 /**
- * Locate a job's JSON file on disk.
+ * Every per-repository job directory under the plugin home.
  *
- * Ids are 10-char random base64url strings — globally unique in practice —
- * so when the direct `<repoPath's jobsDir>/<id>.json` guess misses (e.g. the
- * caller's cwd resolved to a different, or no, git root than the process
- * that created the job — easy to hit when `delegate` and a later `status`/
- * `result` call run in separate shells/agent turns with drifted cwd), fall
- * back to scanning every repo's job dir under the plugin home for a file
- * named `<id>.json`. This is what makes id-based lookups (status, result,
- * cancel, updateJob) reliable regardless of which repoPath the caller
- * happens to compute (issue A).
- *
- * @param {string} repoPath
- * @param {string} id
- * @returns {string|null} Absolute path to the job file, or null if not found.
+ * @returns {string[]}
  */
-function locateJobFile(repoPath, id) {
-  const direct = jobFilePath(repoPath, id);
-  if (existsSync(direct)) return direct;
+function repoJobDirs() {
   const jobsRoot = join(pluginHome(), 'jobs');
-  if (!existsSync(jobsRoot)) return null;
   let entries;
   try {
     entries = readdirSync(jobsRoot, { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const candidate = join(jobsRoot, entry.name, `${id}.json`);
+  return entries.filter((e) => e.isDirectory()).map((e) => join(jobsRoot, e.name));
+}
+
+/**
+ * Every job record in one directory, skipping in-flight temp files.
+ *
+ * @param {string} dir
+ * @returns {JobRecord[]}
+ */
+function readJobsIn(dir) {
+  let files;
+  try {
+    files = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  /** @type {JobRecord[]} */
+  const records = [];
+  for (const f of files) {
+    if (!f.endsWith('.json') || f.includes('.tmp-')) continue;
+    const parsed = readJobFile(join(dir, f));
+    if (parsed) records.push(parsed);
+  }
+  return records;
+}
+
+/**
+ * Locate a job's JSON file on disk.
+ *
+ * Falls back to scanning every repository's job directory under the plugin home
+ * when `<jobsDir>/<id>.json` is missing, so a lookup from a shell whose cwd
+ * resolved to a different root still finds the job.
+ *
+ * @param {string} repoPath
+ * @param {string} id
+ * @returns {string|null}
+ */
+function locateJobFile(repoPath, id) {
+  const direct = jobFilePath(repoPath, id);
+  if (existsSync(direct)) return direct;
+  for (const dir of repoJobDirs()) {
+    const candidate = join(dir, `${id}.json`);
     if (existsSync(candidate)) return candidate;
   }
   return null;
 }
 
 /**
- * Path to the completion sentinel for a job (issue C) — an empty file
- * written next to the job's JSON record once it reaches a terminal status.
- * A caller can watch/poll for this file's existence instead of parsing the
- * JSON record or tailing the NDJSON log to learn "is it done yet".
+ * A `running` record whose wrapper died without writing a final record (the
+ * Claude session closed, or a background task was stopped) stays `running`
+ * forever otherwise. Mark it `orphaned` once both pids it captured are gone.
  *
- * @param {string} repoPath
- * @param {string} id
+ * A record with no `pid` yet has not started, so it is left alone.
+ *
+ * @param {JobRecord} record
+ * @returns {JobRecord}
  */
-export function jobDonePath(repoPath, id) {
-  return join(jobsDir(repoPath), `${id}.done`);
+function withOrphanCheck(record) {
+  if (record.status !== 'running') return record;
+  if (typeof record.pid !== 'number') return record;
+  const pidGone = isPidGone(record.pid);
+  const cliGone = typeof record.cliPid !== 'number' || isPidGone(record.cliPid);
+  if (pidGone && cliGone) return { ...record, status: 'orphaned' };
+  return record;
+}
+
+/**
+ * @param {string} file
+ * @returns {JobRecord|null}
+ */
+function readJobFile(file) {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') {
+      return withOrphanCheck(parsed);
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -156,14 +222,44 @@ export function jobDonePath(repoPath, id) {
 export function readJob(repoPath, id) {
   const file = locateJobFile(repoPath, id);
   if (!file) return null;
-  try {
-    const raw = readFileSync(file, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') return parsed;
-    return null;
-  } catch {
-    return null;
+  return readJobFile(file);
+}
+
+/**
+ * Resolve a job by full name, unique prefix, or 4-char suffix, within this
+ * repository only. A full name still resolves across repositories, through
+ * `locateJobFile`'s scan, since it names one specific job.
+ *
+ * @param {string} repoPath
+ * @param {string} query
+ * @returns {{job: JobRecord|null, error: string|null}}
+ */
+export function resolveJob(repoPath, query) {
+  const q = String(query ?? '').trim();
+  if (!q) return { job: null, error: null };
+
+  const exact = readJob(repoPath, q);
+  if (exact) return { job: exact, error: null };
+
+  return matchQuery(listJobs(repoPath), q);
+}
+
+/**
+ * @param {JobRecord[]} pool
+ * @param {string} q
+ * @returns {{job: JobRecord|null, error: string|null}}
+ */
+function matchQuery(pool, q) {
+  for (const [label, hits] of [
+    ['id', pool.filter((j) => j.id.startsWith(q))],
+    ['suffix', pool.filter((j) => j.id.endsWith(`-${q}`))],
+  ]) {
+    if (hits.length === 1) return { job: hits[0], error: null };
+    if (hits.length > 1) {
+      return { job: null, error: `Ambiguous job ${label} '${q}': ${hits.map((j) => j.id).join(', ')}` };
+    }
   }
+  return { job: null, error: null };
 }
 
 /**
@@ -182,26 +278,14 @@ export function updateJob(repoPath, id, patch) {
     return null;
   }
   const merged = { ...existing, ...patch };
-  // Read-modify-write is last-writer-wins; the one race we actively guard is a
-  // run finishing (status → done/failed) AFTER the user cancelled
-  // the job. A cancellation is terminal and must not be silently overwritten.
+  // A run finishing after the user cancelled it must not overwrite the
+  // cancellation.
   if (existing.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
     merged.status = 'cancelled';
   }
-  // Write back to the file we actually found `existing` at — not a path
-  // recomputed from `repoPath` — so a `locateJobFile` fallback hit never
-  // creates a stray duplicate record in the "wrong" repo's job dir.
+  // Written back to the file `existing` came from, so a fallback hit in
+  // another repository's directory never creates a duplicate record.
   atomicWrite(file, JSON.stringify(merged, null, 2));
-  // Completion sentinel (issue C): best-effort, written whenever the job
-  // reaches a terminal status. A failure here must not fail the status
-  // update itself — the JSON record remains the source of truth.
-  if (merged.status && merged.status !== 'running') {
-    try {
-      writeFileSync(join(dirname(file), `${id}.done`), '', 'utf8');
-    } catch {
-      // noop
-    }
-  }
   return merged;
 }
 
@@ -217,60 +301,45 @@ export function updateJob(repoPath, id, patch) {
  * @returns {JobRecord[]}
  */
 export function listJobs(repoPath, opts = {}) {
-  const dir = jobsDir(repoPath);
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.includes('.tmp-'));
-  /** @type {JobRecord[]} */
-  const records = [];
-  for (const f of files) {
-    try {
-      const raw = readFileSync(join(dir, f), 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string')
-        records.push(parsed);
-    } catch {
-      continue;
-    }
-  }
+  const records = readJobsIn(jobsDir(repoPath));
   records.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   const filtered = opts.status ? records.filter((r) => r.status === opts.status) : records;
   return typeof opts.limit === 'number' ? filtered.slice(0, opts.limit) : filtered;
 }
 
 /**
+ * Delete job records and logs not written to in `days` days.
+ *
  * @param {string} repoPath
  * @param {number} [days]
- * @returns {number}
+ * @returns {number} job-directory files removed
  */
 export function pruneOlderThanDays(repoPath, days = 30) {
-  const dir = jobsDir(repoPath);
-  if (!existsSync(dir)) return 0;
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  let removed = 0;
-  for (const f of readdirSync(dir)) {
-    const p = join(dir, f);
+  const sweep = (dir) => {
+    let removed = 0;
+    let files;
     try {
-      const st = statSync(p);
-      if (st.isFile() && st.mtimeMs < cutoff) {
-        unlinkSync(p);
-        removed += 1;
-      }
+      files = readdirSync(dir);
     } catch {
-      continue;
+      return 0;
     }
-  }
-  const lDir = logsDir(repoPath);
-  if (existsSync(lDir)) {
-    for (const f of readdirSync(lDir)) {
-      const p = join(lDir, f);
+    for (const f of files) {
+      const p = join(dir, f);
       try {
         const st = statSync(p);
-        if (st.isFile() && st.mtimeMs < cutoff) unlinkSync(p);
+        if (st.isFile() && st.mtimeMs < cutoff) {
+          unlinkSync(p);
+          removed += 1;
+        }
       } catch {
         continue;
       }
     }
-  }
+    return removed;
+  };
+  const removed = sweep(jobsDir(repoPath));
+  sweep(logsDir(repoPath));
   return removed;
 }
 
@@ -281,23 +350,18 @@ export function pruneOlderThanDays(repoPath, days = 30) {
  * @returns {Promise<JobRecord|null>}
  */
 export async function cancelJob(repoPath, id, graceMs = 5_000) {
-  const job = readJob(repoPath, id);
+  const job = resolveJob(repoPath, id).job;
   if (!job) return null;
   if (job.status !== 'running') return job;
-  // NOTE: PIDs are recycled by the OS. If the original process already exited
-  // and its PID was reused, the signals below could hit an unrelated process.
-  // The job dir is short-lived and pruned after 30 days, so we accept this
-  // rather than track a process-group / start-time identity cross-platform.
-  //
-  // Kill the grok CLI tree first. If the wrapper exits before the CLI tree
-  // is walked (Windows `taskkill /T`), descendants can leak.
+  // Kill the grok tree first: if the wrapper exits before `taskkill /T` walks
+  // the CLI's tree, descendants can leak.
   if (typeof job.cliPid === 'number') {
     await killTree(job.cliPid, { graceMs });
   }
   if (typeof job.pid === 'number') {
     await killTree(job.pid, { graceMs });
   }
-  return updateJob(repoPath, id, {
+  return updateJob(job.repoPath, job.id, {
     status: 'cancelled',
     finishedAt: new Date().toISOString(),
   });
@@ -308,7 +372,7 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
  * @returns {JobRecord[]}
  */
 export function findRunningJobs(repoPath) {
-  return listJobs(repoPath).filter((j) => j.status === 'running');
+  return listJobs(repoPath, { status: 'running' });
 }
 
 /**
@@ -316,6 +380,5 @@ export function findRunningJobs(repoPath) {
  * @returns {JobRecord|null}
  */
 export function mostRecentFinishedJob(repoPath) {
-  const jobs = listJobs(repoPath).filter((j) => j.status !== 'running');
-  return jobs[0] ?? null;
+  return listJobs(repoPath).find((j) => j.status !== 'running') ?? null;
 }

@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   dedupePaths,
-  describeToolCall,
   MAX_SUMMARY_CHARS,
   normalisePaths,
   parseLine,
@@ -35,39 +34,7 @@ describe('parseLine', () => {
   });
 });
 
-describe('describeToolCall', () => {
-  it('returns null for non-tool_call events', () => {
-    expect(describeToolCall({ type: 'text', data: 'hi' })).toBeNull();
-    expect(describeToolCall(null)).toBeNull();
-  });
-
-  it('labels a search_replace by its file_path', () => {
-    const events = loadFixture(HAPPY_FIXTURE);
-    const call = events.find((e) => e.toolName === 'search_replace');
-    expect(describeToolCall(call)).toMatch(/^search_replace → .*calc\.js$/);
-  });
-
-  it('labels a terminal command by the command string', () => {
-    const events = loadFixture(HAPPY_FIXTURE);
-    const call = events.find((e) => e.toolName === 'run_terminal_command');
-    expect(describeToolCall(call)).toBe(
-      'run_terminal_command: node -e "import(\'./calc.js\').then(m => console.log(m.divide(10, 2)))"',
-    );
-  });
-
-  it('falls back to the tool name when there is no path or command', () => {
-    expect(describeToolCall({ type: 'tool_call', toolName: 'grep', rawInput: { pattern: 'x' } })).toBe(
-      'grep',
-    );
-  });
-});
-
 describe('dedupePaths / normalisePaths', () => {
-  it('names the edited file in the progress line for a real tool_call', () => {
-    const call = loadFixture(RELATIVE_ABSOLUTE_FIXTURE).find((e) => e.type === 'tool_call');
-    expect(describeToolCall(call, '/tmp/repo')).toBe('search_replace → math.js');
-  });
-
   it('drops an absolute path when a relative suffix of it is already present', () => {
     expect(dedupePaths(['src/foo.ts', '/tmp/repo/src/foo.ts'])).toEqual(['src/foo.ts']);
   });

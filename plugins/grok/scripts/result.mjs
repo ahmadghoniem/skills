@@ -1,26 +1,70 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
-import { jobNotFoundMessage } from './lib/hints.mjs';
-import { listJobs, mostRecentFinishedJob, readJob } from './lib/jobs.mjs';
-import { renderJobTable } from './lib/jobtable.mjs';
-import { renderOutcome } from './lib/render.mjs';
+import { listJobs, mostRecentFinishedJob, resolveJob } from './lib/jobs.mjs';
+import { parseLine } from './lib/parse.mjs';
+import { renderResult } from './lib/render.mjs';
 
-// A finished job carries no `killed` flag of its own; the worker records the
-// kill by appending a post-flight note to the summary and by landing the job at
-// status `failed` with a truncated stream (`stopReason` never reaches
-// `end_turn`). Those two already raise their own warnings, so nothing is lost by
-// not re-deriving it here.
-function render(job) {
-  return renderOutcome({
-    summary: job.summary,
-    stopReason: job.stopReason,
-    exitCode: job.exitCode,
-    errorDetail: job.errorDetail,
-    failedCommands: job.failedCommands,
-    sessionLost: job.status === 'failed' && !job.grokSessionId,
-    resumableJobId: job.status === 'failed' && job.grokSessionId ? job.id : undefined,
-  });
+function renderList(jobs) {
+  if (jobs.length === 0) return 'No grok jobs tracked for this repository yet.\n';
+  const lines = ['id  status  started', ''];
+  for (const j of jobs) {
+    lines.push(`${j.id}  ${j.status}  ${j.startedAt}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatElapsed(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m${s}s`;
+}
+
+/**
+ * Tool calls in the event log written so far, and the last tool's name.
+ *
+ * @param {string|undefined} path
+ * @returns {{toolCalls: number, lastTool: string|undefined}}
+ */
+function progress(path) {
+  let raw = '';
+  try {
+    raw = path ? readFileSync(path, 'utf8') : '';
+  } catch {
+    // not written yet
+  }
+  let toolCalls = 0;
+  let lastTool;
+  for (const line of raw.split('\n')) {
+    const ev = parseLine(line);
+    if (ev?.type !== 'tool_call') continue;
+    toolCalls += 1;
+    if (typeof ev.toolName === 'string') lastTool = ev.toolName;
+  }
+  return { toolCalls, lastTool };
+}
+
+/**
+ * A running job has no write-up yet, so `renderResult` cannot be used. Print
+ * one progress line read from the job's event log instead.
+ *
+ * @param {import('./lib/jobs.mjs').JobRecord} job
+ * @returns {string}
+ */
+function renderRunning(job) {
+  const { toolCalls, lastTool } = progress(job.rawLogPath);
+  const elapsed = formatElapsed(Date.now() - Date.parse(job.startedAt));
+  const last = lastTool ? `, last tool ${lastTool}` : '';
+  return (
+    `Job \`${job.id}\` is still running: ${elapsed} elapsed, ${toolCalls} tool call${toolCalls === 1 ? '' : 's'}${last}. ` +
+    `Wait for the task notification, or re-run /grok:result ${job.id} later.\n`
+  );
 }
 
 /**
@@ -30,32 +74,35 @@ function render(job) {
 export async function main(rawArgv) {
   const { positional, flags } = parseCommandArgv(rawArgv, ['list', 'all']);
   const root = await repoRoot(process.cwd());
-  // `--all` implies `--list`. It has no other meaning, and without this a bare
-  // `--all` silently fell through to "print the most recent job" — the same
-  // shape of output, different content, with nothing to signal the flag was
-  // ignored. Worse than an error.
   if (flags['list'] || flags['all']) {
-    // Running jobs included on purpose — this is the recovery path for "which
-    // job was that?", which is exactly when a job has not finished yet.
     const listOpts = flags['all'] ? {} : { limit: 10 };
-    process.stdout.write(renderJobTable(listJobs(root, listOpts)));
+    process.stdout.write(renderList(listJobs(root, listOpts)));
     return 0;
   }
   const id = positional[0];
-  const job = id ? readJob(root, id) : mostRecentFinishedJob(root);
-  if (!job) {
-    process.stderr.write(
-      id ? jobNotFoundMessage(id) : 'No finished Grok jobs tracked for this repository yet.\n',
-    );
-    return 1;
-  }
-  if (job.status === 'running') {
-    process.stdout.write(
-      `Job \`${job.id}\` is still running. Re-run \`/grok:result ${job.id}\` once it finishes.\n`,
-    );
+  if (id) {
+    const resolved = resolveJob(root, id);
+    if (resolved.error) {
+      process.stderr.write(`${resolved.error}\n`);
+      return 2;
+    }
+    if (!resolved.job) {
+      process.stderr.write(`No job matching '${id}' for this repository.\n`);
+      return 1;
+    }
+    if (resolved.job.status === 'running') {
+      process.stdout.write(renderRunning(resolved.job));
+      return 0;
+    }
+    process.stdout.write(renderResult(resolved.job));
     return 0;
   }
-  process.stdout.write(render(job));
+  const job = mostRecentFinishedJob(root);
+  if (!job) {
+    process.stderr.write('No finished grok jobs tracked for this repository yet.\n');
+    return 1;
+  }
+  process.stdout.write(renderResult(job));
   return 0;
 }
 

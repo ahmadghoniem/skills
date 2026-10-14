@@ -36,6 +36,17 @@ export function logsDir(repoRoot) {
   return join(jobsDir(repoRoot), 'logs');
 }
 
+/**
+ * The friction log. Machine-wide, deliberately: the patterns worth fixing show
+ * up across repositories, and a per-repo file would sit inside the tree that
+ * `pruneOlderThanDays` sweeps.
+ *
+ * @returns {string}
+ */
+export function papercutsPath() {
+  return join(pluginHome(), 'papercuts.jsonl');
+}
+
 export function ensureDir(dir) {
   mkdirSync(dir, { recursive: true });
 }

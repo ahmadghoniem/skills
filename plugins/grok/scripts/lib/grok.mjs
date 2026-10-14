@@ -1,32 +1,71 @@
 import { once } from 'node:events';
-import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
-import { ensureDir, pluginHome } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 
-// Last-resort pin, used only when `grok models` cannot be read. Grok ships very
-// few models (grok-4.6 and grok-4.5 as of 1.0.5), and the newest is the one we
-// want — so the live list is consulted first and this constant exists purely so
-// a broken/offline `grok models` still yields a runnable dispatch.
-export const FALLBACK_MODEL = 'grok-4.6';
+/**
+ * The reasoning efforts a dispatch accepts. The xAI plan this was built on
+ * allows only `low` and `medium`, so `high` is not offered.
+ *
+ * @type {readonly string[]}
+ */
+export const EFFORTS = Object.freeze(['low', 'medium']);
 
-const MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_EFFORT = 'medium';
 
 /**
- * Rank a model id so "newest" is well-defined. `grok-4.6` → 40006.
- * Anything unparseable sorts last, so a weird id never beats a real one.
- *
- * @param {string} id
- * @returns {number}
+ * Set on every run. grok is the delegatee: the brief carries what it needs, so
+ * the user's global Claude Code and Cursor agents, hooks, MCP servers, rules and
+ * skills only add context and side effects. Claude Code plugins have no per-run
+ * switch; they are disabled in `~/.grok/config.toml` instead.
  */
-export function modelRank(id) {
-  const m = /(\d+)\.(\d+)/.exec(id);
-  if (!m) return -1;
-  return Number(m[1]) * 10000 + Number(m[2]);
+export const COMPAT_OFF_ENV = Object.freeze(
+  Object.fromEntries(
+    ['CLAUDE', 'CURSOR'].flatMap((vendor) =>
+      ['AGENTS', 'HOOKS', 'MCPS', 'RULES', 'SKILLS'].map((kind) => [
+        `GROK_${vendor}_${kind}_ENABLED`,
+        'false',
+      ]),
+    ),
+  ),
+);
+
+/**
+ * Built-in tools removed from every headless run. Each one either needs a
+ * person at the terminal (questions, plan approval, feedback), outlives the
+ * run (schedules), or produces media no task asked for. The read, write,
+ * search, shell and web tools stay.
+ *
+ * @type {readonly string[]}
+ */
+export const DISALLOWED_TOOLS = Object.freeze([
+  'image_gen',
+  'image_edit',
+  'image_to_video',
+  'reference_to_video',
+  'ask_user_question',
+  'enter_plan_mode',
+  'exit_plan_mode',
+  'send_feedback',
+  'scheduler_create',
+  'scheduler_delete',
+  'scheduler_list',
+]);
+
+/**
+ * The version number in `grok --version` output, e.g. `1.0.52` from
+ * `grok 1.0.52 (abc1234 2026-10-01) [stable]`. Null when there is none.
+ *
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function parseVersion(text) {
+  const m = /(\d+\.\d+\.\d+(?:-[\w.]+)?)/.exec(String(text ?? ''));
+  return m ? m[1] : null;
 }
 
 /**
@@ -53,81 +92,6 @@ export function parseModelList(stdout) {
     if (m?.[1]) ids.push(m[1]);
   }
   return ids;
-}
-
-function modelsCachePath() {
-  return join(pluginHome(), 'models.json');
-}
-
-function readModelsCache() {
-  try {
-    const raw = JSON.parse(readFileSync(modelsCachePath(), 'utf8'));
-    if (!Array.isArray(raw?.models) || typeof raw.fetchedAt !== 'number') return null;
-    if (Date.now() - raw.fetchedAt > MODELS_CACHE_TTL_MS) return null;
-    return raw.models;
-  } catch {
-    return null;
-  }
-}
-
-function writeModelsCache(models) {
-  try {
-    ensureDir(pluginHome());
-    writeFileSync(modelsCachePath(), JSON.stringify({ fetchedAt: Date.now(), models }), 'utf8');
-  } catch {
-    // A cache that cannot be written is not worth failing a dispatch over.
-  }
-}
-
-/** @type {string[]|null} */
-let cachedModels = null;
-
-/**
- * The models grok reports, newest first. Cached in-process and on disk for a
- * day so a dispatch does not pay for a subprocess every time.
- *
- * @returns {Promise<string[]>}
- */
-export async function listModels() {
-  if (cachedModels) return cachedModels;
-  const fromDisk = readModelsCache();
-  if (fromDisk) {
-    cachedModels = fromDisk;
-    return cachedModels;
-  }
-  try {
-    const bin = await resolveBin();
-    const res = await run(bin, ['models'], { timeoutMs: 10_000 });
-    const ids = parseModelList(`${res.stdout}\n${res.stderr}`);
-    if (ids.length > 0) {
-      cachedModels = [...new Set(ids)].sort((a, b) => modelRank(b) - modelRank(a));
-      writeModelsCache(cachedModels);
-      return cachedModels;
-    }
-  } catch {
-    // fall through to the pin
-  }
-  cachedModels = [FALLBACK_MODEL];
-  return cachedModels;
-}
-
-/**
- * Resolve the model for a dispatch: an explicit `--model` wins verbatim,
- * otherwise the newest model grok reports.
- *
- * Deliberately not a hardcoded default. The cursor plugin carried a pinned
- * `composer-2.5-fast` claim in its docs that went stale the moment Cursor moved
- * on; asking the CLI keeps that from happening here.
- *
- * @param {string|undefined} input
- * @returns {Promise<string>}
- */
-export async function resolveModel(input) {
-  if (input && input.trim() !== '') return input.trim();
-  const fromEnv = process.env.CGD_DEFAULT_MODEL?.trim();
-  if (fromEnv) return fromEnv;
-  const models = await listModels();
-  return models[0] ?? FALLBACK_MODEL;
 }
 
 /** @type {string|null} */
@@ -181,7 +145,7 @@ export async function resolveBin() {
 /**
  * @typedef {Object} BuildArgsInput
  * @property {string} promptFile      Path to the file holding the brief.
- * @property {string} model
+ * @property {string=} model          Omitted: grok uses the account default.
  * @property {string=} effort         Passed through to `--reasoning-effort`.
  * @property {string=} sessionId        Pre-assigned UUID for a NEW session.
  * @property {string=} resumeSessionId
@@ -208,10 +172,20 @@ export async function resolveBin() {
  * crashed, or truncated run was permanently unresumable — the one case where you
  * most want to resume. Verified on grok 1.0.5: a run killed mid-stream with no
  * `end` event still leaves `~/.grok/sessions/<cwd>/<uuid>` on disk, and
- * `-r <uuid>` resumes it with full prior context.
+ * `-r <uuid>` resumes it with full prior context. On 1.0.52 `--resume <uuid>`
+ * keeps the same session id.
  *
- * `-s` is illegal on a resume (it declares a NEW conversation), so the resume
- * branch continues to read the id back from `end`.
+ * `-s` is illegal on a resume (it declares a NEW conversation).
+ *
+ * `--no-plan` and `--disallowed-tools` remove what a headless run cannot use;
+ * see `DISALLOWED_TOOLS`. Checked on 1.0.52: every listed tool drops out of
+ * the run's `available_commands`.
+ *
+ * `--trust` is deliberately absent. Without it a headless run skips the repo's
+ * `AGENTS.md`/`CLAUDE.md`, MCP servers, hooks and skills (checked on 1.0.52
+ * with a codeword in each file), so grok sees only the brief, and Claude puts
+ * in it what the task needs. The home-level Claude and Cursor config is
+ * switched off separately; see `COMPAT_OFF_ENV`.
  *
  * `--continue` is deliberately absent. It means "the most recent session for this
  * directory", which grok resolves by looking at the directory rather than at who
@@ -231,9 +205,13 @@ export function buildArgs(opts) {
     'streaming-json',
     '--always-approve',
     '--no-auto-update',
-    '-m',
-    opts.model,
+    '--no-plan',
+    '--disallowed-tools',
+    DISALLOWED_TOOLS.join(','),
   ];
+  // Without `-m` grok applies the account default `grok models` prints, so a
+  // new xAI model takes effect without a plugin change.
+  if (opts.model) args.push('-m', opts.model);
   if (opts.effort) args.push('--reasoning-effort', opts.effort);
   if (opts.resumeSessionId) args.push('--resume', opts.resumeSessionId);
   else if (opts.sessionId) args.push('-s', opts.sessionId);
@@ -243,7 +221,7 @@ export function buildArgs(opts) {
 /**
  * @typedef {Object} DelegateOpts
  * @property {string} prompt
- * @property {string} model
+ * @property {string=} model
  * @property {string=} effort
  * @property {string=} sessionId
  * @property {string=} resumeSessionId
@@ -302,7 +280,7 @@ export async function runHeadless(opts) {
   const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    env: { ...process.env, ...COMPAT_OFF_ENV },
     // Mandatory on Windows. A dispatch launched from a backgrounded Bash call
     // has no console of its own, so without this the OS hands this child a brand
     // new one — on Win11 a Windows Terminal window titled with the CLI's exe

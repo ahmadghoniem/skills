@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
-import { jobNotFoundMessage } from './lib/hints.mjs';
-import { cancelJob, findRunningJobs, isPidGone, readJob } from './lib/jobs.mjs';
+import { cancelJob, findRunningJobs, resolveJob } from './lib/jobs.mjs';
+import { isPidGone } from './lib/killtree.mjs';
 
 /**
- * Snapshot liveness of the grok CLI pid and the wrapper pid *before* we
- * tree-kill, so the user-facing line can say which ones were already gone.
+ * Check liveness of the grok CLI and wrapper PIDs before killing the tree.
  *
  * @param {import('./lib/jobs.mjs').JobRecord} job
  * @returns {string[]}
@@ -50,31 +49,35 @@ export async function main(rawArgv) {
   if (!id) {
     const running = findRunningJobs(root);
     if (running.length === 0) {
-      process.stdout.write('No running Grok jobs to cancel.\n');
+      process.stdout.write('No running grok jobs to cancel.\n');
       return 0;
     }
     if (running.length > 1) {
       process.stderr.write(
-        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/grok:cancel ${running[0]?.id}\`.\n`,
+        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/grok:cancel ${running[0].id}\`.\n`,
       );
       return 2;
     }
-    id = running[0]?.id;
+    id = running[0].id;
   }
-  if (!id) {
-    process.stderr.write('No job id resolved.\n');
+  const resolved = resolveJob(root, id);
+  if (resolved.error) {
+    process.stderr.write(`${resolved.error}\n`);
     return 2;
   }
-  const before = readJob(root, id);
-  const liveness =
-    before && before.status === 'running' ? pidLivenessBits(before) : [];
-  const goneBefore = Boolean(before && before.status === 'running' && allPidsAlreadyGone(liveness));
-  const updated = await cancelJob(root, id);
-  if (!updated) {
-    process.stderr.write(jobNotFoundMessage(id));
+  const before = resolved.job;
+  if (!before) {
+    process.stderr.write(`No job matching '${id}' for this repository.\n`);
     return 1;
   }
-  if (before && before.status !== 'running') {
+  const liveness = before.status === 'running' ? pidLivenessBits(before) : [];
+  const goneBefore = before.status === 'running' && allPidsAlreadyGone(liveness);
+  const updated = await cancelJob(root, before.id);
+  if (!updated) {
+    process.stderr.write(`No job matching '${id}' for this repository.\n`);
+    return 1;
+  }
+  if (before.status !== 'running') {
     process.stdout.write(
       `Job \`${updated.id}\` was not running (already ${updated.status}); nothing to cancel.\n`,
     );

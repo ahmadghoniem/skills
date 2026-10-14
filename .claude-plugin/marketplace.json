@@ -23,6 +23,7 @@
     },
     {
       "name": "grok",
+      "version": "0.5.0",
       "source": "./plugins/grok",
       "description": "Delegate coding tasks from Claude Code to the Grok Build CLI.",
       "category": "engineering",

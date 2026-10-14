@@ -2,9 +2,9 @@
 
 Delegate coding tasks from Claude Code to the [Grok Build CLI](https://docs.x.ai/build/cli) (`grok`), then review the diff and land it yourself.
 
-Claude plans and reviews; grok does the typing in its own session. The plugin never commits — that stays with you.
+Claude writes the brief and reviews the result; grok does the editing in its own session. The plugin never commits.
 
-Sibling of [cursor](../cursor/README.md), which does the same for Cursor CLI, and [agy](../agy/README.md), which does it for the Antigravity CLI. All three are independent: install any combination.
+Sibling of [cursor](../cursor/README.md), which does the same for Cursor CLI, and [agy](../agy/README.md), which does it for the Antigravity CLI. This plugin follows agy's conventions. All three are independent: install any combination.
 
 ## Install
 
@@ -13,87 +13,89 @@ claude plugin marketplace add ahmadghoniem/skills
 claude plugin install grok@ahmadghoniem
 ```
 
-**Windows only.** Requires the Grok CLI on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), authenticated with `grok login`. Node 18.18+.
+Windows only. Requires grok 1.0.52 or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
 
-If a Claude Code session was already open when you installed grok, its `PATH` will not have picked up the installer's change — the plugin checks `%USERPROFILE%\.grok\bin` directly for exactly that reason, and `GROK_BIN` overrides both.
+A Claude Code session opened before grok was installed does not see the installer's `PATH` change, so the plugin also checks `%USERPROFILE%\.grok\bin` directly. `GROK_BIN` overrides both.
 
 ## Commands
 
-- **`/grok:delegate <task>`** — hand a task to grok. Claude runs it under a backgrounded Bash call, so you keep chatting while grok works and the harness announces the result — no polling.
-- **`/grok:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/grok:cancel [job-id]`** — terminate a running job and everything it spawned (`taskkill /T /F`, killing the whole tree), so a cancelled run stops billing. Also reaps a record left stuck at `running` because its parent process died.
-- **`/grok:resume --resume=<job-id> [follow-up]`** — continue that job's grok session. The job id is printed at dispatch. A bare `--resume` is refused: every Claude session in a directory shares one job store, so "the latest" is not reliably yours.
-- **`/grok:setup`** — health-check the CLI: resolved binary, version, login state, available models.
+- **`/grok:delegate <task>`** hands a task to grok. Claude writes a brief to `~/.cgd/briefs/<name>.md` and runs it under a backgrounded Bash call, so you keep working while grok runs and the harness reports when it ends.
+- **`/grok:result [job]`** prints a finished job's write-up, a progress line for a running one, or with `--list` the last 10 jobs (`--all` for every one), running and orphaned jobs included.
+- **`/grok:resume [job|uuid] [follow-up]`** continues a job's grok session. With no id it picks the newest job in this repository that has a session.
+- **`/grok:cancel [job]`** kills a running job and every process it started (`taskkill /T /F`). A job whose processes are already gone is reported as orphaned.
+- **`/grok:setup`** checks the binary, version, login state and available models.
+- **`/grok:update`** runs `grok update`, lists the releases since the old version with their dates, and reviews the open papercuts against the new version.
+- **`/grok:papercut`** records what grok said blocked it (`--text`), or closes papercuts once fixed (`--resolve <key|id> --note`).
 
-Plus a **`grok-runner`** agent that shapes a task into a self-contained brief and dispatches it.
+Jobs are named from the task's first words plus a 4-character suffix, such as `add-retry-to-fetchuser-a7f3`. Every command that takes a job accepts the full name, a unique prefix, or the suffix alone.
 
-### `/grok:delegate`
+### `/grok:delegate` flags
 
 ```bash
 /grok:delegate "Add retry-on-429 to src/api/client.ts. Verify with: pnpm test api"
-/grok:delegate --effort high --prompt-file plan.md
-/grok:delegate --resume=fmRyc45j_5 "also cover the 503 path"
+/grok:delegate --effort low --prompt-file C:/Users/me/.cgd/briefs/rename-client.md
 ```
 
 | Flag | Effect |
 | --- | --- |
-| `--model <id>` | Pin a model. Omitted, the plugin uses the newest one `grok models` reports. |
-| `--effort <level>` | Grok's `--reasoning-effort`. Choose per task. |
-| `--resume=<job-id>` | Continue that job's session. Required; a bare `--resume` is refused. Send only the delta. |
-| `--fresh` | Start a new session regardless. |
-| `--timeout <sec>` | Watchdog, default 4800 — longer than grok's own 3600s idle timeout, so grok fails first and says why. |
-| `--prompt-file <path\|->` | Read the brief from a file or stdin. |
-| `--no-git-check` | Allow dispatching outside a git repo. |
-
-### `/grok:result`
-
-Prints grok's write-up. `--list` shows the last 10 tracked jobs (`--all` for every one), **including running ones** — so it doubles as the way to recover a job id.
+| `--prompt-file <path>` | Read the brief from a file. |
+| `--model <id>` | Pin a model. Omitted, grok uses the account default that `grok models` reports. |
+| `--effort low\|medium` | Grok's `--reasoning-effort`. Default `medium`. The xAI plan this was built on allows only `low` and `medium`, so anything else is refused. |
+| `--timeout <sec>` | Watchdog, default 4800. That is longer than grok's own 3600s idle timeout, so grok fails first and says why. |
+| `--session <uuid>` | Continue that grok session. `/grok:resume` sets it for you. |
 
 ## What the output looks like
 
-On a clean run: grok's write-up, and nothing else. No status table, no file list, no model id, no
-timestamps, no cost or token figures. `git status` and `git diff` are one call away and are the
-actual ground truth; a formatted summary of them is just something else to read.
+A clean run prints grok's write-up and nothing else. Changed files, durations and token counts are left out because `git status` and `git diff` show the real state.
 
-What does get surfaced is the set of ways a run can be wrong while grok still calls it done. Each
-is its own `⚠` line, and any can fire alone:
+The plugin adds a `⚠` line for each way a run can be wrong while grok still calls it done. Any of them can fire alone:
 
 | Line | Means |
 | --- | --- |
-| `⚠ stop reason: …` | Grok's own verdict, when it is not `end_turn`. |
-| `⚠ exit N` | The process exit code. Independent of the above — they disagree in both directions. |
-| `⚠ error: …` | Why the run stopped, in grok's own words — its `error` event, or the tail of stderr on a failing exit. |
-| `⚠ run was killed before finishing` | The watchdog fired; output may be incomplete. |
-| `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. |
-| `⚠ no session id was captured` | A killed run never reached the `end` event, so this job cannot be resumed. |
-| `⚠ this run did not finish cleanly — resume it with …` | The inverse of the line above: the run ended short of a clean finish but its session survives, and the line names the job id to pass to `--resume=`. |
+| `⚠ stop reason: …` | grok's own stop reason, when it is not `end_turn`. |
+| `⚠ exit N` | The process exit code. It can disagree with the stop reason in either direction. |
+| `⚠ error: …` | Why the run stopped, in grok's words: its `error` event, or the end of stderr on a failing exit. |
+| `⚠ run was killed before finishing` | The watchdog fired; the write-up may be partial. |
+| `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. Reported, never fatal: a `grep` with no match or a deliberately failing test lands here too. |
+| `⚠ grok reported file changes but the working tree is unchanged` | The write-up claims edits and `git status` before and after the run shows none. |
+| `⚠ this run can be resumed where it stopped: /grok:resume <id>` | The run ended early and its session survives. |
 
-The same table, in the form the orchestrator actually reads, is `plugins/grok/skills/output-contract/contract.md` — preloaded into `grok-runner` and pulled into `/grok:delegate` and `/grok:result` at load time. `WARNING_IDS` in `scripts/lib/render.mjs` is its machine-readable twin, and `tests/contract.test.mjs` fails if the two drift.
+At most once a day, a line after the output says when a newer grok is out, how old it is, and how many releases came out since the installed one. The release data comes from the npm registry entry for `@xai-official/grok`, because grok publishes no changelog. `CGD_RELEASE_CHECK=off` turns it off.
 
-The failed-command list is reported, never fatal. A non-zero exit is routinely intentional — `grep`
-finding nothing, a deliberately red test in a TDD cycle, a `command -v` probe — so failing the job
-on it would cry wolf often enough to be ignored. Job status comes from grok's own stop reason; the
-list is there so you can check the claims in the write-up against what actually happened. On the
-very first end-to-end run of this plugin, grok's summary read as a success while three commands had
-in fact exited 1.
+`contract.md` holds the same table in the form Claude reads; `/grok:delegate`, `/grok:resume` and `/grok:result` include it at load time. `WARNING_IDS` in `scripts/lib/render.mjs` lists the same ids, and `tests/contract.test.mjs` fails if the two differ.
 
-## Design notes
+The `wander`, `error-detail`, `killed` and `failed-commands` warnings are also appended to `~/.cgd/papercuts.jsonl`, and `/grok:update` groups them for review.
 
-- **Non-blocking without detaching.** The job runs in the foreground of its own process under a backgrounded Bash call, so the harness reports the exit. There is no detached-worker mode: it would sever that notification and leave polling as the only option.
-- **`windowsHide: true` on every spawn that could create a console.** A dispatch launched from a backgrounded Bash call has no console of its own, so the OS hands the `grok.exe` it spawns a brand new one — a Windows Terminal window that opens on dispatch and lives as long as the job. The CLI spawn is the load-bearing one; the probe spawn sets it too.
-- **The brief goes via `--prompt-file`, never argv.** It stays out of the host process list, is not bounded by the OS argument-length cap, and a brief starting with `-` cannot be misread as a flag.
-- **`--always-approve` is unconditional.** A headless run has no way to answer an approval prompt, so without it grok stalls. The guard against a bad edit is not a dialog nobody can see — it is that this plugin never commits, and you read the diff.
-- **`--sandbox` is never passed.** Grok accepts an unknown profile name silently and runs anyway (verified: `--sandbox __invalid__` produced no error and no refusal), so it reads like a guarantee while providing none. Worse than no guard.
-- **No hardcoded default model.** `grok models` is consulted and the newest id wins, cached for a day. A pinned default in the docs goes stale the moment xAI ships the next model.
-- **`grok --version` probes liveness; `grok models` probes login.** They answer different questions and cost different amounts. `--version` is local and instant, so it gates every dispatch. `grok models` is a network round-trip that also reports auth state (`You are logged in with grok.com.`, exit 0 — verified on 1.0.5), so `/grok:setup` uses it and nothing on the hot path does.
+## How grok is run
+
+Every dispatch passes these flags:
+
+- **`--prompt-file`**: the brief stays out of the process list, is not limited by the argument-length cap, and cannot be read as a flag.
+- **`--always-approve`**: a headless run cannot answer an approval prompt and would stall. The plugin never commits and you read the diff instead.
+- **`--no-plan` and `--disallowed-tools`**: removes plan mode and the 11 built-in tools a headless run cannot use or does not need (image and video generation, `ask_user_question`, plan mode, `send_feedback`, the scheduler). Read, write, search, shell and web tools stay.
+- **`--no-auto-update`**: the binary changes only when you run `/grok:update`.
+- **`-s <uuid>`** on a new run, or **`--resume <uuid>`** on a resume: the session id is fixed before the run starts, so a killed run can still be resumed.
+
+`--trust` is never passed, so grok does not load the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks or skills. Claude puts what the task needs in the brief.
+
+`--sandbox` is never passed: grok accepts an unknown profile name without an error and runs anyway, so it offers no guarantee. `--continue` is never passed either: it picks the newest session in the directory, which may belong to another Claude session or a grok TUI.
+
+Every run sets `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED=false`, so grok does not load the agents, hooks, MCP servers, rules and skills from your Claude Code and Cursor config. grok is the delegatee here and the brief carries what it needs. Checked on 1.0.52: about 3,500 fewer input tokens per request.
+
+Claude Code plugins under `~/.claude/plugins` have no per-run switch. To skip them, list them under `[plugins] disabled` in `~/.grok/config.toml`; that also applies to interactive grok. It saved about 1,100 more tokens per request here.
+
+## Other notes
+
+- `windowsHide: true` is set on every spawn. A dispatch from a backgrounded Bash call has no console, so without it Windows opens a terminal window for `grok.exe` that stays for the whole job.
+- `grok --version` checks the binary on every dispatch because it is local and instant. `grok models` also reports login state but needs the network, so only `/grok:setup` calls it.
 
 ## Environment
 
 | Variable | Effect |
 | --- | --- |
 | `GROK_BIN` | Full path to the grok binary; skips discovery. |
-| `CGD_DEFAULT_MODEL` | Default model when `--model` is omitted. |
-| `CGD_HOME` | Job registry location. Default `%USERPROFILE%\.cgd`. |
+| `CGD_HOME` | Where jobs, papercuts and the release cache live. Default `%USERPROFILE%\.cgd`. |
+| `CGD_RELEASE_CHECK` | `off` skips the npm registry check and the update line. |
 
 ## Licence
 

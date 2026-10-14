@@ -1,9 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgv, parseTimeout, splitArgString } from '../scripts/lib/args.mjs';
-import { id } from '../scripts/lib/id.mjs';
+import { shortSuffix } from '../scripts/lib/id.mjs';
 import { createJob, jobFilePath, listJobs, readJob, updateJob } from '../scripts/lib/jobs.mjs';
-import { mdCell } from '../scripts/lib/md.mjs';
 import { repoHash } from '../scripts/lib/paths.mjs';
 import { makeTempHome } from './helpers.mjs';
 
@@ -38,16 +37,10 @@ describe('args hardening', () => {
 });
 
 describe('id hardening', () => {
-  it('produces exactly the requested length with no padding bias', () => {
-    for (const len of [10, 16, 24]) {
-      const ids = Array.from({ length: 200 }, () => id(len));
-      for (const x of ids) {
-        expect(x.length).toBe(len);
-        expect(/^[A-Za-z0-9_-]+$/.test(x)).toBe(true);
-      }
-      const lastChars = new Set(ids.map((x) => x[len - 1]));
-      expect(lastChars.size).toBeGreaterThan(1);
-    }
+  it('produces short lowercase suffixes that vary', () => {
+    const ids = Array.from({ length: 200 }, () => shortSuffix());
+    for (const x of ids) expect(x).toMatch(/^[0-9a-z]{4}$/);
+    expect(new Set(ids).size).toBeGreaterThan(1);
   });
 });
 
@@ -58,15 +51,6 @@ describe('paths hardening', () => {
     const b = repoHash(p);
     expect(a).toBe(b);
     expect(/^[0-9a-f]{12}$/.test(a)).toBe(true);
-  });
-});
-
-describe('md hardening', () => {
-  it('escapes pipes and collapses whitespace', () => {
-    expect(mdCell('a|b')).toBe('a\\|b');
-    expect(mdCell('x\n  y')).toBe('x y');
-    expect(mdCell(undefined)).toBe('');
-    expect(mdCell(42)).toBe('42');
   });
 });
 

@@ -35,7 +35,9 @@ describe('/grok:cancel', () => {
     tmp.cleanup();
   });
 
-  it('reaps a job whose pid names no live process and reports it as already gone', async () => {
+  // Reading the record already marks a job whose pids are both gone as
+  // orphaned, so there is nothing left to kill by the time cancel looks.
+  it('reports a job whose processes are gone as orphaned, not as a kill', async () => {
     const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
     const pid = child.pid;
     await new Promise((resolve) => child.on('close', resolve));
@@ -45,12 +47,9 @@ describe('/grok:cancel', () => {
 
     const code = await cancelMain(['deadpid1']);
     expect(code).toBe(0);
-    expect(out).toContain('process was already gone');
-    expect(out).toContain(`pid ${pid}`);
-    // The live-kill path is `Job \`id\` marked as cancelled.` — a dead pid must
-    // not be reported that way.
+    expect(out).toContain('was not running (already orphaned)');
     expect(out).not.toMatch(/^Job `deadpid1` marked as /);
-    expect(readJob(tmp.dir, 'deadpid1')?.status).toBe('cancelled');
+    expect(readJob(tmp.dir, 'deadpid1')?.status).toBe('orphaned');
   });
 
   it('reports a job that was never running as already finished, not as a kill', async () => {
@@ -65,6 +64,6 @@ describe('/grok:cancel', () => {
   it('exits 0 with a note when nothing is running', async () => {
     const code = await cancelMain([]);
     expect(code).toBe(0);
-    expect(out).toContain('No running Grok jobs to cancel.');
+    expect(out).toContain('No running grok jobs to cancel.');
   });
 });

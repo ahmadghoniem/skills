@@ -12,15 +12,15 @@ if (process.env.GROK_STUB_FAIL === '1') {
 }
 
 if (args[0] === 'models') {
-  // Trimmed verbatim from a real `grok models` run, including the unhelpful
-  // "You are not authenticated." preamble that a working install still prints.
   process.stdout.write(
     [
-      'You are not authenticated.',
+      'You are logged in with grok.com.',
+      '',
+      'Default model: grok-4.7',
       '',
       'Available models:',
-      '  * grok-4.6 (default)',
-      '  - grok-4.5',
+      '  * grok-4.7 (default)',
+      '  - grok-4.6',
       '',
     ].join('\n'),
   );
@@ -28,15 +28,17 @@ if (args[0] === 'models') {
 }
 
 if (args.includes('--version')) {
-  process.stdout.write('1.0.5\n');
+  process.stdout.write('grok 1.0.52 (0920c8169e27) [stable]\n');
   process.exit(0);
 }
 
 // A run that never emits `end` and never exits, so the caller's watchdog is
 // what ends it. Set only for the run itself — `models` and `--version` are
-// answered above, so model resolution still works. This is the only way to
-// reach the killed-run render path.
+// answered above. This is the only way to reach the killed-run render path.
 if (process.env.GROK_STUB_HANG === '1') {
+  // One opening event first, as a real run sends, so the session counts as
+  // started and the killed run is offered a resume.
+  process.stdout.write('{"type":"text","data":"Starting."}\n');
   // The interval is what holds the process open. Without it Node drains the
   // loop with the await still pending and exits 13 ("never settled"), which
   // looks like a crash rather than a hang.
@@ -58,7 +60,12 @@ try {
   process.exit(2);
 }
 
+// grok reports the session it was given (`-s` for a new one, `--resume` for an
+// existing one) in its `end` event, so the stub does the same.
+const flag = args.findIndex((a) => a === '-s' || a === '--resume');
+const session = flag === -1 ? undefined : args[flag + 1];
 for (const line of content.split('\n').filter((l) => l.length > 0)) {
-  process.stdout.write(line + '\n');
+  const out = session ? line.replace(/"sessionId":"[^"]*"/, `"sessionId":"${session}"`) : line;
+  process.stdout.write(out + '\n');
 }
 process.exit(0);

@@ -1,44 +1,100 @@
 ---
 description: Delegate a coding task to the Grok Build CLI.
-argument-hint: '[--fresh] [--resume=<job-id>] [--model <id>] [--effort <level>] [--timeout <sec>] [--no-git-check] [--prompt-file <path|->] <task...>'
-allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
+argument-hint: '[--prompt-file <path>] [--model <id>] [--effort low|medium] [--timeout <sec>] [--session <uuid>] <task...>'
+allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/grok:delegate`.
 
-## The job id
+## What grok is for
 
-Copy the **Grok job id** this command prints — not the wrapper id a background-execution mechanism might report. `/grok:result` takes it.
+Use grok for well-specified, high-volume work that would otherwise consume
+context better spent on judgement. Tokens land in grok's context, so send the
+task and let grok inspect files rather than pre-reading the tree and pasting it in.
 
-## Run it — always backgrounded
+## The job name
 
-Invoke with the **Bash tool's `run_in_background: true`**. The command itself runs
-grok in the foreground of its own process, so the harness sees the exit and tells
-you when it lands. The user keeps chatting with you the whole time, and you never
-poll for completion.
+This command prints one (``grok `add-retry-to-fetchuser-a7f3` ``). `/grok:result`,
+`/grok:resume` and `/grok:cancel` take it.
 
-When `$ARGUMENTS` is still one unsplit string (the slash-command case), pass it with `--arg-string` so the plugin splits it and newlines are not flattened:
+## Writing the brief
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --arg-string "$ARGUMENTS"
-```
+grok starts with none of your context. It does not see:
 
-When the shell has already split the command line, omit `--arg-string` — argv is used as-is after a leading `--`. Flags go **before** the task, and the task is a single quoted argument.
+- this conversation
+- the repo's `AGENTS.md` and `CLAUDE.md`, or `~/.claude/CLAUDE.md` and `~/.claude/rules/`
+- any skill, hook, MCP server or plugin, yours or the repo's
+
+Whatever of that the result depends on goes in the brief.
+
+Write for a fast executor working from a contract, not a collaborator you can correct
+mid-run.
+
+Every brief has these sections, in this order:
+
+1. **Goal**: one or two sentences. What is the outcome, and what is it a step of.
+2. **Repo context**: the stack, and what the paragraph above calls for.
+3. **Acceptance criteria**: one to five concrete, checkable bullets.
+4. **Files to touch**: every file you already know the task needs, as paths, plus the
+   files that show the pattern to follow. Each named path saves grok a search. Do not
+   read the tree to complete the list; when you cannot predict it, say where to look and
+   let grok find the rest.
+5. **How to verify**: the exact command that proves the task is done. Without it grok
+   declares "done" on unverified work.
+
+Then a short **Guardrails** block: do not commit; do not delete files outside the list; do
+not rename public APIs unless asked; do not touch lockfiles unless the task is about
+dependencies; if a pre-existing test already fails, report it, do not fix it.
+
+A spec that already lives in the repo is a path in the brief, not a copy.
+
+Do not ask for a list of changed files or a summary of the edits; you read the diff.
+Ask for what the diff cannot show: items grok was unsure about or skipped, problems it
+noticed but did not fix, the result of each check, and any answer the task needs.
+
+One dispatch per coherent slice. Run at most three grok jobs at once.
+
+## Model and effort
+
+Omit `--model`. grok then uses the account default that `grok models` reports, so a new
+xAI model applies without a plugin change. Pass a model only when the user names one,
+and never invent an id; `/grok:setup` lists the ones the account has.
+
+`--effort` defaults to `medium`. Pass `--effort low` for mechanical work such as renames,
+moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
+
+## Run it
+
+1. Write the brief with the **Write** tool to `~/.cgd/briefs/<short-name>.md`. Never put
+   a brief longer than one line on the command line.
+2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
+
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cgd/briefs/<short-name>.md" [--effort low] [--timeout <sec>]
+
+   A one-line task can go inline instead: `-- --effort low "Rename X to Y in src/a.mjs"`.
+   When `$ARGUMENTS` is still one unsplit string, pass it as `-- --arg-string "$ARGUMENTS"`
+   so the plugin splits it and keeps its newlines.
+3. Stop. The task notification arrives when grok finishes. Do not read the job log, the
+   task output file or `~/.cgd/jobs` while it runs, and do not loop on `/grok:result`. If
+   the user asks how it is going, run `/grok:result <job>` once.
 
 | Flag | Effect |
 | --- | --- |
-| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit it when argv is already tokenised. |
-| `--model <id>` | Pin a model. Omit it and the plugin uses the newest model `grok models` reports. |
-| `--effort <level>` | Grok's `--reasoning-effort`. Pick per task. |
-| `--resume=<job-id>` | Continue that job's grok session. The job id is printed at dispatch and by the resume hint after a kill. A bare `--resume` is refused — jobs from every Claude session in this directory share one store, so "the most recent" is not reliably yours. Send only the delta, not the whole task again. |
-| `--fresh` | Start a new session even if a recent one exists. |
-| `--timeout <sec>` | Watchdog. Default 4800 — deliberately longer than grok's own 3600s idle timeout, so grok fails first and says why. |
-| `--prompt-file <path\|->` | Read the brief from a file, or `-` for stdin. Use this for anything long or quote-heavy. |
-| `--no-git-check` | Allow dispatching outside a git repository. |
+| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
+| `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
+| `--model <id>` | Pin a model from `grok models`. Omit unless the user chose one. |
+| `--effort <level>` | `low` or `medium`, passed to grok's `--reasoning-effort`. Defaults to `medium`. |
+| `--timeout <sec>` | Watchdog. Default 4800, longer than grok's own 3600s idle timeout, so grok fails first and says why. |
+| `--session <uuid>` | Continue that grok session. `/grok:resume` sets it from a job id; a fresh dispatch is the default. |
 
 ## Reading the output
 
-!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
+!`cat "${CLAUDE_PLUGIN_ROOT}/contract.md"`
 
-After a job that changed code, review the diff yourself before telling the user it
-is done.
+If grok's write-up says something blocked it (a missing tool, a refused command, an
+instruction it could not follow), record it with
+`/grok:papercut --text "<grok's words>" --job <id>`.
+
+After a job that changed code, read `git diff` for the files the brief named and run the
+verification command the brief gave. Do not run the repository's whole test suite over a
+slice.

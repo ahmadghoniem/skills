@@ -5,8 +5,6 @@ import {
   cancelJob,
   createJob,
   findRunningJobs,
-  isPidGone,
-  jobDonePath,
   jobFilePath,
   listJobs,
   mostRecentFinishedJob,
@@ -124,13 +122,13 @@ describe('jobs registry', () => {
     expect(res?.status).toBe('done');
   });
 
-  it('isPidGone is true for a process that has already exited', async () => {
+  it('marks a running job orphaned once its processes are gone', async () => {
     const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
     const pid = child.pid;
     await new Promise((resolve) => child.on('close', resolve));
-    expect(typeof pid).toBe('number');
-    expect(isPidGone(pid)).toBe(true);
-    expect(isPidGone(process.pid)).toBe(false);
+    createJob({ id: 'gone1', repoPath: repo, prompt: 'p', model: 'm' });
+    updateJob(repo, 'gone1', { pid, cliPid: pid });
+    expect(readJob(repo, 'gone1')?.status).toBe('orphaned');
   });
 
   it('readJob/updateJob find a job by id even when passed a different repoPath', () => {
@@ -145,14 +143,5 @@ describe('jobs registry', () => {
 
   it('readJob returns null for a genuinely unknown id', () => {
     expect(readJob(repo, 'totally-unknown-id')).toBeNull();
-  });
-
-  it('updateJob writes a completion sentinel only on a terminal status', () => {
-    createJob({ id: 'sentinel1', repoPath: repo, prompt: 'p', model: 'm' });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
-    updateJob(repo, 'sentinel1', { pid: 123 });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
-    updateJob(repo, 'sentinel1', { status: 'done', finishedAt: '2026-01-01T00:00:00.000Z' });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(true);
   });
 });

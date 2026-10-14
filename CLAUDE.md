@@ -64,7 +64,7 @@ So each cached version directory is replaced by a **Windows directory junction**
 ```
 ~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
 ~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0  ->  <repo>/plugins/cursor
-~/.claude/plugins/cache/ahmadghoniem/grok/0.4.0     ->  <repo>/plugins/grok
+~/.claude/plugins/cache/ahmadghoniem/grok/0.5.0     ->  <repo>/plugins/grok
 ~/.claude/plugins/cache/ahmadghoniem/agy/0.1.0      ->  <repo>/plugins/agy
 ```
 

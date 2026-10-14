@@ -1,6 +1,106 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — follows the agy plugin's conventions
+
+Checked against grok 1.0.52. The block below is the rework; the entries after it were written
+earlier in 0.5.0 development, and where the two disagree this block is current.
+
+### Rework
+
+- **Commands, job names and the output contract follow `plugins/agy`.** Jobs are named from the
+  brief's first words plus a 4-character suffix (`add-retry-to-fetchuser-a7f3`) and resolve by
+  full name, unique prefix or suffix. `contract.md` moved to the plugin root and the commands read
+  it with `!cat`. `/grok:result --list` prints a plain list (`id  status  started`) and shows a
+  progress line for a running job. A record whose pids are both gone reads as `orphaned`, and
+  `/grok:cancel` reports it instead of killing anything.
+- **`/grok:delegate` writes the brief itself.** Claude writes a sectioned brief (Goal, Repo
+  context, Acceptance criteria, Files to touch, How to verify, Guardrails) to
+  `~/.cgd/briefs/<name>.md` and dispatches it with `--prompt-file`. The `grok-runner` agent is
+  gone, and so is stdin (`--prompt-file -`).
+- **Resume by job id, session uuid, or nothing.** `/grok:resume [job-id|uuid] [follow-up]`
+  replaces `--resume=<job-id>`. With no id it resumes the newest job in this repository that has
+  a session. `--session <uuid>` is the underlying flag; `--fresh` is gone because a fresh
+  dispatch is the default. The `session-lost` and `resumable` warnings became one `resume` line:
+  `this run can be resumed where it stopped: /grok:resume <id>`.
+- **`--no-plan` and `--disallowed-tools` on every run.** Removes the 11 built-in tools a headless
+  run cannot use: the image and video tools, `ask_user_question`, the plan-mode pair,
+  `send_feedback` and the three scheduler tools. Checked on 1.0.52: each drops out of the run's
+  `available_commands`, and edits still land in the working tree.
+- **`-s <uuid>` on every fresh run**, so a killed or crashed run is resumable. `--resume <uuid>`
+  keeps the same session id on 1.0.52.
+- **No `-m` by default.** grok applies the account default (`grok-4.7` today), so a new xAI
+  model needs no plugin change. `CGD_DEFAULT_MODEL` and the newest-model lookup are gone.
+- **`--effort low|medium`, default `medium`.** The xAI plan this was built on allows only
+  `low` and `medium`, so anything else is refused before dispatch.
+- **`/grok:update`** runs `grok update`, prints the old and new version and the releases in
+  between with their dates, then the open papercuts for review. grok publishes no changelog, so
+  versions and dates come from the npm registry entry for `@xai-official/grok`.
+- **An update line after each run**, at most once a day: the newest release, its age, and how
+  many releases came out since the installed one. The registry answer is cached under
+  `~/.cgd`. `grok update --check` was not used because it gives no release dates.
+  `CGD_RELEASE_CHECK=off` turns the line off.
+- **`/grok:kaizen` folded into `/grok:update`**, which prints the open papercut clusters.
+  `/grok:papercut` takes `--text` (the `--source` flag is gone; a manual cut is always
+  `narrated`) and gains `--resolve <key|id> --note`; the `orchestrator` source is gone.
+- **grok gets only the brief.** `runHeadless` sets the ten
+  `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED` variables to `false`, so the
+  user's global Claude rules, hooks, MCP servers and skills stay out of a delegated run, and
+  `--trust` is not passed, so the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks and skills
+  stay out too (checked with codewords on 1.0.52). Claude writes what the task needs into the
+  brief. Together with `[plugins] disabled` in `~/.grok/config.toml`, a probe request went from
+  19,104 to 14,488 input tokens.
+- **Removed:** `--no-git-check`, `hints.mjs`, `jobtable.mjs`, `md.mjs`, the
+  `skills/output-contract` skill and `agents/grok-runner.md`.
+- **`engines.grok` is `>=1.0.52`.**
+
+### Settled from `docs/unverified.md`
+
+- **Plan mode.** `--no-plan` is now passed and a headless run's edits reach the working tree
+  (live run on 1.0.52 created the requested file).
+- **Release notes.** None exist: no `grok changelog`, no GitHub releases or tags. The npm
+  registry's version-to-date map is the record `/grok:update` and the update line use.
+- **The `wander` check** exists (see below), and `grok update --check --json` is no longer the
+  update probe.
+
+### Added
+
+- **A `wander` warning, backported from agy.** `⚠ grok reported file changes but the working
+  tree is unchanged`. Two `git status --porcelain` readings, taken either side of the run, are
+  compared against whether the write-up claims files were created or modified; the line fires
+  only when both halves hold, and only inside a git repo, since outside one there is no tree to
+  compare against. This was the one thing agy's output contract could catch that grok's could
+  not — nothing here compared what grok said it did against what the repo shows. Whether grok
+  has agy's specific scratch-directory failure is still untested (`docs/unverified.md`), so the
+  line reports the mismatch and does not diagnose it. Brings `porcelain`, `porcelainDelta`,
+  `parsePorcelain` and `snapshotFiles` into `git.mjs`, and `gitRepo`/`gitFiles` onto the job
+  record so `/grok:result` renders the same line on a later fetch instead of re-reading a tree
+  you have since changed yourself.
+- **A friction log, and `/grok:kaizen` to read it.** Warnings that are actually friction —
+  `wander`, `error-detail`, `killed`, `session-lost`, `failed-commands` — append a row to
+  `~/.cgd/papercuts.jsonl`. `stop-reason` and `exit` are deliberately excluded: they are the
+  two coarsest signals grok produces and fire on runs whose work landed intact, so logging them
+  would bury the real rows. `resumable` is excluded because it is an offer, not a problem.
+  `/grok:kaizen` groups the log and prints it; `--resolve <id> --note` appends a resolution and
+  never edits a row, which is what makes a fix that did not hold visible later.
+- **`/grok:papercut`** — writes the two rows the plugin cannot observe: `narrated` (grok's own
+  account of what got in its way, quoted) and `orchestrator` (a failure the brief caused —
+  expected, got, and the failing clause). Deliberately no field for *why*: a model that just
+  wrote a failing brief will construct a plausible story, and a tidy wrong story is harder to
+  correct later than a bare fact. The reading happens in `/grok:kaizen` with fresh context.
+- **`toolCalls` and `writeTargets` on the run summary.** Every tool the run invoked, and the
+  `file_path` each one named. The call count is the only figure in a summary not already
+  derivable from something else, and the one that says how hard grok had to work: forty tool
+  calls to change one file went wrong somewhere even under a clean stop reason. Stamped on
+  every papercut beside the file count so clusters can be compared by effort.
+
+### Changed
+
+- **`warnings()` returns tagged objects rather than strings.** Each warning is now
+  `{id, line, detail}`, with continuation lines held in `detail` instead of being pushed as
+  pre-indented strings the renderer had to detect with `startsWith('    ')`. The papercut
+  writer can then record which warning fired without a second copy of the detection rules to
+  drift from the first. Rendered output is unchanged; `WARNING_IDS` is now load-bearing rather
+  than documentation-only, since its ids are values on the code path.
 
 ### Removed
 

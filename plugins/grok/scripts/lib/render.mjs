@@ -1,125 +1,134 @@
-// Presentation shared by the foreground dispatch and `/grok:result`, so the
-// write-up you see when a job finishes and the one you fetch later cannot drift.
+// Presentation shared by `/grok:delegate` and `/grok:result`: both render the
+// finished job record, so the output at dispatch and the one fetched later
+// cannot drift.
 //
-// The default output is grok's own write-up and nothing else. What used to sit
-// around it — the model id, the finish timestamp, `exit 0`, the cost and turn
-// count, and a re-print of the entire prompt you just typed — was either already
-// known to whoever dispatched the job or noise on the runs that simply worked.
-// The file list went too: it was built from every `file_path` grok's tools
-// mentioned, reads included, so a run that read forty files and edited one
-// listed forty-one. `git status` is the ground truth and is one call away.
-//
-// What survives is the set of ways a run can be wrong while still looking done.
-
-/**
- * @typedef {Object} CommandRun
- * @property {string} command
- * @property {number|null} exitCode
- * @property {string} output
- * @property {boolean} timedOut
- */
-
-/**
- * @typedef {Object} OutcomeView
- * @property {string|undefined} summary
- * @property {string|undefined} stopReason
- * @property {number|null|undefined} exitCode
- * @property {boolean} [killed]
- * @property {string} [errorDetail]
- * @property {CommandRun[]} [failedCommands]
- * @property {boolean} [sessionLost]
- * @property {string} [resumableJobId]
- */
+// The default output is grok's own write-up and nothing else. `git status` is
+// the record of what changed, so no file list, timing or token count is added.
+// What is added is a ⚠ line for each way a run can be wrong while still
+// looking done.
 
 /**
  * Every warning kind this module can emit, in the order they are printed.
  *
- * This is the machine-readable half of `skills/output-contract/contract.md`; that
- * file explains each id in prose. `tests/contract.test.mjs` asserts the two
- * agree in both directions and that neither has grown an entry the other lacks,
- * so a new warning cannot ship undocumented — which is exactly how the contract
- * drifted before this registry existed.
+ * The machine-readable half of `contract.md` at the plugin root, which explains
+ * each id in prose. `tests/contract.test.mjs` fails if the two disagree.
  *
  * @type {readonly string[]}
  */
 export const WARNING_IDS = Object.freeze([
-  "stop-reason",
-  "exit",
-  "error-detail",
-  "killed",
-  "failed-commands",
-  "session-lost",
-  "resumable",
+  'stop-reason',
+  'exit',
+  'error-detail',
+  'killed',
+  'failed-commands',
+  'resume',
+  'wander',
 ]);
 
+export const WANDER_WARNING =
+  'grok reported file changes but the working tree is unchanged — the writes\n' +
+  '  did not land where you are looking.';
+
 /**
- * The warning lines for a finished run, in print order. Exported so a test can
- * assert directly that a clean run produces none of them.
- *
- * @param {OutcomeView} view
- * @returns {string[]}
+ * @typedef {import('./jobs.mjs').JobRecord} JobRecord
  */
-export function warnings(view) {
+
+/**
+ * @typedef {Object} Warning
+ * @property {string} id       one of `WARNING_IDS`
+ * @property {string} line     the ⚠ line, without its marker
+ * @property {string[]} [detail] indented continuation lines
+ */
+
+/**
+ * Whether the run stopped before grok finished it. `delegate.mjs` exits 1 on
+ * these, and they are the runs `/grok:resume` can pick up.
+ *
+ * @param {Partial<JobRecord>} job
+ * @returns {boolean}
+ */
+export function isUnfinished(job) {
+  return (
+    job.status === 'failed' ||
+    job.status === 'cancelled' ||
+    job.status === 'orphaned' ||
+    Boolean(job.killed)
+  );
+}
+
+/**
+ * The warnings for a finished job, in print order. The papercut log records
+ * the same list, so the log and the ⚠ lines cannot drift apart.
+ *
+ * @param {Partial<JobRecord>} job
+ * @returns {Warning[]}
+ */
+export function warnings(job) {
+  /** @type {Warning[]} */
   const out = [];
 
-  const stop = view.stopReason;
+  const stop = job.stopReason;
   if (stop && stop !== 'end_turn') {
-    out.push(`stop reason: ${stop}`);
+    out.push({ id: 'stop-reason', line: `stop reason: ${stop}` });
   }
 
-  if (typeof view.exitCode === 'number' && view.exitCode !== 0) {
-    out.push(`exit ${view.exitCode}`);
+  if (typeof job.exitCode === 'number' && job.exitCode !== 0) {
+    out.push({ id: 'exit', line: `exit ${job.exitCode}` });
   }
 
-  // Why the run stopped, in grok's own words. Two sources feed this: an
-  // `error` event when grok emitted one, otherwise the stderr tail on a
-  // non-zero exit — the caller picks. Independent of `stop-reason` and `exit`:
-  // those two say a run went wrong, this says what went wrong, and a run that
-  // dies before emitting anything raises the first two with nothing to explain
-  // them.
-  const detail = (view.errorDetail ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  // Why the run stopped, in grok's words: its `error` event, or the stderr
+  // tail on a failing exit. The two lines above say a run went wrong; this
+  // says what went wrong.
+  const detail = String(job.errorDetail ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (detail.length > 0) {
-    out.push(`error: ${detail[0]}`);
-    for (const line of detail.slice(1, 20)) {
-      out.push(`    ${line}`);
-    }
+    out.push({ id: 'error-detail', line: `error: ${detail[0]}`, detail: detail.slice(1, 20) });
   }
 
-  if (view.killed) {
-    out.push('run was killed before finishing (timeout or watchdog) — output may be incomplete');
+  if (job.killed) {
+    out.push({
+      id: 'killed',
+      line: 'run was killed before finishing (timeout or watchdog) — output may be incomplete',
+    });
   }
 
-  // Reported, never fatal. A non-zero exit is routinely intentional — `grep`
-  // finding nothing, a deliberately red test in a TDD cycle, a `command -v`
-  // probe — so the plugin puts the fact in front of a human instead of deciding
-  // the run failed. Grok's own `stopReason` remains the only input to status.
-  const failed = view.failedCommands ?? [];
+  // Reported, never fatal. A non-zero exit is often intended: `grep` finding
+  // nothing, a red test in a TDD cycle, a `command -v` probe.
+  const failed = job.failedCommands ?? [];
   if (failed.length > 0) {
     const n = failed.length;
-    out.push(
-      `${n} command${n === 1 ? '' : 's'} exited non-zero — reported, not judged; grok may have meant them:`,
-    );
+    const detailLines = [];
     for (const c of failed) {
-      out.push(`    ${c.command} → exit ${c.exitCode}${c.timedOut ? ' (timed out)' : ''}`);
+      detailLines.push(`${c.command} → exit ${c.exitCode}${c.timedOut ? ' (timed out)' : ''}`);
       const trimmed = (c.output ?? '').trim();
       for (const line of trimmed ? trimmed.split('\n').slice(0, 10) : []) {
-        out.push(`      ${line}`);
+        detailLines.push(`  ${line}`);
       }
     }
+    out.push({
+      id: 'failed-commands',
+      line: `${n} command${n === 1 ? '' : 's'} exited non-zero — reported, not judged; grok may have meant them:`,
+      detail: detailLines,
+    });
   }
 
-  if (view.sessionLost) {
-    out.push('no session id was captured — this job cannot be resumed');
-  } else if (view.resumableJobId) {
-    // The other half of `session-lost`. That line has always told you when a
-    // cut-short run is unrecoverable; nothing told you when it was recoverable,
-    // so a resumable session sat on disk and the reflex was to re-send the whole
-    // brief. Mutually exclusive with the line above by construction: one says
-    // the session is missing, this one names the job holding it. The job id is
-    // what `--resume=` takes, so this line can be pasted as printed.
-    out.push(
-      `this run did not finish cleanly — resume it with \`/grok:resume --resume=${view.resumableJobId}\``,
-    );
+  // `grokSessionId` is recorded on grok's first event, so a run refused before
+  // the session started (not signed in, a rejected flag) offers nothing.
+  if (isUnfinished(job) && job.grokSessionId && job.id) {
+    out.push({
+      id: 'resume',
+      line: `this run can be resumed where it stopped: /grok:resume ${job.id}`,
+    });
+  }
+
+  // The write-up says files were written and two `git status` readings, taken
+  // either side of the run, disagree. Outside a git repo there is nothing to
+  // compare against, so it is not checked.
+  const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
+  if (noGitChanges && job.claimedFileChanges) {
+    out.push({ id: 'wander', line: WANDER_WARNING });
   }
 
   return out;
@@ -129,12 +138,12 @@ export function warnings(view) {
  * Grok's write-up, plus a warning line per way the run may have gone wrong.
  * A clean run renders as the write-up alone.
  *
- * @param {OutcomeView} view
+ * @param {Partial<JobRecord>} job
  * @returns {string}
  */
-export function renderOutcome(view) {
-  const report = (view.summary == null ? '' : String(view.summary)).replace(/\s+$/, '');
-  const warns = warnings(view);
+export function renderResult(job) {
+  const report = (job.summary == null ? '' : String(job.summary)).replace(/\s+$/, '');
+  const warns = warnings(job);
 
   const lines = [];
   if (report.length > 0) lines.push(report);
@@ -142,7 +151,10 @@ export function renderOutcome(view) {
 
   if (warns.length > 0) {
     if (lines.length > 0) lines.push('');
-    for (const w of warns) lines.push(w.startsWith('    ') ? w : `⚠ ${w}`);
+    for (const w of warns) {
+      lines.push(`⚠ ${w.line}`);
+      for (const d of w.detail ?? []) lines.push(`    ${d}`);
+    }
   }
 
   return `${lines.join('\n')}\n`;

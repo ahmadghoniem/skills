@@ -1,141 +1,130 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { collapseCommandArgv, invokedAsScript, parseArgv, parseTimeout } from './lib/args.mjs';
-import { isGitRepo, repoRoot } from './lib/git.mjs';
-import { resolveModel, runHeadless } from './lib/grok.mjs';
-import { jobNotFoundMessage } from './lib/hints.mjs';
-import { id as newId } from './lib/id.mjs';
+import { readFileSync } from 'node:fs';
+import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
+import { isGitRepo, porcelain, porcelainDelta, repoRoot, snapshotFiles } from './lib/git.mjs';
+import { DEFAULT_EFFORT, EFFORTS, parseVersion, runHeadless, versionInfo } from './lib/grok.mjs';
 import {
   createJob,
   pruneOlderThanDays,
+  rawLogPath,
   readJob,
-  rawLogPath as rawLogPathFor,
+  uniqueJobName,
   updateJob,
 } from './lib/jobs.mjs';
-import { describeToolCall, summariseEvents } from './lib/parse.mjs';
-import { ensureDir, jobsDir, logsDir } from './lib/paths.mjs';
-import { renderOutcome } from './lib/render.mjs';
+import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
+import { summariseEvents } from './lib/parse.mjs';
+import { isUnfinished, renderResult, warnings } from './lib/render.mjs';
+import { latestRelease, updateNotice } from './update.mjs';
 
-const BOOLEAN_FLAGS = ['fresh', 'help', 'resume'];
+// Runs in the foreground of its child process; the orchestrator invokes it
+// under a backgrounded Bash call to receive the exit notification without
+// detaching.
+
+const BOOLEAN_FLAGS = ['help'];
 const USAGE =
-  'Usage: /grok:delegate [--model <id>] [--effort <level>] [--timeout <sec>] [--resume=<job-id>] [--fresh] [--no-git-check] <task | --prompt-file <path|->>\n';
+  'Usage: /grok:delegate [--model <id>] [--effort low|medium] [--timeout <sec>] [--session <uuid>] <task... | --prompt-file <path>>\n';
 
-// Implementation runs go long, and grok bills per run — a watchdog that fires
-// too early wastes a paid run, one that never fires lets a stuck run bill on.
-// Deliberately longer than grok's own 3600s idle timeout so grok gets to fail
-// first and say why: its `error` event names the cause, a watchdog kill only
-// reports that something was killed. Override with --timeout <seconds>.
+// Implementation runs go long, and grok bills per run. Longer than grok's own
+// 3600s idle timeout so grok gets to fail first and say why: its `error`
+// event names the cause, a watchdog kill only reports that something was
+// killed. Override with --timeout <seconds>.
 const DEFAULT_TIMEOUT_SEC = 4800;
 
+/**
+ * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief
+ * reaches grok without going through the command line. Claude writes the file
+ * with its Write tool; this only reads it back.
+ *
+ * @param {unknown} spec
+ * @returns {string}
+ */
+function readPromptFile(spec) {
+  if (spec === true || spec === '') {
+    throw new Error('--prompt-file needs a path.');
+  }
+  const path = String(spec);
+  let raw;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `could not read --prompt-file ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const text = raw.trim();
+  if (text.length === 0) {
+    throw new Error(`prompt file is empty: ${path}`);
+  }
+  return text;
+}
+
 function parseFlags(argv) {
-  // `honorDoubleDash: false` — `collapseCommandArgv` already consumed the
-  // slash-command delimiter, so a `--` left in here is part of the task text.
-  const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
-  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
+  const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
+  const session =
+    typeof flags['session'] === 'string' && flags['session'].trim()
+      ? String(flags['session']).trim()
+      : undefined;
   return {
     positional,
-    model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
-    effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    fresh: Boolean(flags['fresh']),
-    resume: flags['resume'],
+    model:
+      typeof flags['model'] === 'string' && flags['model'].trim() ? flags['model'].trim() : undefined,
+    effort: typeof flags['effort'] === 'string' ? flags['effort'].trim() : DEFAULT_EFFORT,
     timeout: parseTimeout(flags['timeout'], DEFAULT_TIMEOUT_SEC),
-    noGitCheck,
     help: flags['help'] === true,
-    // `undefined` = flag absent; `'-'` = stdin; a string path; `true` = bare
-    // `--prompt-file` with no value (a usage error, caught in main).
+    session,
+    // `undefined` = flag absent; `true` = bare `--prompt-file` with no value
+    // (a usage error, caught in main); otherwise the path as given.
     promptFile: flags['prompt-file'],
   };
 }
 
 /**
- * Resolve `--prompt-file <path>` / `--prompt-file -` (stdin) into prompt text,
- * so a long, multi-line, or quote-heavy brief reaches grok without CLI-arg
- * mangling. Throws on a missing value, missing file, or empty content.
+ * The installed grok version, or null when `grok --version` does not answer.
  *
- * @param {unknown} spec  `'-'` for stdin, a path, or `true` when bare
- * @returns {string}
+ * @returns {Promise<string|null>}
  */
-function readPromptSource(spec) {
-  if (spec === true || spec === '') {
-    throw new Error('--prompt-file needs a path, or `-` to read stdin.');
-  }
-  let raw;
-  if (spec === '-') {
-    raw = readFileSync(0, 'utf8');
-  } else {
-    const path = String(spec);
-    if (!existsSync(path)) throw new Error(`prompt file not found: ${path}`);
-    raw = readFileSync(path, 'utf8');
-  }
-  const text = raw.trim();
-  if (text.length === 0) {
-    throw new Error(spec === '-' ? 'stdin was empty.' : `prompt file is empty: ${spec}`);
-  }
-  return text;
-}
-
-function isResumeRequested(resume, fresh) {
-  if (fresh) return false;
-  if (resume === undefined) return false;
-  if (typeof resume === 'boolean') return resume;
-  return true;
-}
-
-function resumeSessionId(resume) {
-  if (resume == null || typeof resume === 'boolean') return undefined;
-  const s = String(resume).trim();
-  if (s.length > 0 && s.toLowerCase() !== 'true') return s;
-  return undefined;
+async function installedVersion() {
+  const info = await versionInfo();
+  return info.ok ? parseVersion(info.detail) : null;
 }
 
 /**
- * Look up the grok session a job recorded. The job id is the only handle
- * `--resume=` takes: it is printed at dispatch and by the resumable warning,
- * so every id the plugin shows you is one it accepts back.
- *
- * @param {string} raw
+ * @param {ReturnType<typeof parseFlags>} flags
+ * @param {string} prompt
+ * @param {string} jobId
  * @param {string} root
- * @returns {{sessionId: string}|{error: string}}
+ * @param {Promise<string|null>} toolVersion
  */
-function resolveResumeTarget(raw, root) {
-  const job = readJob(root, raw);
-  if (!job) return { error: jobNotFoundMessage(raw) };
-  if (!job.grokSessionId) {
-    return {
-      error: `Job \`${raw}\` never recorded a grok session id, so it cannot be resumed. Re-delegate instead.\n`,
-    };
-  }
-  return { sessionId: job.grokSessionId };
-}
+async function runAndRecord(flags, prompt, jobId, root, toolVersion) {
+  updateJob(root, jobId, {
+    pid: process.pid,
+    model: flags.model ?? '',
+    effort: flags.effort,
+    briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
+  });
 
-async function runAndRecord(flags, prompt, jobId, root, resumeTarget, model) {
-  const logPath = rawLogPathFor(root, jobId);
-  ensureDir(jobsDir(root));
-  ensureDir(logsDir(root));
-  updateJob(root, jobId, { pid: process.pid, model });
+  // Two `git status --porcelain` readings, one either side of the run. grok's
+  // write-up is a claim; the wander warning fires when it and the repo
+  // disagree.
+  const inRepo = await isGitRepo(root);
+  const before = inRepo ? ((await porcelain(root)) ?? []) : [];
 
-  // Named and recorded before grok is spawned, so a run killed before its `end`
-  // event — the one you most want to resume — is still resumable. See `buildArgs`.
-  const freshSessionId = resumeTarget ? undefined : randomUUID();
-  if (freshSessionId) {
-    try {
-      updateJob(root, jobId, { grokSessionId: freshSessionId });
-    } catch {
-      // Losing the pre-assignment costs resumability, not the run.
-    }
-  }
+  // A fresh run names its session up front with `-s`, so a run killed before
+  // its `end` event can still be resumed. The id is recorded once grok emits
+  // anything other than an error: a refused run (not signed in, a rejected
+  // flag) emits only an `error` event and starts no session.
+  const sessionId = flags.session ?? randomUUID();
+  let sessionRecorded = false;
 
-  let toolCalls = 0;
-  let omitted = 0;
   const result = await runHeadless({
     prompt,
-    model,
+    model: flags.model,
     effort: flags.effort,
-    sessionId: freshSessionId,
-    resumeSessionId: resumeTarget,
+    sessionId: flags.session ? undefined : sessionId,
+    resumeSessionId: flags.session,
     timeoutSec: flags.timeout,
-    logPath,
+    logPath: rawLogPath(root, jobId),
     onSpawn: (cliPid) => {
       try {
         updateJob(root, jobId, { cliPid });
@@ -144,90 +133,85 @@ async function runAndRecord(flags, prompt, jobId, root, resumeTarget, model) {
       }
     },
     onEvent: (ev) => {
-      const label = describeToolCall(ev, root);
-      if (!label) return;
-      toolCalls += 1;
-      if (toolCalls > 20) {
-        omitted += 1;
-        return;
+      if (sessionRecorded || ev.type === 'error') return;
+      sessionRecorded = true;
+      try {
+        updateJob(root, jobId, { grokSessionId: sessionId });
+      } catch {
+        // Losing the id costs resumability, not the run.
       }
-      process.stdout.write(`• ${label}\n`);
     },
   });
-  if (omitted > 0) {
-    process.stdout.write(`• … (${omitted} further tool call${omitted === 1 ? '' : 's'} omitted)\n`);
-  }
 
   const summary = summariseEvents(result.events, root);
-  // Grok's own `error` event when there is one; otherwise the stderr tail, and
-  // only on a failing exit — stderr also carries ordinary chatter, so a healthy
-  // run must not raise a warning out of it.
+  // grok's own `error` event when there is one; otherwise the stderr tail, and
+  // only on a failing exit. stderr also carries ordinary progress output, so a
+  // healthy run must not raise a warning from it.
   const errorDetail =
     summary.errorDetail ??
     (result.exitCode !== 0 && result.stderrTail.length > 0
       ? result.stderrTail.join('\n')
       : undefined);
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
-  const killedNote = result.killed
-    ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete. Re-run with a larger `--timeout` if needed.'
-    : '';
+  const gitFiles = inRepo ? porcelainDelta(before, (await porcelain(root)) ?? []) : [];
 
   updateJob(root, jobId, {
     status,
     exitCode: result.exitCode,
     finishedAt: new Date().toISOString(),
-    summary: summary.summary + killedNote,
-    failedCommands: summary.failedCommands,
+    summary: summary.summary,
     stopReason: summary.stopReason,
     errorDetail,
-    model,
+    killed: result.killed || undefined,
+    failedCommands: summary.failedCommands.length ? summary.failedCommands : undefined,
+    toolCalls: summary.toolCalls,
     ...(summary.sessionId ? { grokSessionId: summary.sessionId } : {}),
+    gitRepo: inRepo,
+    gitFiles: snapshotFiles(gitFiles),
+    claimedFileChanges: summary.claimedFileChanges,
   });
 
-  // `freshSessionId` travels out because the caller renders the resume line
-  // from it: on a watchdog kill no `end` event arrives, so the pre-assigned id
-  // is the only one that exists.
-  return { result, summary, freshSessionId, errorDetail, status };
+  // Sole write site for detected papercuts. `/grok:result` re-renders the
+  // same warnings on read without logging them again.
+  const finalJob = readJob(root, jobId);
+  if (finalJob) {
+    recordDetected(warnings(finalJob), {
+      toolVersion: (await toolVersion) ?? undefined,
+      pluginVersion,
+      model: flags.model,
+      repo: root,
+      jobId,
+      sessionId: finalJob.grokSessionId,
+      toolCalls: summary.toolCalls,
+      exitCode: result.exitCode,
+      stopReason: summary.stopReason,
+      failedCommands: summary.failedCommands,
+    });
+  }
 }
 
-async function foreground(flags, prompt, jobId, root, resumeTarget) {
-  const model = await resolveModel(flags.model);
-  createJob({ id: jobId, repoPath: root, prompt, model });
-  process.stdout.write(`grok \`${jobId}\` (${model})\n\n`);
-
-  const { result, summary, freshSessionId, errorDetail, status } = await runAndRecord(
-    flags,
-    prompt,
-    jobId,
-    root,
-    resumeTarget,
-    model,
-  );
-
-  process.stdout.write('\n');
-  process.stdout.write(
-    renderOutcome({
-      summary: summary.summary,
-      stopReason: summary.stopReason,
-      exitCode: result.exitCode,
-      errorDetail,
-      killed: result.killed,
-      failedCommands: summary.failedCommands,
-      // `end` is the only streaming event carrying `sessionId`, so a run that
-      // dies before it never delivers one. Saying the job is unresumable beats
-      // printing a resume line that points at nothing.
-      // A fresh dispatch pre-assigns its id, so this can now only fire on a
-      // resume — where `-s` is illegal and the id must still come from `end`.
-      sessionLost: status === 'failed' && !summary.sessionId && !freshSessionId,
-      // The inverse: no clean finish, but a session exists to attach to. Gated
-      // on `status`, not `killed` — a kill is one of several ways to get here,
-      // and `/grok:result` has always used `status`, so the two disagreed about
-      // the same job. Clean runs stay quiet; their job id is printed already.
-      resumableJobId:
-        status === 'failed' && (summary.sessionId ?? freshSessionId) ? jobId : undefined,
-    }),
-  );
-  return result.exitCode;
+/**
+ * Run `runAndRecord`, marking the job failed if it throws before finishing
+ * (grok not found, an unwritable log), then rethrow.
+ *
+ * @param {ReturnType<typeof parseFlags>} flags
+ * @param {string} prompt
+ * @param {string} jobId
+ * @param {string} root
+ * @param {Promise<string|null>} toolVersion
+ */
+async function runOrMarkFailed(flags, prompt, jobId, root, toolVersion) {
+  try {
+    await runAndRecord(flags, prompt, jobId, root, toolVersion);
+  } catch (err) {
+    updateJob(root, jobId, {
+      status: 'failed',
+      exitCode: 1,
+      finishedAt: new Date().toISOString(),
+      errorDetail: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 /**
@@ -235,14 +219,18 @@ async function foreground(flags, prompt, jobId, root, resumeTarget) {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const flags = parseFlags(collapseCommandArgv(rawArgv));
+  const flags = parseFlags(rawArgv);
 
-  // `help` was declared as a boolean flag but never read, so `--help` fell
-  // through and billed a real run. Checked before anything else, including the
-  // `--resume` that `/grok:resume` injects ahead of it.
   if (flags.help) {
     process.stdout.write(USAGE);
     return 0;
+  }
+
+  if (!EFFORTS.includes(flags.effort)) {
+    process.stderr.write(
+      `Error: --effort must be ${EFFORTS.join(' or ')}; got \`${flags.effort}\`.\n`,
+    );
+    return 2;
   }
 
   let prompt = flags.positional.join(' ').trim();
@@ -254,61 +242,38 @@ export async function main(rawArgv) {
       return 2;
     }
     try {
-      prompt = readPromptSource(flags.promptFile);
+      prompt = readPromptFile(flags.promptFile);
     } catch (err) {
       process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
       return 2;
     }
   }
-  if (!prompt && !isResumeRequested(flags.resume, flags.fresh)) {
+  if (!prompt && !flags.session) {
     process.stderr.write('Error: no task description provided.\n');
     process.stderr.write(USAGE);
     return 2;
   }
 
-  if (!(await isGitRepo(process.cwd())) && !flags.noGitCheck) {
-    process.stderr.write(
-      'Error: current directory is not a git repository. Pass --no-git-check to override.\n',
-    );
-    return 2;
-  }
   const root = await repoRoot(process.cwd());
   pruneOlderThanDays(root, 30);
 
-  // A bare `--resume` used to mean "grok picks the newest session in this
-  // directory". Grok resolves that by directory, not by who dispatched, so a
-  // second Claude session working in the same repo — or a `grok` TUI opened on
-  // the side — silently won the race and answered from a conversation this
-  // session never had, at exit 0 with no warning. Refusing is the only honest
-  // answer: the plugin has no basis for choosing, and the caller does.
-  let resumeTarget;
-  if (isResumeRequested(flags.resume, flags.fresh)) {
-    const raw = resumeSessionId(flags.resume);
-    if (!raw) {
-      process.stderr.write(
-        `Error: --resume needs a job id. This plugin will not guess which session you meant —
-jobs from every Claude session in this directory share one store, so "the most
-recent" is not reliably yours.
+  // Both run alongside grok, so no dispatch waits on them. The release check
+  // reaches the network at most once a day.
+  const release = latestRelease().catch(() => null);
+  const toolVersion = installedVersion().catch(() => null);
 
-Pass the job id printed when the run was dispatched:
-  --resume=<job-id>
+  const jobId = uniqueJobName(root, prompt || 'continue');
+  const task = prompt || 'Continue from where you left off.';
 
-Lost it? \`/grok:result --list\` shows the tracked jobs.
-`,
-      );
-      return 2;
-    }
-    const resolved = resolveResumeTarget(raw, root);
-    if ('error' in resolved) {
-      process.stderr.write(resolved.error);
-      return 2;
-    }
-    resumeTarget = resolved.sessionId;
-  }
+  createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
+  process.stdout.write(`grok \`${jobId}\`\n\n`);
 
-  const jobId = newId(10);
+  await runOrMarkFailed(flags, task, jobId, root, toolVersion);
+  const finished = readJob(root, jobId);
 
-  return foreground(flags, prompt || '(resume)', jobId, root, resumeTarget);
+  if (finished) process.stdout.write(renderResult(finished));
+  process.stdout.write(updateNotice(await release, await toolVersion));
+  return finished && isUnfinished(finished) ? 1 : 0;
 }
 
 if (invokedAsScript(import.meta.url)) {

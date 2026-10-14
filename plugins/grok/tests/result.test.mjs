@@ -1,9 +1,10 @@
+import { writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createJob, updateJob } from '../scripts/lib/jobs.mjs';
+import { createJob, rawLogPath, updateJob } from '../scripts/lib/jobs.mjs';
 import { main as resultMain } from '../scripts/result.mjs';
 import { makeTempHome } from './helpers.mjs';
 
-describe('/grok:result --list / --all', () => {
+describe('/grok:result', () => {
   let tmp;
   const prevHome = process.env.CGD_HOME;
   const prevCwd = process.cwd();
@@ -18,6 +19,7 @@ describe('/grok:result --list / --all', () => {
       out += s;
       return true;
     });
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   });
 
   afterEach(() => {
@@ -29,87 +31,92 @@ describe('/grok:result --list / --all', () => {
   });
 
   function seedJobs(n, { status = 'done' } = {}) {
-    const ids = [];
     for (let i = 0; i < n; i += 1) {
       const id = `j${String(i).padStart(2, '0')}`;
-      ids.push(id);
-      createJob({ id, repoPath: tmp.dir, prompt: `task ${i}`, model: 'grok-4.6' });
+      createJob({ id, repoPath: tmp.dir, prompt: `task ${i}`, model: '' });
       updateJob(tmp.dir, id, {
         status,
         startedAt: `2026-01-01T00:00:${String(i).padStart(2, '0')}.000Z`,
       });
     }
-    return ids;
   }
 
-  it('--all alone lists jobs instead of printing a single result', async () => {
+  const listed = () => [...out.matchAll(/^j\d{2}\b/gm)].map((m) => m[0]);
+
+  it('--all lists jobs instead of printing a single result', async () => {
     seedJobs(2);
-    const code = await resultMain(['--all']);
-    expect(code).toBe(0);
-    expect(out).toContain('| ID | Status | Model | Age | Prompt |');
-    expect(out).toContain('`j00`');
-    expect(out).toContain('`j01`');
-    expect(out).not.toContain('### Result of job');
+    expect(await resultMain(['--all'])).toBe(0);
+    expect(out).toContain('id  status  started');
+    expect(listed()).toEqual(['j01', 'j00']);
   });
 
-  it('--list still caps at 10', async () => {
+  it('--list caps at 10, newest first', async () => {
     seedJobs(12);
-    const code = await resultMain(['--list']);
-    expect(code).toBe(0);
-    const ids = [...out.matchAll(/`j\d{2}`/g)].map((m) => m[0]);
-    expect(ids).toHaveLength(10);
-    expect(out).not.toContain('`j00`');
-    expect(out).toContain('`j11`');
-    expect(out).toContain('`j02`');
+    await resultMain(['--list']);
+    expect(listed()).toHaveLength(10);
+    expect(listed()[0]).toBe('j11');
+    expect(listed()).not.toContain('j00');
   });
 
   it('--all returns every tracked job past the --list cap', async () => {
     seedJobs(12);
     await resultMain(['--all']);
-    const ids = [...out.matchAll(/`j\d{2}`/g)].map((m) => m[0]);
-    expect(ids).toHaveLength(12);
-    expect(out).toContain('`j00`');
-    expect(out).toContain('`j11`');
-  });
-
-  it('includes running jobs — the listing is the "which job was that?" recovery path', async () => {
-    createJob({ id: 'running1', repoPath: tmp.dir, prompt: 'still going', model: 'grok-4.6' });
-    await resultMain(['--list']);
-    expect(out).toContain('`running1`');
-    expect(out).toContain('running');
+    expect(listed()).toHaveLength(12);
   });
 
   it('reports the empty state when nothing is tracked yet', async () => {
-    const code = await resultMain(['--list']);
-    expect(code).toBe(0);
-    expect(out).toContain('No Grok jobs tracked for this repository yet.');
+    expect(await resultMain(['--list'])).toBe(0);
+    expect(out).toContain('No grok jobs tracked for this repository yet.');
   });
 
-  // The resume pair is gated here, not in the renderer: `result.mjs` decides
-  // from the stored status, because a finished job carries no `killed` flag of
-  // its own to gate on.
+  it('prints the newest finished job when no id is given', async () => {
+    createJob({ id: 'older', repoPath: tmp.dir, prompt: 'a', model: '' });
+    updateJob(tmp.dir, 'older', { status: 'done', summary: 'first write-up', finishedAt: '2026-01-01T00:00:00.000Z' });
+    createJob({ id: 'newer', repoPath: tmp.dir, prompt: 'b', model: '' });
+    updateJob(tmp.dir, 'newer', { status: 'done', summary: 'second write-up', finishedAt: '2026-01-02T00:00:00.000Z' });
+    await resultMain([]);
+    expect(out).toBe('second write-up\n');
+  });
+
+  it('shows progress for a running job, counted from its event log', async () => {
+    createJob({ id: 'busy', repoPath: tmp.dir, prompt: 'p', model: '' });
+    updateJob(tmp.dir, 'busy', { pid: process.pid });
+    writeFileSync(
+      rawLogPath(tmp.dir, 'busy'),
+      [
+        '{"type":"tool_call","toolName":"read_file"}',
+        '{"type":"text","data":"x"}',
+        '{"type":"tool_call","toolName":"search_replace"}',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    expect(await resultMain(['busy'])).toBe(0);
+    expect(out).toContain('is still running');
+    expect(out).toContain('2 tool calls, last tool search_replace');
+  });
+
   it('offers a resume for a failed job that kept its session id', async () => {
-    createJob({ id: 'cut-short', repoPath: tmp.dir, prompt: 'big one', model: 'grok-4.6' });
+    createJob({ id: 'cut-short', repoPath: tmp.dir, prompt: 'big one', model: '' });
     updateJob(tmp.dir, 'cut-short', {
       status: 'failed',
       summary: 'partial work',
-      grokSessionId: 'sess-42',
+      grokSessionId: '11111111-2222-3333-4444-555555555555',
     });
     await resultMain(['cut-short']);
-    expect(out).toContain('/grok:resume --resume=cut-short');
-    expect(out).not.toContain('cannot be resumed');
+    expect(out).toContain('/grok:resume cut-short');
   });
 
   it('offers no resume for a job that finished', async () => {
-    createJob({ id: 'finished', repoPath: tmp.dir, prompt: 'small one', model: 'grok-4.6' });
+    createJob({ id: 'finished', repoPath: tmp.dir, prompt: 'small one', model: '' });
     updateJob(tmp.dir, 'finished', {
       status: 'done',
       summary: 'all good',
       stopReason: 'end_turn',
       exitCode: 0,
-      grokSessionId: 'sess-99',
+      grokSessionId: '11111111-2222-3333-4444-555555555555',
     });
     await resultMain(['finished']);
-    expect(out).not.toContain('--resume=');
+    expect(out).toBe('all good\n');
   });
 });
