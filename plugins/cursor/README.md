@@ -39,7 +39,7 @@ Jobs are named from the task's first words plus a 4-character suffix, such as `a
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. |
-| `--model <id>` | The model. Defaults to `grok-4.7-medium`: Cursor resets its own default to the account's (Composer 2.5 on Plus) on every run, so the plugin names one. A model the plan does not allow is refused and the refusal is shown as `⚠ error:`. |
+| `--model <id>` | The model. Defaults to the account default (Composer 2.5 on Plus). A model the plan does not allow is refused and the refusal is shown as `⚠ error:`. |
 | `--timeout <sec>` | Kill the run after this many seconds. Off by default. cursor-agent has no overall or idle limit of its own; see `docs/unverified.md`. |
 | `--session <chat-id>` | Continue that Cursor chat. `/cursor:resume` sets it for you. |
 

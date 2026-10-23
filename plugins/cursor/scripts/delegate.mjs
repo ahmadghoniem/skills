@@ -29,11 +29,6 @@ const USAGE =
 // off; `/cursor:cancel` stops one that is not.
 const DEFAULT_TIMEOUT_SEC = 0;
 
-// Cursor resets the model in `cli-config.json` to the account default
-// (Composer 2.5 on Plus) on every run, so the plugin names its own. Plus allows
-// Grok 4.7 only at medium effort; `grok-4.7-low` is refused.
-const DEFAULT_MODEL = 'grok-4.7-medium';
-
 /**
  * Read the brief from `--prompt-file <path>`. Claude writes the file with its
  * Write tool; this only reads it back.
@@ -70,7 +65,7 @@ function parseFlags(argv) {
   return {
     positional,
     model:
-      typeof flags['model'] === 'string' && flags['model'].trim() ? flags['model'].trim() : DEFAULT_MODEL,
+      typeof flags['model'] === 'string' && flags['model'].trim() ? flags['model'].trim() : undefined,
     timeout: parseTimeout(flags['timeout'], DEFAULT_TIMEOUT_SEC),
     help: flags['help'] === true,
     session,

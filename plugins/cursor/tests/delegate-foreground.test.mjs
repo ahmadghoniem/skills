@@ -82,7 +82,7 @@ describe('/cursor:delegate', () => {
     expect(readFileSync(`${job.rawLogPath}.prompt.txt`, 'utf8')).toBe('## Goal\nAdd divide.');
   });
 
-  it('pre-assigns a chat id and passes grok-4.7-medium unless a model was named', async () => {
+  it('pre-assigns a chat id and passes no --model unless one was named', async () => {
     const argvOut = `${tmp.dir}/argv.json`;
     process.env.CURSOR_AGENT_STUB_ARGV_OUT = argvOut;
     try {
@@ -94,7 +94,7 @@ describe('/cursor:delegate', () => {
     expect(chatId).toMatch(/^[0-9a-f-]{36}$/);
     const argv = JSON.parse(readFileSync(argvOut, 'utf8'));
     expect(argv[argv.indexOf('--new-session-id') + 1]).toBe(chatId);
-    expect(argv[argv.indexOf('--model') + 1]).toBe('grok-4.7-medium');
+    expect(argv).not.toContain('--model');
   });
 
   it('continues the named chat with --session', async () => {

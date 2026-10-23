@@ -62,11 +62,9 @@ One dispatch per coherent slice. Run at most three Cursor jobs at once.
 
 ## Model
 
-Omit `--model`. The plugin then runs `grok-4.7-medium`, the only Grok 4.7 setting the Plus
-plan allows. Do not try to change Cursor's own default instead: every run writes the account
-default (Composer 2.5 on Plus) back into `~/.cursor/cli-config.json`. Pass a model only when
-the user names one, and never invent an id; `/cursor:setup` lists the ones the account has.
-An id the plan does not allow is refused, and the refusal arrives as the `⚠ error:` line.
+Omit `--model`. Cursor then uses the account default, which `/cursor:setup` reports. Pass a
+model only when the user names one, and never invent an id; `/cursor:setup` lists the ones
+the account has.
 
 ## Run it
 
@@ -87,7 +85,7 @@ An id the plan does not allow is refused, and the refusal arrives as the `⚠ er
 | --- | --- |
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
-| `--model <id>` | A model from `cursor-agent models`. Defaults to `grok-4.7-medium`. Omit unless the user chose one. |
+| `--model <id>` | A model from `cursor-agent models`. Omit unless the user chose one. |
 | `--timeout <sec>` | Kill the run after this many seconds. Off by default. cursor-agent has no overall or idle limit of its own; it only retries or aborts a model stream that sends nothing for 30 s. |
 | `--session <chatId>` | Continue that Cursor chat. `/cursor:resume` sets it from a job id; a fresh dispatch is the default. |
 
