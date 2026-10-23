@@ -11,7 +11,12 @@
       "source": "./",
       "description": "Standalone skills: align-intent, tailwind, snapshot, recall, lean-claude.",
       "category": "engineering",
-      "keywords": ["skills", "tailwind", "context", "snapshot"]
+      "keywords": [
+        "skills",
+        "tailwind",
+        "context",
+        "snapshot"
+      ]
     },
     {
       "name": "cursor",
@@ -19,7 +24,12 @@
       "source": "./plugins/cursor",
       "description": "Delegate coding tasks from Claude Code to the Cursor CLI.",
       "category": "engineering",
-      "keywords": ["cursor", "cursor-agent", "composer", "agent-delegation"],
+      "keywords": [
+        "cursor",
+        "cursor-agent",
+        "composer",
+        "agent-delegation"
+      ],
       "strict": false
     },
     {
@@ -28,7 +38,11 @@
       "source": "./plugins/grok",
       "description": "Delegate coding tasks from Claude Code to the Grok Build CLI.",
       "category": "engineering",
-      "keywords": ["grok", "xai", "agent-delegation"],
+      "keywords": [
+        "grok",
+        "xai",
+        "agent-delegation"
+      ],
       "strict": false
     },
     {
@@ -36,7 +50,11 @@
       "source": "./plugins/agy",
       "description": "Delegate coding tasks from Claude Code to the Antigravity CLI.",
       "category": "engineering",
-      "keywords": ["agy", "antigravity", "agent-delegation"],
+      "keywords": [
+        "agy",
+        "antigravity",
+        "agent-delegation"
+      ],
       "strict": false
     }
   ]
