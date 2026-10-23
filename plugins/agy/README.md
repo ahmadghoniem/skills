@@ -98,8 +98,8 @@ The plugin uses `gemini-3.8-flash` at the chosen `--effort` (`low` by default), 
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | A model family (`gemini-3.1-pro`) or a full id (`gemini-3.8-flash-high`) from `agy models`. Omit it and `gemini-3.8-flash` at the chosen `--effort` is used. |
-| `--effort <level>` | Sent with a family. Dropped when the id already encodes effort. A level the model lacks is refused by agy, which names the ones it has. |
-| `--timeout <sec>` | Overrides print-timeout and the outer watchdog. Default 3600 (60m); watchdog is that plus 60s. |
+| `--effort <level>` | Sent with a family. Dropped when the id already encodes effort. A level the model lacks is refused by agy, which names the ones it has. A family passed without it runs at agy's default level for that model (agy 1.3.4+). |
+| `--timeout <sec>` | Sets agy's print-timeout and an outer watchdog 60s later. No limit by default; `/agy:cancel` stops a run. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. |
 | `--continue` | Resume agy's most recent conversation in this workspace (agy 1.2.1+). The plugin never falls back to it. |
@@ -133,7 +133,7 @@ The warnings below fire on runs agy reports as finished:
 | `⚠ agy skipped N actions it was not allowed to take` | Permission denials. Should never fire, since the plugin bypasses permissions. |
 | `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; on an unknown model, the valid ids are listed instead. |
 | `⚠ watchdog killed the run` | print-timeout plus 60s grace elapsed. |
-| `⚠ agy hit its print timeout after 1h0m0s` | agy stopped itself at its own limit and returned partial output, still reporting `SUCCESS`. |
+| `⚠ agy hit its print timeout after 15m0s` | agy stopped itself at its own limit and returned partial output, still reporting `SUCCESS`. |
 | `⚠ this run can be resumed where it stopped` | The run ended before agy finished and kept its conversation. |
 
 `delegate.mjs` exits 1 when the run did not finish. That is a fact about the run, not a verdict on the work.

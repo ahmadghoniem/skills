@@ -2,7 +2,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
-  DEFAULT_PRINT_TIMEOUT_SEC,
   MAX_STDIN_CHARS,
   WATCHDOG_GRACE_SEC,
   buildArgs,
@@ -102,7 +101,7 @@ function parseFlags(argv) {
     positional,
     model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
     effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    timeout: parseTimeout(flags['timeout'], DEFAULT_PRINT_TIMEOUT_SEC),
+    timeout: parseTimeout(flags['timeout'], 0),
     sandbox: flags['sandbox'] === true,
     help: flags['help'] === true,
     conversation,
@@ -220,7 +219,7 @@ async function runAndRecord(flags, prompt, jobId, root) {
     args,
     input: stdinLine(message),
     cwd: root,
-    timeoutSec: flags.timeout + WATCHDOG_GRACE_SEC,
+    timeoutSec: flags.timeout > 0 ? flags.timeout + WATCHDOG_GRACE_SEC : undefined,
     onSpawn: (cliPid) => {
       try {
         updateJob(root, jobId, { cliPid });

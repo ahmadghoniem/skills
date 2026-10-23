@@ -15,7 +15,6 @@ import { parseLine } from './parse.mjs';
 import { modelCachePath } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 
-export const DEFAULT_PRINT_TIMEOUT_SEC = 3600;
 export const WATCHDOG_GRACE_SEC = 60;
 
 /** Max age, in days, before the weekly model-cache refresh trigger fires. */
@@ -81,7 +80,7 @@ export function familyLevels(models) {
  * @returns {string}
  */
 export function formatPrintTimeout(seconds) {
-  const n = Math.max(1, Math.round(Number(seconds) || DEFAULT_PRINT_TIMEOUT_SEC));
+  const n = Math.max(1, Math.round(Number(seconds) || 1));
   const m = Math.floor(n / 60);
   const s = n % 60;
   if (m > 0 && s === 0) return `${m}m`;
@@ -128,8 +127,8 @@ export function stdinLine(text) {
 /**
  * Copy one of the plugin's agy agents (`agy-agents/<name>.md`) into agy's
  * global agents folder when it is missing or differs. agy only finds custom
- * agents there, and `--agent` with an unknown name silently runs the default
- * agent, so this runs before every fresh dispatch.
+ * agents there, and since 1.3.4 `--agent` with an unknown name fails the run
+ * (status ERROR, exit 1), so this runs before every fresh dispatch.
  *
  * @param {string} name
  * @returns {void}
@@ -258,10 +257,10 @@ export function buildArgs(opts) {
   if (!isResume) {
     args.push('--add-dir', opts.addDir);
   }
-  args.push(
-    '--print-timeout',
-    formatPrintTimeout(opts.printTimeoutSec ?? DEFAULT_PRINT_TIMEOUT_SEC),
-  );
+  // No --timeout means no limit: agy's own default (0) waits for the turn to end.
+  if (opts.printTimeoutSec > 0) {
+    args.push('--print-timeout', formatPrintTimeout(opts.printTimeoutSec));
+  }
   if (opts.logFile) args.push('--log-file', opts.logFile);
   if (opts.model) args.push('--model', opts.model);
   if (opts.effort && !modelEncodesEffort(opts.model)) {

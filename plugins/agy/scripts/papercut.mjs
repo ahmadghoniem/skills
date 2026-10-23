@@ -60,8 +60,11 @@ export async function main(rawArgv) {
     return 0;
   }
 
-  if (typeof flags.resolve === 'string' && flags.resolve.trim()) {
-    return resolveCut(flags.resolve.trim(), flags.note);
+  // The argument parser turns an all-digit value into a number, and a cut id
+  // can be all digits (`26570058`).
+  const target = typeof flags.resolve === 'number' ? String(flags.resolve) : flags.resolve;
+  if (typeof target === 'string' && target.trim()) {
+    return resolveCut(target.trim(), typeof flags.note === 'number' ? String(flags.note) : flags.note);
   }
 
   const source = typeof flags.source === 'string' ? flags.source.trim() : '';

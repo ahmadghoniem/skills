@@ -130,12 +130,37 @@ function oneLine(s) {
 }
 
 /**
+ * Whether a stderr line repeats what the same run files under another key:
+ * agy's print-timeout notice (`timeout`), or its error, printed again as
+ * `error: <text>` and as an `AGY_ERROR: {...}` line (`agy-error`). Every
+ * `stderr` cut recorded on agy 1.3.2 was such a copy, so each of those runs
+ * counted twice.
+ *
+ * @param {string} line one stderr line, already through `oneLine`
+ * @param {{id: string, line: string}[]} anomalyList
+ * @returns {boolean}
+ */
+function repeatsAnotherCut(line, anomalyList) {
+  if (anomalyList.some((a) => a.id === 'timeout') && /^\[agy\] print timeout after /.test(line)) {
+    return true;
+  }
+  const err = anomalyList.find((a) => a.id === 'agy-error');
+  if (!err) return false;
+  if (line.startsWith('AGY_ERROR:')) return true;
+  const text = line.replace(/^error:\s*/, '');
+  const first = oneLine(err.line);
+  return text !== '' && first !== '' && (first.startsWith(text) || text.startsWith(first));
+}
+
+/**
  * Build the `detected` rows for a finished run.
  *
  * Takes the anomalies the renderer already computed, so the log and the ⚠ lines
  * the user saw cannot drift apart. Only `DETECTED_WARNINGS` ids produce rows.
  * Failed tool calls become one row per tool, so each tool's failures group,
- * and close, on their own.
+ * and close, on their own. Stderr lines that repeat a `timeout` or
+ * `agy-error` cut of the same run are left out of the `stderr` row, which is
+ * not written when nothing else is left.
  *
  * @param {{id: string, line: string, detail?: string[]}[]} anomalyList
  * @param {Record<string, unknown>} ctx run summary fields
@@ -187,7 +212,8 @@ export function detectedCuts(anomalyList, ctx) {
         out.push(row(`tool-errors:${tool}`, distinct[0], distinct.slice(1, 4), messages.length));
       }
     } else if (a.id === 'stderr' && stderrTail.length) {
-      out.push(row('stderr', stderrTail[0], stderrTail.slice(1, 10)));
+      const own = stderrTail.filter((l) => !repeatsAnotherCut(l, anomalyList));
+      if (own.length) out.push(row('stderr', own[0], own.slice(1, 10)));
     } else {
       out.push(row(a.id, oneLine(a.line), (a.detail ?? []).map(oneLine).filter(Boolean).slice(0, 5)));
     }

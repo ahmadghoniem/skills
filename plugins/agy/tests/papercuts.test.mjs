@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -65,6 +65,34 @@ describe('detectedCuts', () => {
     expect(cuts).toHaveLength(1);
     expect(cuts[0]).toMatchObject({ source: 'detected', key: 'stderr', text: 'auth required', toolCalls: 47 });
     expect(cuts[0].evidence).toEqual({ agyStatus: 'SUCCESS', exitCode: 0, more: ['retry later'] });
+  });
+
+  // agy prints its timeout notice and its error on stderr too; those runs
+  // already file a `timeout` or `agy-error` cut.
+  it('leaves out stderr lines that repeat a timeout or agy-error cut of the same run', async () => {
+    const { detectedCuts } = await lib();
+    const timeoutLine = '[agy] print timeout after 15m0s with turn in progress; returning partial output';
+    const timedOut = detectedCuts(
+      [
+        { id: 'stderr', line: 'agy wrote to stderr:', detail: [timeoutLine] },
+        { id: 'timeout', line: 'agy hit its print timeout after 15m0s; the output is partial' },
+      ],
+      { ...ctx, stderrTail: [timeoutLine] },
+    );
+    expect(timedOut.map((c) => c.key)).toEqual(['timeout']);
+
+    const quota = 'Individual quota reached. Resets in 3h20m19s.';
+    const errored = detectedCuts(
+      [
+        { id: 'stderr', line: 'agy wrote to stderr:', detail: [] },
+        { id: 'agy-error', line: quota },
+      ],
+      { ...ctx, stderrTail: [`error: ${quota}`, 'AGY_ERROR: {"status":"RESOURCE_EXHAUSTED"}', 'dial tcp: no such host'] },
+    );
+    expect(errored.map((c) => [c.key, c.text])).toEqual([
+      ['stderr', 'dial tcp: no such host'],
+      ['agy-error', quota],
+    ]);
   });
 
   // Keyed by tool, so a failure in one tool never counts against a fix to another.
@@ -224,6 +252,18 @@ describe('the review /agy:update prints', () => {
     expect(out).toContain('1 open papercut in 1 cluster');
     // An id closure says nothing about the key, so the later cut is not a recurrence.
     expect(out).not.toContain('Recurred');
+  });
+
+  it('closes a cut whose id is all digits', async () => {
+    const { main } = await import('../scripts/papercut.mjs');
+    const { formatOpenPapercuts } = await lib();
+    appendFileSync(
+      join(home, 'papercuts.jsonl'),
+      `${JSON.stringify({ id: '26570058', ...cut('2026-09-01T00:00:00Z') })}\n`,
+      'utf8',
+    );
+    expect(await quiet(() => main(['--resolve', '26570058', '--note', 'one-off']))).toBe(0);
+    expect(formatOpenPapercuts()).toBe('');
   });
 
   it('refuses to resolve an unknown key or id, or one without a note', async () => {

@@ -74,7 +74,7 @@ Models agy accepts right now (family, then the effort levels it takes):
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
 
-Pass `--model <family> --effort <level>`, or a full id from that list with no `--effort`. agy rejects a level the model does not have, and its error names the ones it has.
+Pass `--model <family> --effort <level>`, or a full id from that list with no `--effort`. A family with no `--effort` runs at agy's default level for that model, not `low`. agy rejects a level the model does not have, and its error names the ones it has.
 
 ## Run it
 
@@ -95,7 +95,7 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
 | `--effort <level>` | `low`, `medium`, or `high`. Picks the `gemini-3.8-flash` id at that level. Defaults to `low`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
-| `--timeout <sec>` | Overrides `--print-timeout` and the outer watchdog. Default 3600 (60m); the watchdog is that plus 60s grace. |
+| `--timeout <sec>` | Sets agy's `--print-timeout` and an outer watchdog 60s later. Omitted by default: the run goes until agy finishes. `/agy:cancel` stops it. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |

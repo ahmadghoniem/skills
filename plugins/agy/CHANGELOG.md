@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (agy 1.4.6)
+
+Checked against agy 1.4.6.
 
 ### Added
 
@@ -83,6 +85,10 @@
 
 ### Changed
 
+- **No time limit by default.** A run used to stop at 60 minutes (agy's `--print-timeout`,
+  plus a watchdog 60s later), cutting off work in progress. Without `--timeout` the plugin
+  now passes no `--print-timeout`, agy's own default of waiting for the turn to end, and arms
+  no watchdog. `--timeout <sec>` sets both as before.
 - **One record per job.** A job folder now holds only `<job>.json`, `<job>.agy.log`
   and the scratch directory; agy's brain transcript, written as the run goes, is the
   record of the conversation. The job record now stores the `agent` it ran.
@@ -127,6 +133,18 @@
   ones included, and no longer pipes searches into `head`. On five Plannotator lookups,
   bare names such as `App.tsx:12` cost 0.12 of recall on one task, and `| head` hid
   matches the model then marked as inferred. The bash tool's own cut says what it left out.
+- **Stderr lines that repeat another cut are no longer filed again.** agy prints its
+  print-timeout notice and its error on stderr as well, so each such run was logged under
+  `stderr` and again under `timeout` or `agy-error`: all 8 `stderr` cuts on agy 1.3.2 were
+  copies. The `⚠ agy wrote to stderr:` line still shows every line.
+- `/agy:papercut --resolve` accepts a cut id made only of digits (`26570058`), which the
+  argument parser had turned into a number.
+- **Docs: `--agent` with an unknown name fails the run since agy 1.3.4** (status `ERROR`,
+  exit 1, the available agents listed) instead of running the default agent. The agents are
+  still installed before every fresh dispatch: agy finds custom agents only in
+  `~/.gemini/config/agents/`.
+- **Docs: a model family passed without `--effort` runs at agy's default level** for that
+  model since agy 1.3.4, instead of failing.
 
 ### Removed
 
