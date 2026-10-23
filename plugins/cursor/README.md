@@ -80,15 +80,18 @@ Not passed: `--trust` (a headless run does not ask for workspace trust), `--appr
 
 Cursor has no switch for the context it loads. It reads Claude-format files as well as its own, and in the CLI that cannot be turned off: `getThirdPartyExtensibilityEnabled` always returns true, and nothing in the CLI reads Cursor's `thirdPartyExtensibility` setting. `--exclude-workspace-context` is refused on the Free and Plus plans (`Workspace context exclusion is not allowed for this user, team, or selected model`).
 
-So the plugin runs Cursor with `HOME` and `USERPROFILE` set to `~/.ccd/cursor-home`. Before each run it copies two files there: `~/.cursor/cli-config.json`, so the default model and settings are yours, and `~/.gitconfig`, so git in Cursor's shell keeps your name and settings. The login is not stored in the home folder, so it still works. Cursor then does not load anything else from your home folder: `~/.claude/` (CLAUDE.md, rules, skills, commands, hooks and permissions), `~/.agents/`, `~/.cursor/skills`, `~/.cursor/mcp.json` or your other Cursor CLI files. Only Cursor's built-in skills remain. A "Reply OK" run took 4,769 input tokens this way and 8,389 with the real home.
+Cursor finds your user-level files through `os.homedir()`, which reads `USERPROFILE` on Windows. So the plugin sets `USERPROFILE` to an empty `~/.ccd/cursor-home` and keeps the rest in place with two variables:
+
+- `CURSOR_CONFIG_DIR` stays `~/.cursor`, so your settings, default model, `mcp.json` and chats are the same as in your own terminal, and `cursor-agent ls` lists plugin runs.
+- `HOME` stays your home folder, so git in Cursor's shell reads your `~/.gitconfig`.
+
+The login is not stored in either, so it still works. Cursor then does not load `~/.claude/` (CLAUDE.md, rules, skills, commands, hooks and permissions), `~/.agents/` or `~/.cursor/skills`. Only Cursor's built-in skills remain. A "Reply OK" run took 4,769 input tokens this way and 8,389 with the real home. Tools in Cursor's shell that find their config through `USERPROFILE` (Windows OpenSSH, npm's `~/.npmrc`) do not see it.
 
 Cursor still loads, from the repo and every parent directory up to the drive root:
 
 - `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md` and `.cursor/rules/`
 - skills under `.cursor/`, `.claude/`, `.agents/`, `.codex/` and `.grok/`
 - hooks and permissions from `.claude/settings.json`
-
-Chats from plugin runs are stored under `~/.ccd/cursor-home/.cursor/chats`, so `/cursor:resume` finds them and an interactive `cursor-agent ls` does not.
 
 ## Other notes
 

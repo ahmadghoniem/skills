@@ -23,8 +23,8 @@ Cursor starts with none of your context. It does not see:
 
 - this conversation
 - anything under your home folder: `~/.claude/CLAUDE.md`, `~/.claude/rules/`, your skills,
-  hooks and MCP servers. The plugin runs Cursor with its own home folder, which holds only
-  your Cursor settings and `.gitconfig`.
+  hooks and Cursor skills. The plugin points Cursor's home folder at an empty one and
+  keeps only your Cursor settings and git config.
 
 It does load on its own, from the repo and every parent directory: `AGENTS.md`,
 `CLAUDE.md`, `CLAUDE.local.md`, `.cursor/rules/`, the skills under `.cursor/`, `.claude/`

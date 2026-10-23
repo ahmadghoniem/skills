@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HAPPY_FIXTURE, STUB_BIN, makeTempHome } from './helpers.mjs';
@@ -195,7 +195,7 @@ describe('escalateSigkill', () => {
   });
 });
 
-describe('runHome', () => {
+describe('runEnv', () => {
   let tmp;
   let saved;
 
@@ -212,25 +212,19 @@ describe('runHome', () => {
     tmp.cleanup();
   });
 
-  it('copies only the Cursor config and .gitconfig into the run home', async () => {
-    const { runHome } = await import('../scripts/lib/cursor.mjs');
-    const real = join(tmp.dir, 'real');
-    mkdirSync(join(real, '.cursor'), { recursive: true });
-    mkdirSync(join(real, '.claude'), { recursive: true });
-    writeFileSync(join(real, '.cursor', 'cli-config.json'), '{"model":"x"}');
-    writeFileSync(join(real, '.gitconfig'), '[user]\n');
-    writeFileSync(join(real, '.claude', 'CLAUDE.md'), 'rules');
-    const home = runHome(real);
-    expect(home).toBe(join(tmp.dir, 'ccd', 'cursor-home'));
-    expect(readFileSync(join(home, '.cursor', 'cli-config.json'), 'utf8')).toBe('{"model":"x"}');
-    expect(readFileSync(join(home, '.gitconfig'), 'utf8')).toBe('[user]\n');
-    expect(() => readFileSync(join(home, '.claude', 'CLAUDE.md'))).toThrow();
+  it('moves USERPROFILE to an empty folder and keeps HOME and the Cursor config dir', async () => {
+    const { runEnv } = await import('../scripts/lib/cursor.mjs');
+    const env = runEnv({ HOME: 'H', USERPROFILE: 'U', PATH: 'P' });
+    expect(env.USERPROFILE).toBe(join(tmp.dir, 'ccd', 'cursor-home'));
+    expect(readdirSync(env.USERPROFILE)).toEqual([]);
+    expect(env.HOME).toBe('H');
+    expect(env.PATH).toBe('P');
+    expect(env.CURSOR_CONFIG_DIR).toMatch(/\.cursor$/);
   });
 
-  it('works when the user has neither file', async () => {
-    const { runHome } = await import('../scripts/lib/cursor.mjs');
-    const home = runHome(join(tmp.dir, 'empty'));
-    expect(() => readFileSync(join(home, '.gitconfig'))).toThrow();
+  it('keeps a CURSOR_CONFIG_DIR the user already set', async () => {
+    const { runEnv } = await import('../scripts/lib/cursor.mjs');
+    expect(runEnv({ HOME: 'H', CURSOR_CONFIG_DIR: 'C' }).CURSOR_CONFIG_DIR).toBe('C');
   });
 });
 

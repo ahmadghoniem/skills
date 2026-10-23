@@ -104,13 +104,16 @@ not approve, and a headless run cannot answer.
   user, team, or selected model`. The CLI's `getThirdPartyExtensibilityEnabled` is
   `()=>!0` and no caller replaces it; `importThirdPartyPlugins` is hard-coded false, so
   Claude Code plugins are never imported.
-- **The run home hides user-level context and keeps the login** (2026.10.22, Plus). With
-  `HOME`/`USERPROFILE` pointed at a folder holding only `.cursor/cli-config.json`, the run
-  stays signed in (the token is not in `cli-config.json`), lists only Cursor's built-in
-  skills, and `git config user.name` still answers once `.gitconfig` is copied in.
+- **An empty `USERPROFILE` hides user-level context and keeps the login** (2026.10.22,
+  Plus). With `USERPROFILE` pointed at an empty folder, `CURSOR_CONFIG_DIR` at `~/.cursor`
+  and `HOME` unchanged, the run stays signed in, lists only Cursor's built-in skills (not
+  `~/.cursor/skills/reui`), `git config user.name` answers, and the chat is written to
+  `~/.cursor/chats`. Cursor reads `.claude/settings.json` and the skill folders through
+  `os.homedir()`, and its config dir through `CURSOR_CONFIG_DIR`.
 - **Plus plan models** (2026.10.22): `auto` is refused (`Cannot use this model: auto`);
-  plain `grok-4.7` is refused (`Model unavailable on Plus`); `grok-4.7-medium` and the
-  other `grok-4.7-<effort>` ids, `composer-2.5` and `cursor-grok-4.6-medium` run.
+  plain `grok-4.7`, `grok-4.7-low`, `grok-4.7-low-fast` and `grok-4.7-medium-fast` are
+  refused (`Model unavailable on Plus ... with fixed settings`); `grok-4.7-medium` runs,
+  although `cursor-agent models` lists all the `grok-4.7-<effort>` ids.
 - **`--trust` is not needed headless.** A print-mode run in an untrusted repo works and
   loads the same context.
 - **The model in `system`/`init` is a display name** (`"Auto"`, `"Grok 4.7 256K High

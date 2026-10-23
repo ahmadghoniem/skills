@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -9,28 +9,27 @@ import { pluginHome } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 import { defaultWindowsBin } from './winbin.mjs';
 
-/** Files copied from the user's home before each run; everything else there stays hidden. */
-const HOME_FILES = [join('.cursor', 'cli-config.json'), '.gitconfig'];
-
 /**
- * The home folder a run gets, `~/.ccd/cursor-home`. Cursor has no switch for
- * the user-level context it loads (skills under `~/.claude`, `~/.agents` and
- * `~/.cursor`, the hooks in `~/.claude/settings.json`, Cursor user rules), so
- * the run is pointed at a home that has none of it. The login is not stored in
- * the home folder. `cli-config.json` is copied so the model and settings follow
- * the user's, and `.gitconfig` so git in Cursor's shell keeps the user's config.
+ * The environment a run gets. Cursor has no switch for the user-level context
+ * it loads (skills under `~/.claude`, `~/.agents` and `~/.cursor`, the hooks in
+ * `~/.claude/settings.json`), and finds it through `os.homedir()`, which reads
+ * `USERPROFILE` on Windows. So `USERPROFILE` points at an empty
+ * `~/.ccd/cursor-home`, and two variables keep the rest where it was:
+ * `CURSOR_CONFIG_DIR` (settings, default model and chats) and `HOME`, which git
+ * in Cursor's shell reads for `.gitconfig`. The login is not stored in either.
  *
- * @param {string} [realHome]
- * @returns {string}
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {NodeJS.ProcessEnv}
  */
-export function runHome(realHome = homedir()) {
+export function runEnv(env = process.env) {
   const home = join(pluginHome(), 'cursor-home');
-  mkdirSync(join(home, '.cursor'), { recursive: true });
-  for (const file of HOME_FILES) {
-    const from = join(realHome, file);
-    if (existsSync(from)) copyFileSync(from, join(home, file));
-  }
-  return home;
+  mkdirSync(home, { recursive: true });
+  return {
+    ...env,
+    USERPROFILE: home,
+    HOME: env.HOME || homedir(),
+    CURSOR_CONFIG_DIR: env.CURSOR_CONFIG_DIR || join(homedir(), '.cursor'),
+  };
 }
 
 /**
@@ -234,11 +233,10 @@ export async function runHeadless(opts) {
     chatId: opts.chatId,
     resumeChatId: opts.resumeChatId,
   });
-  const home = runHome();
   const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: runEnv(),
     // Mandatory on Windows: a dispatch from a backgrounded Bash call has no
     // console, and without this the OS opens a new terminal window for the
     // child that stays up for the whole run.

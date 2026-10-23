@@ -6,11 +6,11 @@ Checked against cursor-agent `2026.10.22-27dcf5f` on the Plus plan.
 
 ### Changed
 
-- **Cursor runs with its own home folder, `~/.ccd/cursor-home`.** Cursor has no switch for
-  the user-level context it loads, so runs no longer see `~/.claude/` (CLAUDE.md, rules,
-  skills, hooks), `~/.agents/` or `~/.cursor/` skills and MCP servers. Before each run the
-  plugin copies in `~/.cursor/cli-config.json` and `~/.gitconfig`; the login is unaffected.
-  A "Reply OK" run dropped from 8,389 to 4,769 input tokens. Repo files still load.
+- **Cursor runs with `USERPROFILE` set to an empty `~/.ccd/cursor-home`.** Cursor has no
+  switch for the user-level context it loads, so runs no longer see `~/.claude/` (CLAUDE.md,
+  rules, skills, hooks), `~/.agents/` or `~/.cursor/skills`. `CURSOR_CONFIG_DIR` and `HOME`
+  keep your Cursor settings, chats and git config; the login is unaffected. A "Reply OK"
+  run dropped from 8,389 to 4,769 input tokens. Repo files still load.
 - **The README no longer says Cursor's `thirdPartyExtensibility` setting controls this.**
   The CLI ignores it.
 
