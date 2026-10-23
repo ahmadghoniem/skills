@@ -22,15 +22,13 @@ This command prints one (``cursor `add-retry-to-fetchuser-a7f3` ``). `/cursor:re
 Cursor starts with none of your context. It does not see:
 
 - this conversation
-- `~/.claude/CLAUDE.md` and `~/.claude/rules/`
-- your Claude Code skills from plugins, and your MCP servers unless they are also in
-  `~/.cursor/mcp.json`
+- anything under your home folder: `~/.claude/CLAUDE.md`, `~/.claude/rules/`, your skills,
+  hooks and MCP servers. The plugin runs Cursor with its own home folder, which holds only
+  your Cursor settings and `.gitconfig`.
 
 It does load on its own, from the repo and every parent directory: `AGENTS.md`,
-`CLAUDE.md`, `CLAUDE.local.md` and `.cursor/rules/`. It also loads the user's Cursor
-rules, the MCP servers in `~/.cursor/mcp.json`, the skills under `.cursor/`, `.claude/`
-and `.agents/`, and the hooks in `~/.claude/settings.json` and the repo's
-`.claude/settings.json`. Do not repeat those in the brief.
+`CLAUDE.md`, `CLAUDE.local.md`, `.cursor/rules/`, the skills under `.cursor/`, `.claude/`
+and `.agents/`, and the hooks in `.claude/settings.json`. Do not repeat those in the brief.
 
 Whatever of the first list the result depends on goes in the brief.
 
@@ -65,8 +63,8 @@ One dispatch per coherent slice. Run at most three Cursor jobs at once.
 
 Omit `--model`. Cursor then uses the account default (`/cursor:setup` shows it), so a new
 model applies without a plugin change. Pass a model only when the user names one, and
-never invent an id; `/cursor:setup` lists the ones the account has. On the Free plan only
-`auto` runs; any other id is refused, and the refusal arrives as the `⚠ error:` line.
+never invent an id; `/cursor:setup` lists the ones the account has. An id the plan does
+not allow is refused, and the refusal arrives as the `⚠ error:` line.
 
 ## Run it
 

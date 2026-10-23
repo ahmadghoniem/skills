@@ -1,6 +1,6 @@
 {
   "name": "claude-cursor-delegate",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Use the Cursor CLI from Claude Code to delegate coding tasks.",
   "type": "module",
   "license": "MIT",

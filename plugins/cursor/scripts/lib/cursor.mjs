@@ -1,10 +1,37 @@
 import { once } from 'node:events';
-import { createWriteStream, writeFileSync } from 'node:fs';
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
+import { pluginHome } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 import { defaultWindowsBin } from './winbin.mjs';
+
+/** Files copied from the user's home before each run; everything else there stays hidden. */
+const HOME_FILES = [join('.cursor', 'cli-config.json'), '.gitconfig'];
+
+/**
+ * The home folder a run gets, `~/.ccd/cursor-home`. Cursor has no switch for
+ * the user-level context it loads (skills under `~/.claude`, `~/.agents` and
+ * `~/.cursor`, the hooks in `~/.claude/settings.json`, Cursor user rules), so
+ * the run is pointed at a home that has none of it. The login is not stored in
+ * the home folder. `cli-config.json` is copied so the model and settings follow
+ * the user's, and `.gitconfig` so git in Cursor's shell keeps the user's config.
+ *
+ * @param {string} [realHome]
+ * @returns {string}
+ */
+export function runHome(realHome = homedir()) {
+  const home = join(pluginHome(), 'cursor-home');
+  mkdirSync(join(home, '.cursor'), { recursive: true });
+  for (const file of HOME_FILES) {
+    const from = join(realHome, file);
+    if (existsSync(from)) copyFileSync(from, join(home, file));
+  }
+  return home;
+}
 
 /**
  * The version in `cursor-agent --version` output, e.g. `2026.10.22-27dcf5f`.
@@ -207,10 +234,11 @@ export async function runHeadless(opts) {
     chatId: opts.chatId,
     resumeChatId: opts.resumeChatId,
   });
+  const home = runHome();
   const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    env: { ...process.env, HOME: home, USERPROFILE: home },
     // Mandatory on Windows: a dispatch from a backgrounded Bash call has no
     // console, and without this the OS opens a new terminal window for the
     // child that stays up for the whole run.

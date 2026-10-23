@@ -39,7 +39,7 @@ Jobs are named from the task's first words plus a 4-character suffix, such as `a
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. |
-| `--model <id>` | Pin a model. Omitted, Cursor uses the account default, which `/cursor:setup` shows. On the Free plan only `auto` runs; a named model is refused and the refusal is shown as `⚠ error:`. |
+| `--model <id>` | Pin a model. Omitted, Cursor uses the account default, which `/cursor:setup` shows. A model the plan does not allow is refused and the refusal is shown as `⚠ error:`. |
 | `--timeout <sec>` | Kill the run after this many seconds. Off by default. cursor-agent has no overall or idle limit of its own; see `docs/unverified.md`. |
 | `--session <chat-id>` | Continue that Cursor chat. `/cursor:resume` sets it for you. |
 
@@ -78,15 +78,17 @@ Not passed: `--trust` (a headless run does not ask for workspace trust), `--appr
 
 ### What Cursor loads on its own
 
-Cursor has no per-run switch for its context, so it loads, from the repo and every parent directory up to the drive root:
+Cursor has no switch for the context it loads. It reads Claude-format files as well as its own, and in the CLI that cannot be turned off: `getThirdPartyExtensibilityEnabled` always returns true, and nothing in the CLI reads Cursor's `thirdPartyExtensibility` setting. `--exclude-workspace-context` is refused on the Free and Plus plans (`Workspace context exclusion is not allowed for this user, team, or selected model`).
+
+So the plugin runs Cursor with `HOME` and `USERPROFILE` set to `~/.ccd/cursor-home`. Before each run it copies two files there: `~/.cursor/cli-config.json`, so the default model and settings are yours, and `~/.gitconfig`, so git in Cursor's shell keeps your name and settings. The login is not stored in the home folder, so it still works. Cursor then does not load anything else from your home folder: `~/.claude/` (CLAUDE.md, rules, skills, commands, hooks and permissions), `~/.agents/`, `~/.cursor/skills`, `~/.cursor/mcp.json` or your other Cursor CLI files. Only Cursor's built-in skills remain. A "Reply OK" run took 4,769 input tokens this way and 8,389 with the real home.
+
+Cursor still loads, from the repo and every parent directory up to the drive root:
 
 - `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md` and `.cursor/rules/`
 - skills under `.cursor/`, `.claude/`, `.agents/`, `.codex/` and `.grok/`
-- hooks and permissions from `.claude/settings.json` and `~/.claude/settings.json`, and commands from `~/.claude/commands`
+- hooks and permissions from `.claude/settings.json`
 
-It also loads your Cursor user rules and the MCP servers in `~/.cursor/mcp.json`. It does not see the Claude conversation, `~/.claude/CLAUDE.md` or `~/.claude/rules/`.
-
-`--exclude-workspace-context` exists in the CLI but is refused for Free accounts (`Workspace context exclusion is not allowed for this user, team, or selected model`). Whether the Claude-format files load follows Cursor's `thirdPartyExtensibility` setting (on by default); it is not a per-run flag and also applies to interactive Cursor. A "Reply with just OK" run in this repository took 11,270 input tokens with the 0.12.0 flags and 12,227 with 0.13.0's.
+Chats from plugin runs are stored under `~/.ccd/cursor-home/.cursor/chats`, so `/cursor:resume` finds them and an interactive `cursor-agent ls` does not.
 
 ## Other notes
 

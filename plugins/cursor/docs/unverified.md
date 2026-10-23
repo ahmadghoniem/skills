@@ -99,9 +99,18 @@ not approve, and a headless run cannot answer.
   call them removed and be wrong. `--single-turn`, `--disable-indexing`,
   `--disable-codebase-ref` and `--disable-project-configs` are hidden too and not used.
 - **No per-run switch for context.** See the README's "What Cursor loads on its own".
-  `--exclude-workspace-context` is refused for this account with
+  `--exclude-workspace-context` is refused on Free and Plus with
   `RetriableError: [invalid_argument] Workspace context exclusion is not allowed for this
-  user, team, or selected model`.
+  user, team, or selected model`. The CLI's `getThirdPartyExtensibilityEnabled` is
+  `()=>!0` and no caller replaces it; `importThirdPartyPlugins` is hard-coded false, so
+  Claude Code plugins are never imported.
+- **The run home hides user-level context and keeps the login** (2026.10.22, Plus). With
+  `HOME`/`USERPROFILE` pointed at a folder holding only `.cursor/cli-config.json`, the run
+  stays signed in (the token is not in `cli-config.json`), lists only Cursor's built-in
+  skills, and `git config user.name` still answers once `.gitconfig` is copied in.
+- **Plus plan models** (2026.10.22): `auto` is refused (`Cannot use this model: auto`);
+  plain `grok-4.7` is refused (`Model unavailable on Plus`); `grok-4.7-medium` and the
+  other `grok-4.7-<effort>` ids, `composer-2.5` and `cursor-grok-4.6-medium` run.
 - **`--trust` is not needed headless.** A print-mode run in an untrusted repo works and
   loads the same context.
 - **The model in `system`/`init` is a display name** (`"Auto"`, `"Grok 4.7 256K High

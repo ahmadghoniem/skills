@@ -15,7 +15,7 @@
     },
     {
       "name": "cursor",
-      "version": "0.13.0",
+      "version": "0.13.1",
       "source": "./plugins/cursor",
       "description": "Delegate coding tasks from Claude Code to the Cursor CLI.",
       "category": "engineering",

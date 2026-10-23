@@ -195,6 +195,45 @@ describe('escalateSigkill', () => {
   });
 });
 
+describe('runHome', () => {
+  let tmp;
+  let saved;
+
+  beforeEach(() => {
+    tmp = makeTempHome();
+    saved = process.env.CCD_HOME;
+    process.env.CCD_HOME = join(tmp.dir, 'ccd');
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.CCD_HOME;
+    else process.env.CCD_HOME = saved;
+    tmp.cleanup();
+  });
+
+  it('copies only the Cursor config and .gitconfig into the run home', async () => {
+    const { runHome } = await import('../scripts/lib/cursor.mjs');
+    const real = join(tmp.dir, 'real');
+    mkdirSync(join(real, '.cursor'), { recursive: true });
+    mkdirSync(join(real, '.claude'), { recursive: true });
+    writeFileSync(join(real, '.cursor', 'cli-config.json'), '{"model":"x"}');
+    writeFileSync(join(real, '.gitconfig'), '[user]\n');
+    writeFileSync(join(real, '.claude', 'CLAUDE.md'), 'rules');
+    const home = runHome(real);
+    expect(home).toBe(join(tmp.dir, 'ccd', 'cursor-home'));
+    expect(readFileSync(join(home, '.cursor', 'cli-config.json'), 'utf8')).toBe('{"model":"x"}');
+    expect(readFileSync(join(home, '.gitconfig'), 'utf8')).toBe('[user]\n');
+    expect(() => readFileSync(join(home, '.claude', 'CLAUDE.md'))).toThrow();
+  });
+
+  it('works when the user has neither file', async () => {
+    const { runHome } = await import('../scripts/lib/cursor.mjs');
+    const home = runHome(join(tmp.dir, 'empty'));
+    expect(() => readFileSync(join(home, '.gitconfig'))).toThrow();
+  });
+});
+
 describe('runHeadless against the stub', () => {
   let tmp;
   const saved = {};
