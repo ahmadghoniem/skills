@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+### Changed
+
+- **No pointer to `CLAUDE.md`.** A task job's environment note named the repository's
+  `CLAUDE.md` when there was no `AGENTS.md` or `GEMINI.md`, so agy read the whole file.
+  Claude now puts what the task needs from it in the brief, as with grok. agy still loads
+  `AGENTS.md` and `GEMINI.md` itself; it has no switch for those.
+
 ## 0.4.0 (agy 1.4.6)
 
 Checked against agy 1.4.6.

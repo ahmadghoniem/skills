@@ -48,8 +48,8 @@ through the bash tool below (`inheritMcp`). Files are created and edited with
 `apply-patch`, a bash function that runs the repo's `tools/apply-patch`.
 `excludeDefaultComponents` drops agy's default prompt components. agy still loads
 `AGENTS.md` and `GEMINI.md` itself, from the workspace and from the directories of the
-files it reads, but never `CLAUDE.md`. When the repository root has a `CLAUDE.md` and
-neither of the others, `delegate.mjs` names it in the environment note of a task job.
+files it reads, but never `CLAUDE.md`. The plugin does not point agy at `CLAUDE.md`
+either: Claude puts what the task needs from it in the brief.
 
 A resumed conversation keeps the agent it started with.
 

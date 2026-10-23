@@ -51,18 +51,6 @@ const USAGE =
   'Usage: /agy:delegate [--chore] [--read <path[:from-to]>,...] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task... | --prompt-file <path>>\n';
 
 /**
- * The rules file to point a task job at: CLAUDE.md when the repo root has it
- * and no AGENTS.md or GEMINI.md, which agy loads itself.
- *
- * @param {string} root
- * @returns {string|undefined}
- */
-function rulesPointer(root) {
-  if (existsSync(join(root, 'AGENTS.md')) || existsSync(join(root, 'GEMINI.md'))) return undefined;
-  return existsSync(join(root, 'CLAUDE.md')) ? 'CLAUDE.md' : undefined;
-}
-
-/**
  * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief
  * reaches agy without going through the command line. Claude writes the file
  * with its Write tool; this only reads it back.
@@ -162,7 +150,6 @@ async function runAndRecord(flags, prompt, jobId, root) {
         workspace: root,
         isGit,
         history: isGit ? await shortHistory(root) : undefined,
-        rulesFile: jobKind(flags) === 'task' ? rulesPointer(root) : undefined,
         scratch,
         files: flags.files,
         task: prompt,

@@ -505,11 +505,10 @@ describe('buildArgs: custom agent', () => {
 });
 
 describe('taskMessage', () => {
-  it('puts the environment note, then the rules pointer, then the task', () => {
-    const msg = taskMessage({ workspace: ADD_DIR, isGit: true, rulesFile: 'CLAUDE.md', task: 'Do X.' });
+  it('puts the environment note, then the task', () => {
+    const msg = taskMessage({ workspace: ADD_DIR, isGit: true, task: 'Do X.' });
     expect(msg).toBe(
-      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n' +
-        '- Repository rules: CLAUDE.md; read it before you change anything.\n\n# Task\n\nDo X.',
+      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n\n# Task\n\nDo X.',
     );
   });
 

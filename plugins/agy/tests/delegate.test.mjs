@@ -222,18 +222,12 @@ describe('delegate.mjs: the message agy receives', () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it('points a task at CLAUDE.md when there is no AGENTS.md or GEMINI.md', async () => {
+  it('does not point a task at CLAUDE.md', async () => {
     writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
     const [, stdin] = await dispatch(['do the thing']);
     const { content } = JSON.parse(stdin).message;
-    expect(content).toContain('- Repository rules: CLAUDE.md; read it before you change anything.');
+    expect(content).not.toContain('CLAUDE.md');
     expect(content).not.toContain('claude rules');
-  });
-
-  it('gives a chore no rules pointer', async () => {
-    writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
-    const [, stdin] = await dispatch(['--chore', 'count the casts']);
-    expect(JSON.parse(stdin).message.content).not.toContain('Repository rules');
   });
 
   it('sends only the follow-up on resume', async () => {
