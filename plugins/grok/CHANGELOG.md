@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.1 — grok 1.0.67
+
+Checked against grok 1.0.67. Every flag `buildArgs` passes is still accepted; the eleven
+`DISALLOWED_TOOLS` names all still match a tool; the ten `COMPAT_OFF_ENV` variables are still
+documented settings; `streaming-json` events are unchanged.
+
+### Fixed
+
+- **`wander` fired on research runs that changed nothing.** `claimsFileChanges` matched across
+  the whole write-up, so a `file://` mention anywhere, or "updated 16 Oct" beside an
+  `ai.google.dev` link, read as a claim of edits. It now needs a create/write verb and a file
+  reference on the same line, with web URLs removed first, and the extension must start with a
+  letter so `$0.75` is not a filename. Replayed over every recorded job, only the two false
+  positives (`85e61cc1`, `050c9a16`) change.
+- **A JSON-wrapped grok error showed as `⚠ error: Internal error: {`.** grok put the provider's
+  message inside pretty-printed JSON, so the first line, which the ⚠ line and the papercut log
+  show, carried nothing. `readableError` puts the JSON's `message` on that line:
+  `Internal error: API error (status 402 Payment Required): Grok Build usage balance exhausted`.
+
+### Changed
+
+- **No watchdog by default.** The plugin killed any run still going at 80 minutes. Without
+  `--timeout` it now arms none; grok's own 3600s idle timeout ends a run that stalls, and
+  only that one.
+- **`engines.grok` is `>=1.0.67`.**
+
 ## 0.5.0 — follows the agy plugin's conventions
 
 Checked against grok 1.0.52. The block below is the rework; the entries after it were written

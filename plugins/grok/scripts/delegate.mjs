@@ -25,11 +25,10 @@ const BOOLEAN_FLAGS = ['help'];
 const USAGE =
   'Usage: /grok:delegate [--model <id>] [--effort low|medium] [--timeout <sec>] [--session <uuid>] <task... | --prompt-file <path>>\n';
 
-// Implementation runs go long, and grok bills per run. Longer than grok's own
-// 3600s idle timeout so grok gets to fail first and say why: its `error`
-// event names the cause, a watchdog kill only reports that something was
-// killed. Override with --timeout <seconds>.
-const DEFAULT_TIMEOUT_SEC = 4800;
+// No watchdog unless --timeout is given. A run that is working is never cut
+// off; a stalled one ends at grok's own 3600s idle timeout, whose `error`
+// event names the cause.
+const DEFAULT_TIMEOUT_SEC = 0;
 
 /**
  * Read the brief from `--prompt-file <path>` so a long or quote-heavy brief

@@ -100,28 +100,52 @@ export function normalisePaths(paths, root) {
  */
 export const MAX_SUMMARY_CHARS = 256_000;
 
+const CLAIM_VERB = /\b(created|wrote|modified|updated)\b/i;
+
+/** A `file://` link, a local markdown link, `the file`, or a `name.ext` token. */
+const FILE_REFERENCE = [/file:\/\//i, /\]\([^)\s]+\)/, /\bthe file\b/i, /\w\.[a-z][a-z0-9]{0,7}\b/i];
+
 /**
  * True when grok's write-up claims it created or modified files.
  *
  * Used only to catch the case where the write-up says work landed and the
- * working tree disagrees. Conservative on purpose: a `file://` link, or a
- * create/write verb sitting next to something shaped like a filename. A false
- * positive here costs a warning line on a run that was fine, which is a worse
- * trade than it sounds — the whole output contract is quiet-by-default.
+ * working tree disagrees. A false positive costs a warning line on a run that
+ * was fine, and the output contract is quiet by default, so one line must hold
+ * both a create/write verb and a file reference, with web URLs removed first.
+ * Matching across the whole write-up fired on research answers that mentioned
+ * a `file://` page, or said "updated 16 Oct" beside an `ai.google.dev` link.
  *
  * @param {string} response
  * @returns {boolean}
  */
 export function claimsFileChanges(response) {
-  const text = String(response ?? '');
-  if (text.length === 0) return false;
-  if (/file:\/\//i.test(text)) return true;
-  if (/\bcreated the file\b/i.test(text)) return true;
-  if (/\bcreated\b/i.test(text) && /\[[^\]]+\]\(/i.test(text)) return true;
-  if (/\b(created|wrote|modified|updated)\b/i.test(text) && /\.[a-z0-9]{1,8}\b/i.test(text)) {
-    return true;
+  return String(response ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\bhttps?:\/\/\S*/gi, ''))
+    .some((line) => CLAIM_VERB.test(line) && FILE_REFERENCE.some((re) => re.test(line)));
+}
+
+/**
+ * grok can wrap the provider's error as pretty-printed JSON after a prefix:
+ * `Internal error: {\n  "message": "API error (status 402 …)", … }`. The first
+ * line is what the ⚠ line and the papercut log show, and `Internal error: {`
+ * says nothing, so the JSON's `message` takes the place of the JSON.
+ *
+ * @param {string} message
+ * @returns {string}
+ */
+export function readableError(message) {
+  const start = message.indexOf('{');
+  if (start < 0) return message;
+  try {
+    const inner = JSON.parse(message.slice(start));
+    if (typeof inner?.message === 'string' && inner.message.trim()) {
+      return `${message.slice(0, start).trim()} ${inner.message.trim()}`.trim();
+    }
+  } catch {
+    // Not JSON after all; keep grok's text as it is.
   }
-  return false;
+  return message;
 }
 
 /**
@@ -248,7 +272,7 @@ export function summariseEvents(events, root) {
     // `(no final message captured)` while an explicit explanation sat in the
     // stream — e.g. `Internal error: inference idle timeout after 3600s`.
     if (type === 'error') {
-      const message = typeof ev.message === 'string' ? ev.message.trim() : '';
+      const message = typeof ev.message === 'string' ? readableError(ev.message.trim()) : '';
       if (message) errors.push(message);
       continue;
     }

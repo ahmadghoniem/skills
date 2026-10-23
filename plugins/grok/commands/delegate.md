@@ -84,7 +84,7 @@ moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `grok models`. Omit unless the user chose one. |
 | `--effort <level>` | `low` or `medium`, passed to grok's `--reasoning-effort`. Defaults to `medium`. |
-| `--timeout <sec>` | Watchdog. Default 4800, longer than grok's own 3600s idle timeout, so grok fails first and says why. |
+| `--timeout <sec>` | Kill the run after this many seconds. Off by default: a stalled run ends at grok's own 3600s idle timeout and says why. |
 | `--session <uuid>` | Continue that grok session. `/grok:resume` sets it from a job id; a fresh dispatch is the default. |
 
 ## Reading the output

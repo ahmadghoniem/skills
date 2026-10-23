@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  claimsFileChanges,
   dedupePaths,
   MAX_SUMMARY_CHARS,
   normalisePaths,
   parseLine,
+  readableError,
   summariseEvents,
 } from '../scripts/lib/parse.mjs';
 import { FAILED_COMMAND_FIXTURE, HAPPY_FIXTURE, RELATIVE_ABSOLUTE_FIXTURE } from './helpers.mjs';
@@ -107,6 +109,26 @@ describe('summariseEvents', () => {
   });
 });
 
+describe('claimsFileChanges', () => {
+  it.each([
+    'Created src/a.mjs with the retry helper.',
+    'I updated the file and ran the tests.',
+    'Wrote [notes](docs/notes) for the next step.',
+    'Modified [greet](file:///C:/repo/greet) to export the helper.',
+  ])('reads %j as a claim', (text) => {
+    expect(claimsFileChanges(text)).toBe(true);
+  });
+
+  // Both from research runs on grok 1.0.52 that changed nothing and said so.
+  it.each([
+    'Six of them open `file://` playgrounds.\nNone of them start the CLI.',
+    "Google's [pricing](https://ai.google.dev/gemini-api/docs/pricing) (updated 16 Oct 2026): $0.75 per million tokens.",
+    'The plan was updated.\nSee README.md for the rest.',
+  ])('does not read %j as a claim', (text) => {
+    expect(claimsFileChanges(text)).toBe(false);
+  });
+});
+
 describe('error events', () => {
   it('keeps the message grok sends when a run dies mid-stream', () => {
     const out = summariseEvents([
@@ -114,6 +136,23 @@ describe('error events', () => {
       { type: 'error', message: 'Internal error: inference idle timeout after 3600s' },
     ]);
     expect(out.errorDetail).toBe('Internal error: inference idle timeout after 3600s');
+  });
+
+  it('puts the message of a JSON-wrapped error on the first line', () => {
+    const out = summariseEvents([
+      {
+        type: 'error',
+        message:
+          'Internal error: {\n  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",\n  "http_status": 402\n}',
+      },
+    ]);
+    expect(out.errorDetail).toBe(
+      'Internal error: API error (status 402 Payment Required): Grok Build usage balance exhausted',
+    );
+  });
+
+  it('keeps an error whose braces are not JSON as grok wrote it', () => {
+    expect(readableError('bad template {name}')).toBe('bad template {name}');
   });
 
   it('leaves errorDetail undefined on a run that raised none', () => {

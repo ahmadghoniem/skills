@@ -178,8 +178,9 @@ export async function resolveBin() {
  * `-s` is illegal on a resume (it declares a NEW conversation).
  *
  * `--no-plan` and `--disallowed-tools` remove what a headless run cannot use;
- * see `DISALLOWED_TOOLS`. Checked on 1.0.52: every listed tool drops out of
- * the run's `available_commands`.
+ * see `DISALLOWED_TOOLS`. Checked on 1.0.67: every listed tool drops out of
+ * the run's `available_commands`, and none draws the stderr warning grok
+ * prints for a name that matches no tool.
  *
  * `--trust` is deliberately absent. Without it a headless run skips the repo's
  * `AGENTS.md`/`CLAUDE.md`, MCP servers, hooks and skills (checked on 1.0.52

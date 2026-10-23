@@ -13,7 +13,7 @@ claude plugin marketplace add ahmadghoniem/skills
 claude plugin install grok@ahmadghoniem
 ```
 
-Windows only. Requires grok 1.0.52 or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
+Windows only. Requires grok 1.0.67 or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
 
 A Claude Code session opened before grok was installed does not see the installer's `PATH` change, so the plugin also checks `%USERPROFILE%\.grok\bin` directly. `GROK_BIN` overrides both.
 
@@ -41,7 +41,7 @@ Jobs are named from the task's first words plus a 4-character suffix, such as `a
 | `--prompt-file <path>` | Read the brief from a file. |
 | `--model <id>` | Pin a model. Omitted, grok uses the account default that `grok models` reports. |
 | `--effort low\|medium` | Grok's `--reasoning-effort`. Default `medium`. The xAI plan this was built on allows only `low` and `medium`, so anything else is refused. |
-| `--timeout <sec>` | Watchdog, default 4800. That is longer than grok's own 3600s idle timeout, so grok fails first and says why. |
+| `--timeout <sec>` | Kill the run after this many seconds. Off by default; a stalled run ends at grok's own 3600s idle timeout and says why. |
 | `--session <uuid>` | Continue that grok session. `/grok:resume` sets it for you. |
 
 ## What the output looks like
