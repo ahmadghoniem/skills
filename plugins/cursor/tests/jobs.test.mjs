@@ -5,7 +5,6 @@ import {
   cancelJob,
   createJob,
   findRunningJobs,
-  jobDonePath,
   jobFilePath,
   listJobs,
   mostRecentFinishedJob,
@@ -13,6 +12,7 @@ import {
   readJob,
   updateJob,
 } from '../scripts/lib/jobs.mjs';
+import { jobsDir, repoHash } from '../scripts/lib/paths.mjs';
 import { makeTempHome } from './helpers.mjs';
 
 describe('jobs registry', () => {
@@ -32,45 +32,61 @@ describe('jobs registry', () => {
   });
 
   it('creates, reads, and updates a job atomically', () => {
-    const job = createJob({ id: 'job1', repoPath: repo, prompt: 'do it', model: 'composer-2.5' });
+    const job = createJob({ id: 'job1', repoPath: repo, prompt: 'do it', model: 'composer-2' });
     expect(job.status).toBe('running');
     const read = readJob(repo, 'job1');
     expect(read?.prompt).toBe('do it');
     const updated = updateJob(repo, 'job1', {
       status: 'done',
       exitCode: 0,
-      finishedAt: new Date().toISOString(),
+      finishedAt: '2026-01-01T00:00:00.000Z',
     });
     expect(updated?.status).toBe('done');
+    expect(readJob(repo, 'job1')?.exitCode).toBe(0);
   });
 
   it('round-trips cliPid on the job record', () => {
     createJob({ id: 'clipid1', repoPath: repo, prompt: 'p', model: 'm' });
-    const updated = updateJob(repo, 'clipid1', { pid: 111, cliPid: 222 });
-    expect(updated?.pid).toBe(111);
-    expect(updated?.cliPid).toBe(222);
+    updateJob(repo, 'clipid1', { cliPid: 4242, pid: 111 });
     const read = readJob(repo, 'clipid1');
+    expect(read?.cliPid).toBe(4242);
     expect(read?.pid).toBe(111);
-    expect(read?.cliPid).toBe(222);
   });
 
-  it('lists jobs sorted newest first and filters by status', () => {
+  it('lists jobs newest first, honours limit, and filters by status', () => {
     createJob({ id: 'a', repoPath: repo, prompt: 'a', model: 'x' });
     createJob({ id: 'b', repoPath: repo, prompt: 'b', model: 'x' });
-    updateJob(repo, 'a', { status: 'done', finishedAt: new Date().toISOString() });
-    const all = listJobs(repo);
-    expect(all.length).toBe(2);
-    const running = listJobs(repo, { status: 'running' });
-    expect(running.map((j) => j.id)).toEqual(['b']);
+    createJob({ id: 'c', repoPath: repo, prompt: 'c', model: 'x' });
+    updateJob(repo, 'a', { startedAt: '2026-01-01T00:00:00.000Z', status: 'done' });
+    updateJob(repo, 'b', { startedAt: '2026-01-02T00:00:00.000Z' });
+    updateJob(repo, 'c', { startedAt: '2026-01-03T00:00:00.000Z', status: 'failed' });
+
+    expect(listJobs(repo).map((j) => j.id)).toEqual(['c', 'b', 'a']);
+    expect(listJobs(repo, { limit: 2 }).map((j) => j.id)).toEqual(['c', 'b']);
+    expect(listJobs(repo, { status: 'running' }).map((j) => j.id)).toEqual(['b']);
     expect(findRunningJobs(repo).map((j) => j.id)).toEqual(['b']);
-    expect(mostRecentFinishedJob(repo)?.id).toBe('a');
+    expect(mostRecentFinishedJob(repo)?.id).toBe('c');
+  });
+
+  it('keys job files by the repo hash, not the raw path', () => {
+    createJob({ id: 'h1', repoPath: repo, prompt: 'p', model: 'm' });
+    const dir = jobsDir(repo);
+    expect(dir).toContain(repoHash(repo));
+    expect(dir.startsWith(tmp.dir)).toBe(true);
+    expect(existsSync(jobFilePath(repo, 'h1'))).toBe(true);
+
+    const other = '/tmp/a-different-repo';
+    createJob({ id: 'h2', repoPath: other, prompt: 'p', model: 'm' });
+    expect(repoHash(other)).not.toBe(repoHash(repo));
+    expect(listJobs(repo).map((j) => j.id)).toEqual(['h1']);
+    expect(listJobs(other).map((j) => j.id)).toEqual(['h2']);
   });
 
   it('prunes stale job files', () => {
     createJob({ id: 'old', repoPath: repo, prompt: 'old', model: 'x' });
     createJob({ id: 'new', repoPath: repo, prompt: 'new', model: 'x' });
     const stalePath = jobFilePath(repo, 'old');
-    const past = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+    const past = new Date('2020-01-01T00:00:00.000Z');
     utimesSync(stalePath, past, past);
     const removed = pruneOlderThanDays(repo, 30);
     expect(removed).toBeGreaterThanOrEqual(1);
@@ -106,36 +122,26 @@ describe('jobs registry', () => {
     expect(res?.status).toBe('done');
   });
 
-  // Issue A: a caller's cwd (and therefore its computed repoPath) can drift
-  // between the process that ran `delegate` and a later `status`/`result`
-  // call — the id itself is the one thing guaranteed to be stable. readJob/
-  // updateJob must find the job by id regardless of which repoPath guess the
-  // caller passes in.
+  it('marks a running job orphaned once its processes are gone', async () => {
+    const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
+    const pid = child.pid;
+    await new Promise((resolve) => child.on('close', resolve));
+    createJob({ id: 'gone1', repoPath: repo, prompt: 'p', model: 'm' });
+    updateJob(repo, 'gone1', { pid, cliPid: pid });
+    expect(readJob(repo, 'gone1')?.status).toBe('orphaned');
+  });
+
   it('readJob/updateJob find a job by id even when passed a different repoPath', () => {
     createJob({ id: 'drift1', repoPath: repo, prompt: 'p', model: 'm' });
     const otherGuess = '/tmp/some-other-cwd-guess';
     expect(readJob(otherGuess, 'drift1')?.id).toBe('drift1');
     const updated = updateJob(otherGuess, 'drift1', { status: 'done', summary: 'ok' });
     expect(updated?.status).toBe('done');
-    // The update must land on the record's actual file, not create a stray
-    // duplicate under the wrong (guessed) repoPath's job dir.
     expect(readJob(repo, 'drift1')?.summary).toBe('ok');
     expect(listJobs(otherGuess).length).toBe(0);
   });
 
   it('readJob returns null for a genuinely unknown id', () => {
     expect(readJob(repo, 'totally-unknown-id')).toBeNull();
-  });
-
-  // Issue C: a completion sentinel appears once the job reaches a terminal
-  // status, and only then — a caller can watch/poll for the file's existence
-  // instead of parsing the JSON record.
-  it('updateJob writes a completion sentinel only on a terminal status', () => {
-    createJob({ id: 'sentinel1', repoPath: repo, prompt: 'p', model: 'm' });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
-    updateJob(repo, 'sentinel1', { pid: 123 });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(false);
-    updateJob(repo, 'sentinel1', { status: 'done', finishedAt: new Date().toISOString() });
-    expect(existsSync(jobDonePath(repo, 'sentinel1'))).toBe(true);
   });
 });

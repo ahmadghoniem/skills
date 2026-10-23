@@ -1,54 +1,104 @@
 ---
-description: Delegate a coding task to the Cursor CLI agent (Composer by default).
-argument-hint: '[--fresh] [--resume[=chat-id]] [--model <id>] [--cloud] [--no-force] [--no-git-check] [--timeout <sec>] [--prompt-file <path|->] <task...>'
-allowed-tools: Bash(node:*), AskUserQuestion, Bash(cat:*)
+description: Delegate a coding task to the Cursor CLI (cursor-agent).
+argument-hint: '[--prompt-file <path>] [--model <id>] [--timeout <sec>] [--session <chatId>] <task...>'
+allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/cursor:delegate`.
 
-## Three entrypoints, one job registry
+## What Cursor is for
 
-`/cursor:delegate` starts a job; `/cursor:result [job-id]` inspects it afterwards. Both share the same file-backed job record (`~/.ccd/jobs/<repo-hash>/<id>.json`), keyed by the **Cursor job id** this command prints — not any wrapper id a background-execution mechanism might report. Copy that id verbatim for follow-up commands.
+Use Cursor for well-specified, high-volume work that would otherwise consume
+context better spent on judgement. Tokens land in Cursor's context, so send the
+task and let Cursor inspect files rather than pre-reading the tree and pasting it in.
 
-Key flags, all forwarded through `$ARGUMENTS` verbatim:
+## The job name
 
-- **`--background`** — detaches the worker. **Do not pass it.** It severs the harness notification and leaves polling as the only way to find out the job is done; it exists for scripting. Backgrounding for the user is the Bash tool's job — see below.
-- **`--timeout <sec>`** — kills the run (SIGTERM, then SIGKILL after 5s) if it hasn't finished by then. Default 1800s (30 min). A killed run is still recorded as `failed` with a note — never silently dropped.
-- **`--no-git-check`** — the only supported spelling. By default `/cursor:delegate` refuses to run outside a git repository; pass this to override (e.g. scratch directories).
-- **`--prompt-file <path>`** (or `--prompt-file -` for stdin) — read the task from a file instead of the command line. Use it for long, multi-line, or quote-heavy specs that would be mangled as shell arguments; it is mutually exclusive with an inline task. For a spec already living in the repo, prefer an `@path` reference in the inline task instead — that lets cursor-agent open the file itself.
-- **`--arg-string <blob>`** — pass one unsplit argument blob (the raw `$ARGUMENTS` string that has never been through a shell). The plugin splits it with quote handling. Use this when the whole invocation is a single string; do **not** join already-split argv back into a string.
+This command prints one (``cursor `add-retry-to-fetchuser-a7f3` ``). `/cursor:result`,
+`/cursor:resume` and `/cursor:cancel` take it.
 
-## What you must do
+## Writing the brief
 
-1. **Check for an explicit `--model` in `$ARGUMENTS`.** If present, skip straight to step 3 with `$ARGUMENTS` unchanged — an explicit `--model` always bypasses model selection.
+Cursor starts with none of your context. It does not see:
 
-2. **Otherwise, resolve a model in two questions.**
+- this conversation
+- `~/.claude/CLAUDE.md` and `~/.claude/rules/`
+- your Claude Code skills from plugins, and your MCP servers unless they are also in
+  `~/.cursor/mcp.json`
 
-   Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models` for the account's live ids. It prints them in two groups — **included in your plan** (Cursor's own models) and **metered per token** (third-party) — and marks which ones have a `-fast` variant. Never recommend a model id that isn't in that output.
+It does load on its own, from the repo and every parent directory: `AGENTS.md`,
+`CLAUDE.md`, `CLAUDE.local.md` and `.cursor/rules/`. It also loads the user's Cursor
+rules, the MCP servers in `~/.cursor/mcp.json`, the skills under `.cursor/`, `.claude/`
+and `.agents/`, and the hooks in `~/.claude/settings.json` and the repo's
+`.claude/settings.json`. Do not repeat those in the brief.
 
-   **Question 1 — which model.** Call `AskUserQuestion` with your recommendation first, in this order of preference:
-   - **Composer** (`composer-2.5`) — included in the plan, fastest. The default for small, well-scoped changes.
-   - **Cursor Grok** (`cursor-grok-4.5-medium`, or `-high` for harder work) — also included in the plan, stronger reasoning. Prefer the newest Cursor Grok in the list.
-   - **A third-party model** — only when the task genuinely needs it. Say plainly that it is metered per token rather than included.
+Whatever of the first list the result depends on goes in the brief.
 
-   **Question 2 — fast variant.** Ask **only if** the chosen model's `--print-models` entry showed a fast variant. Many models have none, and then this question must be skipped entirely. State in the option that fast runs the same model on faster hardware for roughly **2x the usage cost**, so on an included model it burns the plan's pool about twice as quickly. If the user picks fast, use the `-fast` id.
+Write for a fast executor working from a contract, not a collaborator you can correct
+mid-run.
 
-3. **Run the job** with the `Bash` tool and **`run_in_background: true`**. The command runs cursor-agent in the foreground of its own process, so the harness sees the exit and tells you when it lands — the user keeps chatting with you the whole time, and you never poll. Put flags **before** the task and keep the task as one quoted argument:
+Every brief has these sections, in this order:
 
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --model <resolved-id> "<task>"
-   ```
+1. **Goal**: one or two sentences. What is the outcome, and what is it a step of.
+2. **Repo context**: the stack, and what the paragraph above calls for.
+3. **Acceptance criteria**: one to five concrete, checkable bullets.
+4. **Files to touch**: every file you already know the task needs, as paths, plus the
+   files that show the pattern to follow. Each named path saves Cursor a search. Do not
+   read the tree to complete the list; when you cannot predict it, say where to look and
+   let Cursor find the rest.
+5. **How to verify**: the exact command that proves the task is done. Without it Cursor
+   declares "done" on unverified work.
 
-   Never split the task across multiple arguments and never place a flag after it. When you must forward the raw `$ARGUMENTS` blob unchanged (one unsplit string, quotes still in it), pass it as `--arg-string`:
+Then a short **Guardrails** block: do not commit; do not delete files outside the list; do
+not rename public APIs unless asked; do not touch lockfiles unless the task is about
+dependencies; if a pre-existing test already fails, report it, do not fix it.
 
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --arg-string "$ARGUMENTS"
-   ```
+A spec that already lives in the repo is a path in the brief, not a copy.
 
-   Do not paraphrase or reconstruct the command's output.
+Do not ask for a list of changed files or a summary of the edits; you read the diff.
+Ask for what the diff cannot show: items Cursor was unsure about or skipped, problems it
+noticed but did not fix, the result of each check, and any answer the task needs.
 
-4. **Render the result verbatim.** The output is cursor-agent's own write-up, and on a clean run that is all of it. Do not paraphrase it, and do not add a status table, a file list, or timings of your own — you have `git status` and `git diff` if you want to know what changed, and running them is cheaper than making the user read a summary of them.
+One dispatch per coherent slice. Run at most three Cursor jobs at once.
 
-   !`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
+## Model
 
-   After a job that changed code, review the diff yourself before telling the user it is done.
+Omit `--model`. Cursor then uses the account default (`/cursor:setup` shows it), so a new
+model applies without a plugin change. Pass a model only when the user names one, and
+never invent an id; `/cursor:setup` lists the ones the account has. On the Free plan only
+`auto` runs; any other id is refused, and the refusal arrives as the `⚠ error:` line.
+
+## Run it
+
+1. Write the brief with the **Write** tool to `~/.ccd/briefs/<short-name>.md`. Never put
+   a brief longer than one line on the command line.
+2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
+
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.ccd/briefs/<short-name>.md" [--timeout <sec>]
+
+   A one-line task can go inline instead: `-- "Rename X to Y in src/a.mjs"`.
+   When `$ARGUMENTS` is still one unsplit string, pass it as `-- --arg-string "$ARGUMENTS"`
+   so the plugin splits it and keeps its newlines.
+3. Stop. The task notification arrives when Cursor finishes. Do not read the job log, the
+   task output file or `~/.ccd/jobs` while it runs, and do not loop on `/cursor:result`. If
+   the user asks how it is going, run `/cursor:result <job>` once.
+
+| Flag | Effect |
+| --- | --- |
+| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
+| `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
+| `--model <id>` | Pin a model from `cursor-agent models`. Omit unless the user chose one. |
+| `--timeout <sec>` | Kill the run after this many seconds. Off by default. cursor-agent has no overall or idle limit of its own; it only retries or aborts a model stream that sends nothing for 30 s. |
+| `--session <chatId>` | Continue that Cursor chat. `/cursor:resume` sets it from a job id; a fresh dispatch is the default. |
+
+## Reading the output
+
+!`cat "${CLAUDE_PLUGIN_ROOT}/contract.md"`
+
+If Cursor's write-up says something blocked it (a missing tool, a refused command, an
+instruction it could not follow), record it with
+`/cursor:papercut --text "<Cursor's words>" --job <id>`.
+
+After a job that changed code, read `git diff` for the files the brief named and run the
+verification command the brief gave. Do not run the repository's whole test suite over a
+slice.

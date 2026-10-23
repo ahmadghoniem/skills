@@ -1,15 +1,30 @@
-// Stream-json parser for cursor-agent output.
-// Tolerates schema drift: returns the event object verbatim (passthrough).
-// Cursor typically emits `tool_use` blocks nested inside `assistant.message.content[]`
-// (Anthropic Messages API shape); we walk recursively to find them wherever they live.
+// NDJSON parser for `cursor-agent -p --output-format stream-json`.
+//
+// The shapes below are what cursor-agent 2026.10.22-27dcf5f produced on
+// captured runs (see `tests/fixtures/cursor-events/`), not what the docs say:
+//
+//   {"type":"system","subtype":"init","session_id":…,"model":"Auto",…}
+//   {"type":"user","message":{…}}
+//   {"type":"thinking","subtype":"delta"|"completed",…}
+//   {"type":"assistant","message":{"content":[{"type":"text","text":…}]}}
+//   {"type":"tool_call","subtype":"started"|"completed","call_id":…,
+//    "tool_call":{"shellToolCall":{"args":{…},"result":{"success"|"failure":{…}}}}}
+//   {"type":"result","subtype":"success","is_error":false,"result":…,"usage":{…}}
+//
+// A run refused before the model starts (a model the plan does not allow)
+// sends `system` and `user`, then exits 1 with the reason on stderr and no
+// `result` event.
+//
+// Unknown types are ignored rather than treated as errors, so a release that
+// adds an event type does not break a run.
 
 /**
  * @typedef {Object<string, unknown>} CursorEvent
  */
 
 /**
- * Parse a single NDJSON line into an event object. Returns null for blank
- * or malformed lines so callers can still preserve them in the raw log.
+ * Parse one NDJSON line. Returns null for blank or malformed lines so the
+ * caller can still keep them in the raw log.
  *
  * @param {string} line
  * @returns {CursorEvent|null}
@@ -27,238 +42,83 @@ export function parseLine(line) {
   return parsed;
 }
 
-const CHAT_ID_KEYS = ['chat_id', 'chatId', 'session_id', 'sessionId'];
-
-function dig(obj, keys) {
-  if (obj == null || typeof obj !== 'object') return undefined;
-  for (const k of keys) {
-    const v = obj[k];
-    if (typeof v === 'string' && v.length > 0) return v;
-  }
-  for (const v of Object.values(obj)) {
-    const found = dig(v, keys);
-    if (found) return found;
-  }
-  return undefined;
-}
-
 /**
- * @param {CursorEvent[]} events
- * @returns {string|undefined}
+ * Guard against an unbounded job record, not a display cap. 256 KB is above
+ * anything a run's output budget reaches, and saying so beats cutting quietly.
  */
-export function extractChatId(events) {
-  for (const ev of events) {
-    const id = dig(ev, CHAT_ID_KEYS);
-    if (id) return id;
-  }
-  return undefined;
-}
+export const MAX_SUMMARY_CHARS = 256_000;
 
-const MODEL_KEYS = ['model', 'model_id', 'modelId'];
+const CLAIM_VERB = /\b(created|wrote|modified|updated)\b/i;
+
+/** A `file://` link, a local markdown link, `the file`, or a `name.ext` token. */
+const FILE_REFERENCE = [/file:\/\//i, /\]\([^)\s]+\)/, /\bthe file\b/i, /\w\.[a-z][a-z0-9]{0,7}\b/i];
 
 /**
- * Best-effort extraction of the *concrete* model id Cursor actually ran with
- * (as opposed to the alias/`auto` the caller requested). Cursor's stream
- * schema drifts, so this is deliberately loose: any string under `model` /
- * `model_id` / `modelId` anywhere in an event is accepted. Returns undefined
- * when the stream never surfaces one — callers should keep the requested
- * model id in that case, not blank it out.
+ * True when the write-up claims it created or modified files.
  *
- * @param {CursorEvent[]} events
- * @returns {string|undefined}
- */
-export function extractResolvedModel(events) {
-  for (const ev of events) {
-    const model = dig(ev, MODEL_KEYS);
-    if (model) return model;
-  }
-  return undefined;
-}
-
-// Tool-name substrings that indicate a file was written/modified. Cursor (and
-// other agent CLIs) rename these across releases — e.g. `search_replace`,
-// `MultiEdit`, `delete_file` — so this list stays intentionally broad rather
-// than pinned to one vendor's current naming, matched case-insensitively.
-const WRITE_TOOL_HINTS = [
-  'write',
-  'edit',
-  'str_replace',
-  'search_replace',
-  'create_file',
-  'delete_file',
-  'multiedit',
-  'patch',
-  'apply_patch',
-  'file_write',
-  'insert',
-  'rewrite',
-];
-
-function looksLikeFileWrite(name) {
-  if (typeof name !== 'string') return false;
-  const lower = name.toLowerCase();
-  return WRITE_TOOL_HINTS.some((h) => lower.includes(h));
-}
-
-function pickString(obj, keys) {
-  if (obj == null || typeof obj !== 'object') return undefined;
-  for (const k of keys) {
-    const v = obj[k];
-    if (typeof v === 'string' && v.length > 0) return v;
-  }
-  return undefined;
-}
-
-const FILE_PATH_KEYS = ['path', 'file_path', 'filename', 'file', 'target', 'target_file'];
-
-/**
- * @param {string} name
+ * Used only to catch the case where the write-up says work landed and the
+ * working tree disagrees. A false positive costs a warning line on a run that
+ * was fine, so one line must hold both a create/write verb and a file
+ * reference, with web URLs removed first.
+ *
+ * @param {string} response
  * @returns {boolean}
  */
-export function isFileWriteTool(name) {
-  return looksLikeFileWrite(name);
+export function claimsFileChanges(response) {
+  return String(response ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\bhttps?:\/\/\S*/gi, ''))
+    .some((line) => CLAIM_VERB.test(line) && FILE_REFERENCE.some((re) => re.test(line)));
 }
 
 /**
- * Extract a file path from a tool_use `input` object, trying every key name
- * the various tool schemas use. Shared by the job summary (`summariseEvents`)
- * and any live progress printer that wants to show "tool → file" instead of
- * a bare tool name.
- *
- * @param {unknown} input
- * @returns {string|undefined}
+ * @param {string} text
+ * @returns {string}
  */
-export function pickToolPath(input) {
-  return pickString(input, FILE_PATH_KEYS);
+function capSummary(text) {
+  if (text.length <= MAX_SUMMARY_CHARS) return text;
+  return `${text.slice(0, MAX_SUMMARY_CHARS)}\n\n[plugin post-flight]\nWrite-up truncated: ${text.length} characters produced, ${MAX_SUMMARY_CHARS} kept. The full text is in this job's \`.ndjson\` log.`;
 }
 
 /**
- * Extract human-readable text from a value that may be a plain string, an
- * Anthropic-style `content[]` array of `{type:'text', text}` blocks, or an
- * object carrying either under common keys. Returns undefined when empty.
+ * The text blocks of an `assistant` event's message, joined.
  *
- * @param {unknown} value
- * @returns {string|undefined}
+ * @param {CursorEvent} ev
+ * @returns {string}
  */
-export function pickText(value) {
-  if (typeof value === 'string') return value.length > 0 ? value : undefined;
-  if (Array.isArray(value)) {
-    const parts = [];
-    for (const item of value) {
-      if (typeof item === 'string') parts.push(item);
-      else if (
-        item != null &&
-        typeof item === 'object' &&
-        (item.type === 'text' || item.type === undefined) &&
-        typeof item.text === 'string'
-      ) {
-        parts.push(item.text);
-      }
-    }
-    const joined = parts.join('');
-    return joined.length > 0 ? joined : undefined;
-  }
-  if (value != null && typeof value === 'object') {
-    for (const k of ['result', 'text', 'content', 'message']) {
-      const t = pickText(value[k]);
-      if (t) return t;
-    }
-  }
-  return undefined;
+function messageText(ev) {
+  const content = /** @type {any} */ (ev.message)?.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((c) => c && typeof c === 'object' && c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text)
+    .join('');
 }
 
 /**
- * Yield every tool invocation anywhere in the tree, tolerating the two shapes
- * cursor-agent actually emits:
- *   1. Anthropic-style: `{type:'tool_use', name, input}` (name is a sibling key).
- *   2. cursor-agent native: `{type:'tool_call', tool_call:{<name>ToolCall:{args}}}`
- *      — here the tool NAME is the key inside `tool_call` (e.g. `editToolCall`,
- *      `writeToolCall`) and the arguments live under that object's `.args`.
- * The native shape is what real runs produce; missing it left `filesTouched`
- * empty in practice even though the fixture-shaped unit tests passed.
- *
- * @param {unknown} node
- * @returns {Iterable<{name: string, input: unknown}>}
+ * @param {unknown} v
+ * @returns {v is Record<string, any>}
  */
-export function* walkToolUses(node) {
-  if (node == null || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const item of node) yield* walkToolUses(item);
-    return;
-  }
-  const type = node.type;
-  const name = typeof node.name === 'string' ? node.name : undefined;
-  if ((type === 'tool_use' || type === 'tool_call') && name) {
-    yield {
-      name,
-      input: node.input ?? node.arguments ?? node.params ?? node.tool_input,
-    };
-  }
-  // cursor-agent native shape: the tool name is a key inside `tool_call`.
-  if (
-    type === 'tool_call' &&
-    node.tool_call != null &&
-    typeof node.tool_call === 'object' &&
-    !Array.isArray(node.tool_call)
-  ) {
-    for (const [toolName, body] of Object.entries(node.tool_call)) {
-      if (body != null && typeof body === 'object' && !Array.isArray(body)) {
-        yield { name: toolName, input: body.args ?? body.input ?? body };
-      }
-    }
-  }
-  for (const v of Object.values(node)) yield* walkToolUses(v);
+function isObject(v) {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
- * Collapse the two spellings of the same file into one.
+ * The tool body of a `tool_call` event: the one key of `tool_call` ending in
+ * `ToolCall` (`shellToolCall`, `editToolCall`, `readToolCall`, …). The same
+ * object also carries `toolCallId`, timestamps and hook context.
  *
- * A single edit surfaces twice: the path the model asked for is usually
- * repo-relative, and a later event gives an absolute one. Listing both makes a
- * one-file change look like a two-file change. An absolute path is dropped
- * when some relative path in the set is a path-segment suffix of it; the
- * relative form is what a reader wants.
- *
- * @param {string[]} paths
- * @returns {string[]}
+ * @param {CursorEvent} ev
+ * @returns {{name: string, body: Record<string, any>}|null}
  */
-export function dedupePaths(paths) {
-  const unique = [...new Set(paths)];
-  const norm = (p) => p.replace(/\\/g, '/');
-  const isAbsolute = (p) => /^([a-zA-Z]:\/|\/)/.test(norm(p));
-  const relatives = unique.filter((p) => !isAbsolute(p)).map(norm);
-  return unique.filter((p) => {
-    if (!isAbsolute(p)) return true;
-    const n = norm(p);
-    return !relatives.some((r) => n === r || n.endsWith(`/${r}`));
-  });
-}
-
-/**
- * Rewrite paths under `root` as repo-relative, and drop the duplicates that
- * creates. cursor-agent is inconsistent about which form it reports — the same
- * edit can arrive as `greet.js` from one event and an absolute path from
- * another, and some runs only ever produce the absolute one — so normalising
- * against a known root is what makes a file list read like a diff rather than
- * like a log.
- *
- * Paths outside `root` are left absolute: they are genuinely elsewhere, and
- * that is exactly what a reviewer needs to notice.
- *
- * @param {string[]} paths
- * @param {string} [root]
- * @returns {string[]}
- */
-export function normalisePaths(paths, root) {
-  if (!root) return dedupePaths(paths);
-  const normRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
-  const prefix = `${normRoot}/`;
-  const rebased = paths.map((p) => {
-    const n = p.replace(/\\/g, '/');
-    if (n.toLowerCase().startsWith(prefix.toLowerCase())) return n.slice(prefix.length);
-    return p;
-  });
-  return dedupePaths(rebased);
+export function toolBody(ev) {
+  const tc = ev?.tool_call;
+  if (!isObject(tc)) return null;
+  for (const [name, body] of Object.entries(tc)) {
+    if (name.endsWith('ToolCall') && isObject(body)) return { name, body };
+  }
+  return null;
 }
 
 /**
@@ -270,137 +130,129 @@ export function normalisePaths(paths, root) {
  */
 
 /**
- * Pull a completed `shellToolCall` result off a cursor-agent event.
- *
- * Real `--output-format stream-json` runs nest the payload at
- * `tool_call.shellToolCall.result.{success|failure}`. Both arms carry
- * `exitCode` (number), `command`, stdout/stderr/`interleavedOutput`, and
- * failure also carries `aborted`. Zero exits live under `success`; non-zero
- * under `failure` — never invent a field the stream did not send.
+ * A finished shell command from a `tool_call` `completed` event. Exit 0 is
+ * under `result.success`, anything else under `result.failure`; both carry
+ * `command`, `exitCode`, `stdout`, `stderr` and `interleavedOutput`, and
+ * `failure` also carries `aborted`.
  *
  * @param {CursorEvent} ev
  * @returns {CommandRun|null}
  */
 export function shellCommandResult(ev) {
   if (ev?.type !== 'tool_call') return null;
-  const tc = ev.tool_call;
-  if (tc == null || typeof tc !== 'object' || Array.isArray(tc)) return null;
-  const shell = tc.shellToolCall;
-  if (shell == null || typeof shell !== 'object' || Array.isArray(shell)) return null;
-  const result = shell.result;
-  if (result == null || typeof result !== 'object' || Array.isArray(result)) return null;
-  const payload =
-    result.success != null && typeof result.success === 'object' && !Array.isArray(result.success)
-      ? result.success
-      : result.failure != null &&
-          typeof result.failure === 'object' &&
-          !Array.isArray(result.failure)
-        ? result.failure
-        : null;
+  const tool = toolBody(ev);
+  if (!tool || tool.name !== 'shellToolCall') return null;
+  const result = tool.body.result;
+  if (!isObject(result)) return null;
+  const payload = isObject(result.success) ? result.success : isObject(result.failure) ? result.failure : null;
   if (!payload) return null;
-  const args = shell.args;
   const command =
     typeof payload.command === 'string'
       ? payload.command
-      : args != null && typeof args === 'object' && typeof args.command === 'string'
-        ? args.command
+      : typeof tool.body.args?.command === 'string'
+        ? tool.body.args.command
         : '(unknown)';
-  const exitCode = typeof payload.exitCode === 'number' ? payload.exitCode : null;
-  const interleaved =
-    typeof payload.interleavedOutput === 'string' ? payload.interleavedOutput : '';
+  const interleaved = typeof payload.interleavedOutput === 'string' ? payload.interleavedOutput : '';
   const stdout = typeof payload.stdout === 'string' ? payload.stdout : '';
   const stderr = typeof payload.stderr === 'string' ? payload.stderr : '';
-  const output = interleaved.length > 0 ? interleaved : [stdout, stderr].filter(Boolean).join('\n');
-  // `aborted` is the field captured logs actually send on `failure`. The
-  // timedOut/timed_out spellings are accepted if a later cursor-agent build
-  // grows them; they have not been observed yet.
-  const timedOut =
-    payload.aborted === true || payload.timedOut === true || payload.timed_out === true;
-  return { command, exitCode, output, timedOut };
+  return {
+    command,
+    exitCode: typeof payload.exitCode === 'number' ? payload.exitCode : null,
+    output: interleaved || [stdout, stderr].filter(Boolean).join('\n'),
+    timedOut: payload.aborted === true,
+  };
+}
+
+/**
+ * Whether the model has started working: anything past `system` and `user`.
+ * A refused run never gets this far, so it is not offered a resume.
+ *
+ * @param {CursorEvent} ev
+ * @returns {boolean}
+ */
+export function modelStarted(ev) {
+  return ev?.type === 'assistant' || ev?.type === 'thinking' || ev?.type === 'tool_call' || ev?.type === 'result';
 }
 
 /**
  * @typedef {Object} Summary
  * @property {string} summary
- * @property {string[]} filesTouched
+ * @property {CommandRun[]} commands
  * @property {CommandRun[]} failedCommands
- * @property {string} exitReason
+ * @property {string|undefined} sessionId
+ * @property {string} stopReason
+ * @property {string|undefined} errorDetail
  * @property {boolean} success
+ * @property {number} toolCalls
+ * @property {boolean} claimedFileChanges
  */
 
 /**
  * Fold a whole run's event stream into the record a job needs.
  *
- * `success` tracks cursor-agent's own `result` event only. A command exiting
- * non-zero is reported in `failedCommands` but deliberately does NOT flip
- * `success`: a non-zero exit is routinely intentional (`grep` finds nothing, a
- * red test in a TDD cycle, a `command -v` probe), so failing the job on it
- * would cry wolf often enough to be ignored. Surfacing it and letting a human
- * judge is the whole point.
+ * `success` tracks the closing `result` event only. A command exiting
+ * non-zero is reported in `failedCommands` but does not flip `success`: a
+ * non-zero exit is often intended (`grep` finds nothing, a red test in a TDD
+ * cycle, a `command -v` probe).
  *
  * @param {CursorEvent[]} events
- * @param {string} [root]   Repo root; absolute paths under it are made relative.
  * @returns {Summary}
  */
-export function summariseEvents(events, root) {
-  const files = new Set();
+export function summariseEvents(events) {
   /** @type {Map<string, CommandRun>} */
   const commandsById = new Map();
-  let finalText;
-  let success = true;
-  let exitReason = 'completed';
+  const callIds = new Set();
   let anon = 0;
+  /** @type {string[]} */
+  const messages = [];
+  let resultText = '';
+  let sessionId;
+  let stopReason = 'incomplete';
+  let errorDetail;
 
   for (const ev of events) {
-    for (const tu of walkToolUses(ev)) {
-      if (!looksLikeFileWrite(tu.name)) continue;
-      const path = pickToolPath(tu.input);
-      if (path) files.add(path);
+    if (!isObject(ev)) continue;
+    if (typeof ev.session_id === 'string' && ev.session_id) sessionId = ev.session_id;
+
+    if (ev.type === 'assistant') {
+      const text = messageText(ev).trim();
+      if (text) messages.push(text);
+      continue;
     }
-    const cmd = shellCommandResult(ev);
-    if (cmd) {
+
+    if (ev.type === 'tool_call') {
       const id = typeof ev.call_id === 'string' ? ev.call_id : `anon-${anon++}`;
-      commandsById.set(id, cmd);
+      callIds.add(id);
+      const cmd = shellCommandResult(ev);
+      if (cmd) commandsById.set(id, cmd);
+      continue;
     }
-    const type = ev.type;
-    if (type === 'result') {
-      const text = pickText(ev) ?? pickText(ev.message);
-      if (text) finalText = text;
-      const subtype = typeof ev.subtype === 'string' ? ev.subtype : undefined;
-      const isError = ev.is_error === true || ev.error != null;
-      if (subtype && subtype !== 'success') {
-        exitReason = subtype;
-        if (subtype.includes('error') || subtype.includes('fail')) success = false;
-      }
-      if (isError) {
-        success = false;
-        exitReason = 'error';
+
+    if (ev.type === 'result') {
+      resultText = typeof ev.result === 'string' ? ev.result.trim() : '';
+      const subtype = typeof ev.subtype === 'string' ? ev.subtype : 'success';
+      stopReason = ev.is_error === true && subtype === 'success' ? 'error' : subtype;
+      if (ev.is_error === true || subtype !== 'success') {
+        errorDetail = resultText || (typeof ev.error === 'string' ? ev.error : undefined);
       }
     }
   }
 
-  if (!finalText) {
-    for (let i = events.length - 1; i >= 0; i -= 1) {
-      const ev = events[i];
-      if (!ev) continue;
-      const type = ev.type;
-      if (type === 'assistant' || type === 'message') {
-        const text = pickText(ev) ?? pickText(ev.message);
-        if (text) {
-          finalText = text;
-          break;
-        }
-      }
-    }
-  }
-
-  const summary = finalText ?? '(no final message captured)';
+  // Each `assistant` event is one whole message. The `result` text is the
+  // same messages run together with no separator ("…now.Ran …"), so it is
+  // used only when no message arrived.
+  const summary = messages.length > 0 ? messages.join('\n\n') : resultText;
   const commands = [...commandsById.values()];
+
   return {
-    summary: summary.slice(0, 4000),
-    filesTouched: normalisePaths([...files], root),
+    summary: capSummary(summary),
+    toolCalls: callIds.size,
+    claimedFileChanges: claimsFileChanges(summary),
+    commands,
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
-    exitReason,
-    success,
+    sessionId,
+    stopReason,
+    errorDetail,
+    success: stopReason === 'success',
   };
 }

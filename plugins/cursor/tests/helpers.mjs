@@ -17,6 +17,5 @@ export function makeTempHome() {
 
 export const STUB_BIN = fixture('./fixtures/cursor-agent-stub.mjs');
 export const HAPPY_FIXTURE = fixture('./fixtures/cursor-events/happy-path.ndjson');
-export const FAILURE_FIXTURE = fixture('./fixtures/cursor-events/failure.ndjson');
-export const NESTED_TOOL_USE_FIXTURE = fixture('./fixtures/cursor-events/nested-tool-use.ndjson');
-export const NATIVE_TOOL_CALL_FIXTURE = fixture('./fixtures/cursor-events/native-tool-call.ndjson');
+export const FAILED_COMMAND_FIXTURE = fixture('./fixtures/cursor-events/failed-command.ndjson');
+export const REFUSED_FIXTURE = fixture('./fixtures/cursor-events/refused.ndjson');

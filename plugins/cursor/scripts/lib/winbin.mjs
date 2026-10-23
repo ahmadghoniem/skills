@@ -20,7 +20,9 @@ function latestVersionDir(root) {
   const versions = join(root, 'versions');
   if (!existsSync(versions)) return null;
   const candidates = readdirSync(versions)
-    .filter((name) => /^\d{4}\.\d{1,2}\.\d{1,2}/.test(name))
+    // Whole names only: an update stages `<v>.new` beside the live dirs, and
+    // `promote-staged.cmd` sits in the same folder.
+    .filter((name) => /^\d{4}\.\d{1,2}\.\d{1,2}-[0-9a-f]+$/i.test(name))
     .map((name) => {
       const [y, m, d] = name.split('-')[0].split('.');
       return { name, key: Number(y) * 10000 + Number(m) * 100 + Number(d) };

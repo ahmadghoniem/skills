@@ -1,17 +1,41 @@
 #!/usr/bin/env node
-import { parseCommandArgv } from './lib/args.mjs';
+import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
-import { jobNotFoundMessage } from './lib/hints.mjs';
-import { cancelJob, findRunningJobs, isPidGone, readJob } from './lib/jobs.mjs';
+import { cancelJob, findRunningJobs, resolveJob } from './lib/jobs.mjs';
+import { isPidGone } from './lib/killtree.mjs';
 
 /**
- * @param {{ pid?: number, cliPid?: number }} job
- * @returns {boolean}
+ * Check liveness of the cursor-agent CLI and wrapper PIDs before killing the tree.
+ *
+ * @param {import('./lib/jobs.mjs').JobRecord} job
+ * @returns {string[]}
  */
-function pidsAlreadyGone(job) {
-  const wrapGone = typeof job.pid !== 'number' || isPidGone(job.pid);
-  const cliGone = typeof job.cliPid !== 'number' || isPidGone(job.cliPid);
-  return wrapGone && cliGone;
+function pidLivenessBits(job) {
+  /** @type {string[]} */
+  const bits = [];
+  if (typeof job.cliPid === 'number') {
+    bits.push(
+      isPidGone(job.cliPid)
+        ? `cli pid ${job.cliPid} already gone`
+        : `cli pid ${job.cliPid} still live`,
+    );
+  }
+  if (typeof job.pid === 'number') {
+    bits.push(
+      isPidGone(job.pid)
+        ? `wrapper pid ${job.pid} already gone`
+        : `wrapper pid ${job.pid} still live`,
+    );
+  }
+  return bits;
+}
+
+function allPidsAlreadyGone(bits) {
+  return bits.length === 0 || bits.every((b) => b.endsWith('already gone'));
+}
+
+function reportBitsAfterCancel(bits) {
+  return bits.map((b) => b.replace('still live', 'killed')).join(', ');
 }
 
 /**
@@ -30,58 +54,47 @@ export async function main(rawArgv) {
     }
     if (running.length > 1) {
       process.stderr.write(
-        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/cursor:cancel ${running[0]?.id}\`.\n`,
+        `Multiple running jobs (${running.length}). Pass an explicit id, e.g. \`/cursor:cancel ${running[0].id}\`.\n`,
       );
       return 2;
     }
-    id = running[0]?.id;
+    id = running[0].id;
   }
-  if (!id) {
-    process.stderr.write('No job id resolved.\n');
+  const resolved = resolveJob(root, id);
+  if (resolved.error) {
+    process.stderr.write(`${resolved.error}\n`);
     return 2;
   }
-  const before = readJob(root, id);
-  const updated = await cancelJob(root, id);
-  if (!updated) {
-    process.stderr.write(jobNotFoundMessage(id));
+  const before = resolved.job;
+  if (!before) {
+    process.stderr.write(`No job matching '${id}' for this repository.\n`);
     return 1;
   }
-  if (before && before.status !== 'running') {
+  const liveness = before.status === 'running' ? pidLivenessBits(before) : [];
+  const goneBefore = before.status === 'running' && allPidsAlreadyGone(liveness);
+  const updated = await cancelJob(root, before.id);
+  if (!updated) {
+    process.stderr.write(`No job matching '${id}' for this repository.\n`);
+    return 1;
+  }
+  if (before.status !== 'running') {
     process.stdout.write(
       `Job \`${updated.id}\` was not running (already ${updated.status}); nothing to cancel.\n`,
     );
     return 0;
   }
-  const allGone =
-    (updated.cliKill === undefined && updated.wrapKill === undefined) ||
-    [updated.cliKill, updated.wrapKill].every((o) => o === undefined || o === 'already-gone');
-  const goneBefore = Boolean(before && before.status === 'running' && pidsAlreadyGone(before));
-  if (goneBefore || allGone) {
-    const bits = [];
-    if (typeof before?.cliPid === 'number') bits.push(`cli pid ${before.cliPid}`);
-    if (typeof before?.pid === 'number') bits.push(`pid ${before.pid}`);
-    const pidBit = bits.length > 0 ? ` (${bits.join(', ')})` : '';
+  const pidBit = liveness.length ? ` (${reportBitsAfterCancel(liveness)})` : '';
+  if (goneBefore) {
     process.stdout.write(
       `Job \`${updated.id}\` process was already gone${pidBit}; record marked as cancelled.\n`,
     );
     return 0;
   }
-  const goneNotes = [];
-  if (updated.cliKill === 'already-gone' && typeof before?.cliPid === 'number') {
-    goneNotes.push(`cli pid ${before.cliPid} was already gone`);
-  }
-  if (updated.wrapKill === 'already-gone' && typeof before?.pid === 'number') {
-    goneNotes.push(`pid ${before.pid} was already gone`);
-  }
-  const extra = goneNotes.length > 0 ? ` (${goneNotes.join('; ')})` : '';
-  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}.${extra}\n`);
+  process.stdout.write(`Job \`${updated.id}\` marked as ${updated.status}${pidBit}.\n`);
   return 0;
 }
 
-import { invokedAsScript as __isScript } from './lib/invoked.mjs';
-const invokedAsScript = __isScript(import.meta.url);
-
-if (invokedAsScript) {
+if (invokedAsScript(import.meta.url)) {
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {

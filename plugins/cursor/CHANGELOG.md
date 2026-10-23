@@ -1,8 +1,68 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## 0.13.0 — follows the grok plugin's conventions
+
+Checked against cursor-agent `2026.10.22-27dcf5f` on the Free plan.
+
+### Changed
+
+- **Commands, job names and the output contract follow `plugins/grok`.** Jobs are named from the
+  brief's first words plus a 4-character suffix (`add-retry-to-fetchuser-a7f3`) and resolve by
+  full name, unique prefix or suffix. `contract.md` moved to the plugin root and the commands read
+  it with `!cat`. `/cursor:result --list` prints a plain list and shows a progress line for a
+  running job. A record whose processes are gone reads as `orphaned`, and `/cursor:cancel`
+  reports it instead of killing anything.
+- **`/cursor:delegate` writes the brief itself.** Claude writes a sectioned brief to
+  `~/.ccd/briefs/<name>.md` and dispatches it with `--prompt-file` from a backgrounded Bash call.
+  The `cursor-runner` agent, the `output-contract` skill, stdin briefs and `--prompt-file -` are
+  gone. `delegate.md` lists what Cursor does not see and what it loads on its own.
+- **Resume by job id, chat id, or nothing.** `/cursor:resume [job|chat-id] [follow-up]` replaces
+  `--resume=<id>`. With no id it resumes the newest job in this repository that has a chat id; it
+  never uses `--continue` or a bare `--resume`.
+- **The chat id is fixed before the run** with the hidden `--new-session-id <uuid>`, so a killed
+  run can be resumed. It is recorded once the model starts, so a refused run offers no resume.
+- **No `--model` by default.** The account default applies; pass a model only when the user names
+  one. The two `AskUserQuestion` model prompts are gone. On the Free plan a named model ends with
+  `ActionRequiredError: Named models unavailable Free plans can only use Auto…`, which now reaches
+  the `⚠ error:` line verbatim from stderr.
+- **No watchdog by default.** Without `--timeout` the plugin arms none. cursor-agent has no
+  overall or idle limit of its own (see `docs/unverified.md`).
+- **`--disable-auto-update` on every run** (hidden in `--help`), so the CLI version moves only
+  through `/cursor:update`.
+- **`--trust` is no longer passed.** A headless run does not need it and loads the same context
+  without it. `--approve-mcps` is not passed.
+- **`--` before the brief**, so a brief starting with `-` is not read as a flag.
+- **Stream parsing rebuilt from real runs.** The fixtures are redacted 2026.10.22 logs
+  (`tool_call` with `shellToolCall`/`editToolCall`/`readToolCall`), replacing the Messages-API
+  shaped ones. The write-up is the `assistant` messages joined by a blank line; the `result` text
+  runs them together. The stop reason is the `result` subtype, `error` on `is_error`, and
+  `incomplete` when no `result` arrived.
+- **New warnings `wander` and `resume`**, as in grok. `ran-as`, `no-success` and `chat-lost` are
+  gone; the stop-reason and resume lines cover them.
+- **`/cursor:update` and `/cursor:papercut` are new.** `update` runs `cursor-agent update`, prints
+  the old and new versions with the changelog link, and lists open papercuts. Detected warnings
+  are logged to `~/.ccd/papercuts.jsonl` with the full date-stamped version.
+- **A release notice at most once a day**, from `cursor-agent about --format json`, naming the
+  newer version. `CCD_RELEASE_CHECK=off` turns it off.
+- **`/cursor:setup`** reports the plan and the account default model, and keeps the
+  signed-in email out of its report.
+
+### Fixed
+
+- **`/cursor:setup` could find grok.** The lookup fell back to `where agent`, and Grok Build's
+  `agent.exe` comes first on `PATH`. The order is now `CURSOR_AGENT_BIN`, then
+  `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd`, then `cursor-agent` on `PATH`; `agent` is never
+  looked up, and a test holds that.
+- **A staged update could be picked as the runtime.** `versions/` holds `<v>.new` folders and
+  `promote-staged.cmd` during an update; only whole `YYYY.M.D-hash` names are considered now.
+- **A run reaped after its `result` event was marked killed.** It now counts as finished.
+
+### Removed
+
+- `--background`, `--fresh`, `--resume=`, `--no-git-check`, `--cloud` and `--no-force`;
+  `/cursor:sessions` (`cursor-agent ls` is an interactive picker); `status.mjs`, `hints.mjs`,
+  `jobtable.mjs`, `md.mjs`, `invoked.mjs`; eslint, prettier, coverage, `CONTRIBUTING.md`,
+  `SECURITY.md`, the plugin's `AGENTS.md` and `docs/reference.md`.
 
 ## 0.12.0 — the console window is gone, and the result block is just cursor-agent's write-up
 

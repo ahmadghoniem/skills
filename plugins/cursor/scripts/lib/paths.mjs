@@ -16,9 +16,9 @@ export function pluginHome() {
  */
 export function repoHash(repoRoot) {
   // Always canonicalise the same way so a repo maps to ONE hash regardless of
-  // whether the path currently exists or contains a symlinked component
-  // (e.g. macOS `/tmp` → `/private/tmp`). `realpathSync` throws when the path
-  // is gone, so fall back to a plain resolve.
+  // whether the path currently exists or contains a symlinked component.
+  // `realpathSync` throws when the path is gone, so fall back to a plain
+  // resolve.
   let canonical;
   try {
     canonical = realpathSync(repoRoot);
@@ -34,6 +34,17 @@ export function jobsDir(repoRoot) {
 
 export function logsDir(repoRoot) {
   return join(jobsDir(repoRoot), 'logs');
+}
+
+/**
+ * The friction log. Machine-wide, deliberately: the patterns worth fixing show
+ * up across repositories, and a per-repo file would sit inside the tree that
+ * `pruneOlderThanDays` sweeps.
+ *
+ * @returns {string}
+ */
+export function papercutsPath() {
+  return join(pluginHome(), 'papercuts.jsonl');
 }
 
 export function ensureDir(dir) {

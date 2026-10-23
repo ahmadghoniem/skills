@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { pluginHome, repoHash, jobsDir } from '../scripts/lib/paths.mjs';
+import { jobsDir, pluginHome, repoHash } from '../scripts/lib/paths.mjs';
 import { makeTempHome } from './helpers.mjs';
 
 describe('paths', () => {
@@ -28,9 +28,10 @@ describe('paths', () => {
     expect(a).toMatch(/^[0-9a-f]{12}$/);
   });
 
-  it('jobsDir nests under pluginHome', () => {
+  it('jobsDir nests under pluginHome using the repo hash', () => {
     const dir = jobsDir(tmp.dir);
     expect(dir.startsWith(tmp.dir)).toBe(true);
     expect(dir).toContain('jobs');
+    expect(dir).toContain(repoHash(tmp.dir));
   });
 });

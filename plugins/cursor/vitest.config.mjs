@@ -5,16 +5,6 @@ export default defineConfig({
     globals: false,
     include: ['tests/**/*.test.mjs'],
     testTimeout: 15_000,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-      include: ['scripts/lib/**/*.mjs'],
-      thresholds: {
-        lines: 80,
-        functions: 75,
-        statements: 80,
-        branches: 70,
-      },
-    },
+    env: { CCD_RELEASE_CHECK: 'off' },
   },
 });

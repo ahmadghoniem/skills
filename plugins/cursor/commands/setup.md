@@ -1,9 +1,9 @@
 ---
-description: Health-check Cursor CLI, list models, or guide installation.
-argument-hint: '[--doctor] [--print-models] [--install]'
+description: Health-check the Cursor CLI and list available models.
+argument-hint: '[--print-models]'
 allowed-tools: Bash(node:*)
 ---
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --arg-string "$ARGUMENTS"`
 
-Present the check results as-is. If any check failed, tell the user concretely what to do (install cursor-agent, run `cursor-agent login`, run `npm install` inside the plugin). Never attempt to run the installer yourself.
+Present the check results as-is. If any check failed, tell the user concretely what to do (install the Cursor CLI, run `cursor-agent login`, set CURSOR_AGENT_BIN). Do not run the installer or `cursor-agent login` yourself: the installer downloads and runs a script from cursor.com, and login opens a browser, which is the user's call.

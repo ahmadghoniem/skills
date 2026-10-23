@@ -1,211 +1,166 @@
-import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createWriteStream, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
-import { run } from './run.mjs';
-import { adaptWindowsBin, defaultWindowsBin } from './winbin.mjs';
-
-// Convenience aliases for the handful of shortcuts stable enough to hardcode.
-// Cursor rotates concrete per-vendor model ids constantly (this table used to
-// carry ~40 entries like `grok` → `grok-4.3`, which went stale the moment
-// Cursor shipped the next Grok build). Rather than chase that drift here,
-// only the durable human shortcuts are hardcoded; every other id — including
-// current, retired, or brand-new vendor ids — is passed through verbatim by
-// `resolveModel()`. Runtime discovery (`listModels()`, grouped by
-// `isCursorModel()`) is what keeps the invoking agent honest about what a
-// given id actually is; see `commands/delegate.md` / `agents/cursor-runner.md`.
-export const MODEL_ALIASES = {
-  fast: 'composer-2.5-fast',
-  composer: 'composer-2.5-fast',
-  auto: 'auto',
-};
-
-// `auto` lets Cursor pick whatever model the account is entitled to —
-// safe default for users without a paid Composer seat. Power users
-// can override per-invocation via `--model <id>` or globally via the env var
-// CCD_DEFAULT_MODEL.
-export const DEFAULT_MODEL = 'auto';
+import { run, spawnDirect } from './run.mjs';
+import { defaultWindowsBin } from './winbin.mjs';
 
 /**
- * @returns {string}
+ * The version in `cursor-agent --version` output, e.g. `2026.10.22-27dcf5f`.
+ * Kept whole, hash included: two builds of the same day differ only there.
+ * Null when there is none.
+ *
+ * @param {string} text
+ * @returns {string|null}
  */
-export function defaultModel() {
-  const fromEnv = process.env.CCD_DEFAULT_MODEL;
-  if (fromEnv && fromEnv.trim().length > 0) {
-    const key = fromEnv.trim().toLowerCase();
-    return MODEL_ALIASES[key] ?? fromEnv.trim();
-  }
-  return DEFAULT_MODEL;
+export function parseVersion(text) {
+  const m = /(\d{4}\.\d{1,2}\.\d{1,2}(?:-[0-9a-f]+)?)/i.exec(String(text ?? ''));
+  return m ? m[1] : null;
 }
 
 /**
- * @param {string|undefined} input
- * @returns {string}
+ * Parse `cursor-agent models` output into a list of model ids.
+ *
+ *   Available models
+ *
+ *   auto - Auto (current, default)
+ *   composer-2.5 - Composer 2.5
+ *
+ * @param {string} stdout
+ * @returns {{id: string, label: string}[]}
  */
-export function resolveModel(input) {
-  if (!input || input.trim() === '') return defaultModel();
-  const key = input.trim().toLowerCase();
-  return MODEL_ALIASES[key] ?? input.trim();
+export function parseModelList(stdout) {
+  const out = [];
+  for (const line of String(stdout ?? '').split(/\r?\n/)) {
+    const m = /^\s*([A-Za-z0-9][\w.:-]*)\s+-\s+(.+?)\s*$/.exec(line);
+    if (m) out.push({ id: m[1], label: m[2] });
+  }
+  return out;
 }
 
 /** @type {string|null} */
 let cachedBin = null;
 
+/** For tests: forget the resolved binary. */
+export function resetBinCache() {
+  cachedBin = null;
+}
+
 /**
+ * Find the Cursor CLI. Order: `CURSOR_AGENT_BIN`, then the Windows installer's
+ * `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd`, then `cursor-agent` on PATH.
+ *
+ * The bare name `agent` is never looked up. Cursor installs it as an alias,
+ * and so does Grok Build (`~/.grok/bin/agent.exe`); whichever comes first on
+ * PATH wins, and on the machine this was built on that was grok.
+ *
+ * The installer path comes before PATH because the installer appends its
+ * folder to the persistent user PATH, which a Claude Code session started
+ * beforehand does not see.
+ *
  * @returns {Promise<string>}
  */
 export async function resolveBin() {
   if (cachedBin) return cachedBin;
   const override = process.env.CURSOR_AGENT_BIN?.trim();
-  if (override && override.length > 0) {
+  if (override) {
     cachedBin = override;
     return cachedBin;
   }
-  // `where` is the Windows equivalent of `which`; it reports one path per line.
-  const locator = process.platform === 'win32' ? 'where' : 'which';
-  for (const candidate of ['cursor-agent', 'agent']) {
-    const res = await run(locator, [candidate]);
-    const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
-    if (res.exitCode === 0 && hit) {
-      cachedBin = hit.trim();
-      return cachedBin;
-    }
+  const installed = defaultWindowsBin();
+  if (installed) {
+    cachedBin = installed;
+    return cachedBin;
   }
-  // The Windows installer adds its dir to the *persistent* user PATH, so a
-  // Claude Code session started beforehand will not see it. Look there directly.
-  const winDefault = defaultWindowsBin();
-  if (winDefault) {
-    cachedBin = winDefault;
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  const res = await run(finder, ['cursor-agent'], { timeoutMs: 5_000 });
+  const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
+  if (res.exitCode === 0 && hit) {
+    cachedBin = hit.trim();
     return cachedBin;
   }
   throw new Error(
-    'cursor-agent not found on PATH. Install from https://cursor.com/install or run /cursor:setup.',
+    'cursor-agent not found at %LOCALAPPDATA%\\cursor-agent or on PATH. Install the Cursor CLI, or set CURSOR_AGENT_BIN to its full path.',
   );
 }
 
 /**
- * Ordinary slash-command briefs stay on argv: the sidecar costs a cursor-agent
- * Read tool call and can dilute the instruction. 4 KiB sits well under both
- * the 8,191 cmd.exe and 32,767 CreateProcess ceilings after flags and the
- * binary path. Flag-like tokens (`-X`, `-ldflags`) always sidecar — PowerShell
- * `$args` re-splits those into a *wrong prompt* rather than an error.
+ * Longest brief passed on the command line. Windows caps a whole command line
+ * at 32,767 characters; a longer brief is written to a file and the delegate
+ * is told to read it.
  */
-export const PROMPT_INLINE_MAX = 4096;
-
-const PROMPT_FLAG_TOKEN = /(?:^|[\s"'`])-{1,2}[A-Za-z]/;
+export const PROMPT_INLINE_MAX = 24_000;
 
 /**
+ * The prompt cursor-agent receives: the brief itself, or, when it is too long
+ * for the command line, an instruction to read it from `promptFile`.
+ *
  * @param {string} prompt
- * @returns {boolean}
+ * @param {string} promptFile
+ * @returns {string}
  */
-export function shouldSidecarPrompt(prompt) {
-  return prompt.length > PROMPT_INLINE_MAX || PROMPT_FLAG_TOKEN.test(prompt);
-}
-
-/**
- * Node sets `subprocess.killed` when the signal is *sent*, not when the
- * process exits. Gating SIGKILL on `child.killed` skips the escalation
- * entirely. Use this instead (paperclip#8598).
- *
- * @param {{ exitCode: number|null, signalCode: string|null }} child
- * @returns {boolean}
- */
-export function childStillRunning(child) {
-  return child.exitCode === null && child.signalCode === null;
-}
-
-/**
- * Tree-kill a spawned CLI child if it has not actually exited.
- * `child.killed` is ignored — see `childStillRunning`.
- *
- * @param {{ pid?: number, exitCode: number|null, signalCode: string|null }} child
- * @param {{ graceMs?: number }} [opts]
- * @returns {Promise<'killed'|'already-gone'|'failed'>}
- */
-export function reapChild(child, opts) {
-  if (!childStillRunning(child)) return Promise.resolve('already-gone');
-  if (typeof child.pid !== 'number' || child.pid <= 0) return Promise.resolve('failed');
-  return killTree(child.pid, opts);
+export function promptArg(prompt, promptFile) {
+  if (prompt.length <= PROMPT_INLINE_MAX) return prompt;
+  return `Your task is in the file ${promptFile}. Read all of it with your Read tool, then carry it out.`;
 }
 
 /**
  * @typedef {Object} BuildArgsInput
  * @property {string} prompt
- * @property {string} model
+ * @property {string=} model         Omitted: cursor-agent uses the account default.
+ * @property {string=} chatId        Pre-assigned UUID for a NEW chat.
  * @property {string=} resumeChatId
- * @property {boolean=} resumeLatest
- * @property {boolean=} cloud
- * @property {boolean=} force              Default: true.
- * @property {boolean=} approveMcps
- * @property {string=} logPath             NDJSON log path; sidecar is `${logPath}.prompt.txt`.
- * @property {string=} promptFile          Explicit sidecar path (overrides logPath).
  */
 
 /**
- * @param {string} path
- * @returns {string}
- */
-function sidecarPointer(path) {
-  return `Read the file at ${path} in full and carry out that task.`;
-}
-
-/**
- * @param {import('node:readline').Interface} rl
- * @returns {Promise<void>}
- */
-function drainReadline(rl) {
-  return new Promise((resolve) => {
-    const finish = () => resolve();
-    rl.once('close', finish);
-    if (rl.closed) {
-      rl.off('close', finish);
-      resolve();
-    }
-  });
-}
-
-/**
+ * Build cursor-agent's argv for a headless dispatch.
+ *
+ * `--force` is unconditional. Without it a print-mode run cannot run shell
+ * commands or write files, because nobody can answer the approval prompt.
+ * The guard against a bad edit is that this plugin never commits and a person
+ * reads the diff.
+ *
+ * `--disable-auto-update` (hidden in `--help`, present in 2026.10.22) stops a
+ * dispatch from updating the CLI in the background, so the version moves only
+ * through `/cursor:update`.
+ *
+ * `--new-session-id <uuid>` (also hidden) names the chat before the run
+ * starts, so a run killed before its `result` event can still be resumed.
+ *
+ * `--resume <chatId>` always names its chat. Bare `--resume` and `--continue`
+ * pick the newest chat in the directory, which may belong to someone else.
+ *
+ * `--` ends the options, so a brief that starts with `-` is not read as a flag.
+ *
+ * Not passed: `--trust` (a print-mode run does not prompt for workspace trust,
+ * and passing it loads no less context), `--approve-mcps`, `--model` unless
+ * the user named one, and `--stream-partial-output` (without it each
+ * `assistant` event is one whole message).
+ *
  * @param {BuildArgsInput} opts
  * @returns {string[]}
  */
 export function buildArgs(opts) {
-  const args = ['-p', '--output-format', 'stream-json', '--trust', '--model', opts.model];
-  if (opts.force !== false) args.push('--force');
-  if (opts.approveMcps) args.push('--approve-mcps');
-  if (opts.cloud) args.push('--cloud');
-  if (opts.resumeChatId) args.push(`--resume=${opts.resumeChatId}`);
-  else if (opts.resumeLatest) args.push('--resume');
-  if (shouldSidecarPrompt(opts.prompt)) {
-    const promptFile = opts.promptFile ?? (opts.logPath ? `${opts.logPath}.prompt.txt` : undefined);
-    if (!promptFile) {
-      throw new Error(
-        'buildArgs: long or flag-like prompt needs logPath (or promptFile) for the sidecar',
-      );
-    }
-    writeFileSync(promptFile, opts.prompt, 'utf8');
-    args.push(sidecarPointer(promptFile));
-  } else {
-    args.push(opts.prompt);
-  }
+  const args = ['-p', '--output-format', 'stream-json', '--force', '--disable-auto-update'];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.resumeChatId) args.push('--resume', opts.resumeChatId);
+  else if (opts.chatId) args.push('--new-session-id', opts.chatId);
+  args.push('--', opts.prompt);
   return args;
 }
 
 /**
  * @typedef {Object} DelegateOpts
  * @property {string} prompt
- * @property {string} model
+ * @property {string=} model
+ * @property {string=} chatId
  * @property {string=} resumeChatId
- * @property {boolean=} resumeLatest
- * @property {boolean=} cloud
- * @property {boolean=} force
- * @property {boolean=} approveMcps
  * @property {string=} cwd
  * @property {number=} timeoutSec
  * @property {string} logPath
  * @property {(ev: Record<string, unknown>) => void=} onEvent
- * @property {(line: string) => void=} onRaw
- * @property {(pid: number) => void=} onSpawn
+ * @property {(pid: number) => void=} onSpawn  cursor-agent's pid, as soon as it exists.
  */
 
 /**
@@ -213,7 +168,27 @@ export function buildArgs(opts) {
  * @property {number} exitCode
  * @property {Record<string, unknown>[]} events
  * @property {boolean} killed
+ * @property {string[]} stderrTail  Last few stderr lines, plus any spawn error.
  */
+
+/**
+ * Escalate to SIGKILL when the child has not actually exited. Node sets
+ * `child.killed` when a signal is sent, not when the process exits.
+ *
+ * @param {import('node:child_process').ChildProcess} child
+ */
+export function escalateSigkill(child) {
+  if (child.exitCode === null && child.signalCode === null) {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // noop
+    }
+  }
+}
+
+/** How long cursor-agent may stay up after its `result` event. */
+export const POST_RESULT_GRACE_MS = 10_000;
 
 /**
  * @param {DelegateOpts} opts
@@ -221,37 +196,38 @@ export function buildArgs(opts) {
  */
 export async function runHeadless(opts) {
   const bin = await resolveBin();
-  const args = buildArgs(opts);
-  const [spawnCmd, spawnArgs] = adaptWindowsBin(bin, args);
-  // POSIX: detached without unref() so cursor-agent is a process-group
-  // leader and `killTree` can signal `-pid`. Do not detach on Windows —
-  // libuv already assigns non-detached children to the process-wide job.
-  // Do not unref: that is reserved for the background *worker*, which must
-  // outlive the Claude session.
-  const child = spawn(spawnCmd, spawnArgs, {
+  // Kept next to the run's NDJSON log: when a run goes wrong the first
+  // question is "what exactly did we ask?"
+  const promptFile = `${opts.logPath}.prompt.txt`;
+  writeFileSync(promptFile, opts.prompt, 'utf8');
+
+  const args = buildArgs({
+    prompt: promptArg(opts.prompt, promptFile),
+    model: opts.model,
+    chatId: opts.chatId,
+    resumeChatId: opts.resumeChatId,
+  });
+  const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
-    // Mandatory on Windows. The background worker is detached and therefore has
-    // no console of its own, so without this the OS hands this child a brand new
-    // one — on Win11 a Windows Terminal window titled with the CLI's exe path,
-    // which opens on dispatch and sits there for the whole life of the job. This
-    // is the spawn that was actually producing it; the worker's own spawn only
-    // sets the stage.
+    // Mandatory on Windows: a dispatch from a backgrounded Bash call has no
+    // console, and without this the OS opens a new terminal window for the
+    // child that stays up for the whole run.
     windowsHide: true,
-    ...(process.platform === 'win32' ? {} : { detached: true }),
+    // Not detached: the child stays in libuv's job object so `taskkill /T`
+    // can walk the tree.
   });
-  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
-    opts.onSpawn(child.pid);
-  }
   if (!child.stdout || !child.stderr) {
     throw new Error('cursor-agent spawn failed: stdout/stderr not attached');
   }
-  const childStdout = child.stdout;
-  const childStderr = child.stderr;
+  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
+    opts.onSpawn(child.pid);
+  }
+
   const logStream = createWriteStream(opts.logPath, { flags: 'a' });
-  // A failed log write (ENOSPC/EACCES/missing dir) must not crash the process
-  // and orphan the running cursor-agent — degrade to in-memory only.
+  // A failed log write must not crash the process and orphan a running
+  // cursor-agent; degrade to in-memory only.
   let logBroken = false;
   logStream.on('error', () => {
     logBroken = true;
@@ -264,67 +240,90 @@ export async function runHeadless(opts) {
       logBroken = true;
     }
   };
+
   /** @type {Record<string, unknown>[]} */
   const events = [];
-  let sawResult = false;
+  // cursor-agent explains a refused run on stderr only: a model the plan does
+  // not allow ends with `ActionRequiredError: …`, exit 1 and no `result`
+  // event. Kept to a tail because only the end of stderr is the reason.
+  /** @type {string[]} */
+  const stderrTail = [];
+  const STDERR_TAIL_MAX = 20;
+  const keepStderr = (line) => {
+    const text = line.trim();
+    if (!text) return;
+    stderrTail.push(text);
+    if (stderrTail.length > STDERR_TAIL_MAX) stderrTail.shift();
+  };
   let killed = false;
+  let reapedAfterResult = false;
+  let postResultTimer;
 
-  const stdoutLines = createInterface({ input: childStdout, crlfDelay: Infinity });
+  const stdoutLines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  const stderrLines = createInterface({ input: child.stderr, crlfDelay: Infinity });
+  const stdoutDrained = once(stdoutLines, 'close');
+  const stderrDrained = once(stderrLines, 'close');
   stdoutLines.on('line', (line) => {
     logSafe(line + '\n');
-    if (opts.onRaw) opts.onRaw(line);
     const ev = parseLine(line);
     if (!ev) return;
     events.push(ev);
     if (opts.onEvent) opts.onEvent(ev);
-    // Arm the post-result watchdog at most once — cursor-agent can emit
-    // several `result` events, and re-arming would stack redundant timers.
-    if (ev.type === 'result' && !sawResult) {
-      sawResult = true;
-      setTimeout(() => {
-        if (childStillRunning(child)) {
-          killed = true;
-          reapChild(child, { graceMs: 5_000 }).catch(() => {});
+    // Older builds sent `result` and then did not exit. The run is over at
+    // that point, so a process still up after the grace period is reaped
+    // without marking the run killed.
+    if (ev.type === 'result' && !postResultTimer) {
+      postResultTimer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null && typeof child.pid === 'number') {
+          reapedAfterResult = true;
+          logSafe('# plugin: cursor-agent still running after its result event; reaped\n');
+          void killTree(child.pid, { graceMs: 2_000 });
+          setTimeout(() => escalateSigkill(child), 2_000);
         }
-      }, 5_000);
+      }, POST_RESULT_GRACE_MS);
     }
   });
 
-  const stderrLines = createInterface({ input: childStderr, crlfDelay: Infinity });
   stderrLines.on('line', (line) => {
     logSafe(`# stderr: ${line}\n`);
+    keepStderr(line);
   });
 
   let timeoutHandle;
+  const onTimeout = () => {
+    killed = true;
+    if (typeof child.pid === 'number') {
+      void killTree(child.pid, { graceMs: 5_000 });
+    }
+    setTimeout(() => escalateSigkill(child), 5_000);
+  };
   if (typeof opts.timeoutSec === 'number' && opts.timeoutSec > 0) {
-    timeoutHandle = setTimeout(() => {
-      killed = true;
-      reapChild(child, { graceMs: 5_000 }).catch(() => {});
-    }, opts.timeoutSec * 1_000);
+    timeoutHandle = setTimeout(onTimeout, opts.timeoutSec * 1_000);
   }
 
-  const exitCode = await new Promise((resolve) => {
+  let exitCode = await new Promise((resolve) => {
     let settled = false;
     const done = (code) => {
       if (settled) return;
       settled = true;
       resolve(code);
     };
-    // Without an 'error' handler a spawn failure (missing/non-executable
-    // binary) emits an uncaught exception that kills the process.
+    // Without an 'error' handler a spawn failure emits an uncaught exception.
     child.on('error', (err) => {
-      logSafe(`# spawn error: ${err instanceof Error ? err.message : String(err)}\n`);
-      done(sawResult ? 0 : 1);
+      const message = err instanceof Error ? err.message : String(err);
+      logSafe(`# spawn error: ${message}\n`);
+      keepStderr(`spawn error: ${message}`);
+      done(127);
     });
     child.on('close', (code) => {
-      done(typeof code === 'number' ? code : sawResult ? 0 : 1);
+      done(typeof code === 'number' ? code : 1);
     });
   });
-  // Cheap insurance: child `'close'` already waits for stdio to shut, but
-  // await the readline interfaces too so the last NDJSON line cannot still
-  // be in flight when we summarise.
-  await Promise.all([drainReadline(stdoutLines), drainReadline(stderrLines)]);
+
   if (timeoutHandle) clearTimeout(timeoutHandle);
+  if (postResultTimer) clearTimeout(postResultTimer);
+  if (reapedAfterResult && !killed) exitCode = 0;
+  await Promise.all([stdoutDrained, stderrDrained]);
   await new Promise((resolve) => {
     try {
       logStream.end(() => resolve());
@@ -332,191 +331,58 @@ export async function runHeadless(opts) {
       resolve();
     }
   });
-  return { exitCode, events, killed };
+  return { exitCode, events, killed, stderrTail };
 }
 
 /**
- * @returns {Promise<{loggedIn: boolean, detail: string}>}
+ * Cheap health probe: is the binary present and does it answer `--version`?
+ *
+ * @returns {Promise<{ok: boolean, detail: string}>}
  */
-export async function authStatus() {
+export async function versionInfo() {
   try {
     const bin = await resolveBin();
-    const res = await run(bin, ['status'], { timeoutMs: 5_000 });
-    const text = `${res.stdout}\n${res.stderr}`.toLowerCase();
-    const loggedIn =
-      res.exitCode === 0 &&
-      (text.includes('logged in') || text.includes('authenticated') || text.includes('signed in'));
-    return {
-      loggedIn,
-      detail: `${res.stdout}${res.stderr ? `\n${res.stderr}` : ''}`.trim(),
-    };
+    const res = await run(bin, ['--version'], { timeoutMs: 10_000 });
+    const text = `${res.stdout}${res.stderr}`.trim();
+    return { ok: res.exitCode === 0, detail: text || '(no output)' };
   } catch (err) {
-    return { loggedIn: false, detail: String(err) };
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /**
- * Cursor's own models are the ones included in the plan's "Cursor Models"
- * usage pool (Composer, Cursor Grok); everything else is metered per token
- * against the separate "Other Models" pool. Cursor namespaces its own ids
- * rather than versioning them into a list, so this stays correct across
- * `composer-3` / `cursor-grok-5` without a table to keep up to date.
- *
- * @param {string} id
- * @returns {boolean}
+ * @typedef {Object} About
+ * @property {string|null} cliVersion
+ * @property {string|null} latestStatus   `up_to_date`, `update_available`, `disabled` or `unavailable`
+ * @property {string|null} latestVersion
+ * @property {string|null} model          the account default, as a display name
+ * @property {string|null} subscriptionTier
  */
-export function isCursorModel(id) {
-  return id.startsWith('composer') || id.startsWith('cursor-');
-}
 
 /**
- * Turn `cursor-agent models` output (`"<id> - <label>"` lines) into bare ids.
+ * `cursor-agent about --format json`, reduced to the fields the plugin uses.
+ * The user's email is in the same document and is deliberately dropped.
+ * Null when the command fails or prints no JSON.
  *
- * @param {string[]} lines
- * @returns {string[]}
+ * @returns {Promise<About|null>}
  */
-export function parseModelList(lines) {
-  const ids = [];
-  for (const line of lines) {
-    const [id] = line.split(' - ');
-    const trimmed = (id ?? '').trim();
-    // Skip headings and blank/tip lines — real entries always have a label.
-    if (trimmed.length === 0 || !line.includes(' - ')) continue;
-    if (trimmed.includes(' ')) continue;
-    ids.push(trimmed);
-  }
-  return ids;
-}
-
-/**
- * The `-fast` sibling of a model, when the account actually offers one.
- * Roughly half the lineup has none (e.g. `claude-sonnet-5-*`, `gemini-*`),
- * so callers use this to decide whether asking about speed makes sense.
- *
- * @param {string} id
- * @param {string[]} ids   every id the account offers
- * @returns {string|undefined}
- */
-export function fastVariant(id, ids) {
-  if (id.endsWith('-fast')) return undefined;
-  return ids.includes(`${id}-fast`) ? `${id}-fast` : undefined;
-}
-
-/**
- * @returns {Promise<string[]>}
- */
-export async function listModels() {
+export async function aboutInfo() {
   try {
     const bin = await resolveBin();
-    const res = await run(bin, ['--list-models'], { timeoutMs: 10_000 });
-    if (res.exitCode !== 0) {
-      const fallback = await run(bin, ['models'], { timeoutMs: 10_000 });
-      return fallback.stdout
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean);
-    }
-    return res.stdout
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const res = await run(bin, ['about', '--format', 'json'], { timeoutMs: 20_000 });
+    if (res.exitCode !== 0) return null;
+    const start = res.stdout.indexOf('{');
+    if (start < 0) return null;
+    const doc = JSON.parse(res.stdout.slice(start));
+    const str = (v) => (typeof v === 'string' && v ? v : null);
+    return {
+      cliVersion: str(doc.cliVersion),
+      latestStatus: str(doc.latestStatus),
+      latestVersion: str(doc.latestVersion),
+      model: str(doc.model),
+      subscriptionTier: str(doc.subscriptionTier),
+    };
   } catch {
-    return [];
-  }
-}
-
-/**
- * @typedef {Object} McpEntry
- * @property {string} name
- * @property {string} status
- * @property {boolean} loaded
- */
-
-/**
- * @returns {Promise<McpEntry[]>}
- */
-export async function listConfiguredMcps() {
-  try {
-    const bin = await resolveBin();
-    const res = await run(bin, ['mcp', 'list'], { timeoutMs: 5_000 });
-    if (res.exitCode !== 0) return [];
-    // Strip ANSI control sequences — cursor-agent writes them even under `run`.
-    // eslint-disable-next-line no-control-regex
-    const text = res.stdout.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
-    /** @type {McpEntry[]} */
-    const out = [];
-    for (const raw of text.split('\n')) {
-      const line = raw.trim();
-      if (!line || line.startsWith('Loading')) continue;
-      const match = line.match(/^([^:\s]+):\s*(.+)$/);
-      if (!match) continue;
-      const name = match[1];
-      const status = match[2].trim();
-      const lower = status.toLowerCase();
-      const loaded = lower.startsWith('loaded') || lower === 'ok' || lower.includes('approved');
-      out.push({ name, status, loaded });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-/**
- * @typedef {Object} SessionSummary
- * @property {string} id
- * @property {string=} summary
- * @property {string=} updatedAt
- */
-
-/**
- * @param {string} [cwd]
- * @returns {Promise<SessionSummary[]>}
- */
-export async function listSessions(cwd = process.cwd()) {
-  try {
-    const bin = await resolveBin();
-    const res = await run(bin, ['ls', '--output-format', 'json'], {
-      cwd,
-      timeoutMs: 5_000,
-    });
-    if (res.exitCode !== 0 || !res.stdout) return [];
-    let parsed;
-    try {
-      parsed = JSON.parse(res.stdout);
-    } catch {
-      return [];
-    }
-    if (!Array.isArray(parsed)) return [];
-    /** @type {SessionSummary[]} */
-    const out = [];
-    for (const row of parsed) {
-      if (!row || typeof row !== 'object') continue;
-      const id =
-        (typeof row.id === 'string' && row.id) ||
-        (typeof row.chat_id === 'string' && row.chat_id) ||
-        (typeof row.chatId === 'string' && row.chatId);
-      if (!id) continue;
-      const summary =
-        typeof row.summary === 'string'
-          ? row.summary
-          : typeof row.title === 'string'
-            ? row.title
-            : undefined;
-      const updatedAt =
-        typeof row.updated_at === 'string'
-          ? row.updated_at
-          : typeof row.updatedAt === 'string'
-            ? row.updatedAt
-            : undefined;
-      /** @type {SessionSummary} */
-      const entry = { id };
-      if (summary !== undefined) entry.summary = summary;
-      if (updatedAt !== undefined) entry.updatedAt = updatedAt;
-      out.push(entry);
-    }
-    return out;
-  } catch {
-    return [];
+    return null;
   }
 }

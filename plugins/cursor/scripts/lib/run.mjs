@@ -1,6 +1,6 @@
 // Thin Promise wrapper around child_process.spawn with:
 //   - no throw on non-zero exit (resolve with exitCode)
-//   - optional timeout (tree-kill: SIGTERM then SIGKILL after 5 s grace)
+//   - optional timeout (tree-kill the child, 5 s grace)
 //   - stdout/stderr captured as strings
 //
 // Replaces the subset of `execa` that this plugin actually uses.
@@ -8,6 +8,31 @@
 import { spawn } from 'node:child_process';
 import { killTree } from './killtree.mjs';
 import { adaptWindowsBin } from './winbin.mjs';
+
+/**
+ * Spawn a process. If `cmd` is a Node script (test stub), run it with
+ * `process.execPath`: a `.mjs` path is not directly executable on Windows —
+ * a shebang means nothing to it — and spawning one raises EFTYPE.
+ * The Windows `cursor-agent.cmd` shim is rewritten by `adaptWindowsBin` into
+ * the `node.exe` + `index.js` it wraps.
+ *
+ * `shell: true` is never an option here, so any other `.cmd`/`.bat` path (which
+ * Node refuses to spawn without it, since CVE-2024-27980) is passed through
+ * untouched: the caller sees the spawn error rather than a command line
+ * silently mangled by cmd.exe, where `%VAR%` would still expand.
+ *
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptions} options
+ */
+export function spawnDirect(cmd, args, options) {
+  const opts = { shell: false, ...options };
+  if (typeof cmd === 'string' && /\.(mjs|cjs|js)$/i.test(cmd)) {
+    return spawn(process.execPath, [cmd, ...args], opts);
+  }
+  const [bin, argv] = adaptWindowsBin(cmd, args);
+  return spawn(bin, argv, opts);
+}
 
 /**
  * @typedef {Object} RunOpts
@@ -32,8 +57,7 @@ import { adaptWindowsBin } from './winbin.mjs';
  */
 export function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    const [spawnCmd, spawnArgs] = adaptWindowsBin(cmd, args);
-    const child = spawn(spawnCmd, spawnArgs, {
+    const child = spawnDirect(cmd, args, {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: opts.env ?? process.env,
@@ -60,14 +84,8 @@ export function run(cmd, args, opts = {}) {
     if (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) {
       timeout = setTimeout(() => {
         timedOut = true;
-        if (typeof child.pid === 'number' && child.pid > 0) {
-          killTree(child.pid).catch(() => {});
-        } else {
-          try {
-            child.kill('SIGTERM');
-          } catch {
-            // noop
-          }
+        if (typeof child.pid === 'number') {
+          void killTree(child.pid, { graceMs: 5_000 });
         }
       }, opts.timeoutMs);
     }

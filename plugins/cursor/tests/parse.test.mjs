@@ -1,186 +1,155 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  extractChatId,
-  extractResolvedModel,
+  claimsFileChanges,
+  MAX_SUMMARY_CHARS,
+  modelStarted,
   parseLine,
+  shellCommandResult,
   summariseEvents,
 } from '../scripts/lib/parse.mjs';
-import {
-  FAILURE_FIXTURE,
-  HAPPY_FIXTURE,
-  NATIVE_TOOL_CALL_FIXTURE,
-  NESTED_TOOL_USE_FIXTURE,
-} from './helpers.mjs';
+import { FAILED_COMMAND_FIXTURE, HAPPY_FIXTURE, REFUSED_FIXTURE } from './helpers.mjs';
 
 function loadFixture(path) {
-  const raw = readFileSync(path, 'utf8');
   const out = [];
-  for (const line of raw.split('\n')) {
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
     const ev = parseLine(line);
     if (ev) out.push(ev);
   }
   return out;
 }
 
-describe('parse', () => {
+const SESSION = 'e929dd1f-a6f6-4516-ab43-26a630f775d7';
+
+describe('parseLine', () => {
   it('drops empty and malformed lines', () => {
     expect(parseLine('')).toBeNull();
     expect(parseLine('   ')).toBeNull();
     expect(parseLine('not json')).toBeNull();
     expect(parseLine('null')).toBeNull();
+    expect(parseLine('[1]')).toBeNull();
+    expect(parseLine('42')).toBeNull();
     expect(parseLine('{"type":"x"}')?.type).toBe('x');
   });
+});
 
-  it('extracts chat id from the happy-path stream', () => {
-    const events = loadFixture(HAPPY_FIXTURE);
-    expect(extractChatId(events)).toBe('chat_abc123');
-  });
-
-  it('extracts chat id from the failure stream', () => {
-    const events = loadFixture(FAILURE_FIXTURE);
-    expect(extractChatId(events)).toBe('chat_fail_999');
-  });
-
-  it('returns undefined when no chat id present', () => {
-    expect(extractChatId([{ type: 'assistant' }])).toBeUndefined();
-  });
-
-  it('summarises happy-path: files touched + success text', () => {
-    const events = loadFixture(HAPPY_FIXTURE);
-    const s = summariseEvents(events);
+describe('summariseEvents', () => {
+  it('reads a successful run: chat id, stop reason, tool calls', () => {
+    const s = summariseEvents(loadFixture(HAPPY_FIXTURE));
     expect(s.success).toBe(true);
-    expect(s.filesTouched).toEqual(expect.arrayContaining(['src/foo.ts', 'README.md']));
-    expect(s.summary).toContain('Added src/foo.ts');
+    expect(s.stopReason).toBe('success');
+    expect(s.sessionId).toBe(SESSION);
+    expect(s.toolCalls).toBe(3);
+    expect(s.failedCommands).toEqual([]);
+    expect(s.errorDetail).toBeUndefined();
   });
 
-  it('summarises failure stream: success=false and error reason', () => {
-    const events = loadFixture(FAILURE_FIXTURE);
-    const s = summariseEvents(events);
+  // The `result` text runs the messages together ("now.Ran"); the summary
+  // keeps them apart.
+  it('joins whole assistant messages with a blank line', () => {
+    const s = summariseEvents(loadFixture(HAPPY_FIXTURE));
+    expect(s.summary).toBe(
+      'Running the four steps now.\n\nRan `git status --short`, wrote `hello.txt` with “hi”, and read `a.txt`.',
+    );
+  });
+
+  it('falls back to the result text when no assistant message arrived', () => {
+    const s = summariseEvents([{ type: 'result', subtype: 'success', is_error: false, result: 'Done.' }]);
+    expect(s.summary).toBe('Done.');
+  });
+
+  it('reports a failed command without flipping success', () => {
+    const s = summariseEvents(loadFixture(FAILED_COMMAND_FIXTURE));
+    expect(s.success).toBe(true);
+    expect(s.commands.map((c) => c.command)).toEqual(['git status --short', 'ls does-not-exist']);
+    expect(s.failedCommands).toHaveLength(1);
+    expect(s.failedCommands[0]).toMatchObject({
+      command: 'ls does-not-exist',
+      exitCode: 2,
+      timedOut: false,
+    });
+    expect(s.failedCommands[0].output).toContain('No such file or directory');
+  });
+
+  it('is incomplete when there is no result event', () => {
+    const s = summariseEvents(loadFixture(HAPPY_FIXTURE).filter((e) => e.type !== 'result'));
     expect(s.success).toBe(false);
-    expect(s.exitReason).toBe('error');
-    expect(s.summary).toContain('Aborted');
+    expect(s.stopReason).toBe('incomplete');
   });
 
-  // Issue D: tool_use blocks are typically nested inside
-  // `assistant.message.content[]` (Anthropic Messages API shape), not flat
-  // on the event. filesTouched must be populated from that realistic shape,
-  // via tool names (`search_replace`, `delete_file`) that a flat/narrow
-  // "tool_use" check would miss.
-  it('summarises a stream with nested tool_use blocks: filesTouched is populated', () => {
-    const events = loadFixture(NESTED_TOOL_USE_FIXTURE);
-    const s = summariseEvents(events);
-    expect(s.success).toBe(true);
-    expect(s.filesTouched).toEqual(expect.arrayContaining(['src/util.ts', 'src/dead.ts']));
-    expect(s.summary).toContain('Refactored src/util.ts');
+  it('reads a refused run as incomplete with no write-up', () => {
+    const s = summariseEvents(loadFixture(REFUSED_FIXTURE));
+    expect(s.success).toBe(false);
+    expect(s.stopReason).toBe('incomplete');
+    expect(s.summary).toBe('');
+    expect(s.toolCalls).toBe(0);
   });
 
-  // Issue D (real shape): cursor-agent's native stream nests the tool NAME as a
-  // key inside `tool_call` (`editToolCall`/`writeToolCall`) with the path under
-  // `.args.path` — captured from a live run. A read-only tool (`readToolCall`)
-  // must NOT count as a file touched.
-  it('summarises the native cursor tool_call shape: only written files counted', () => {
-    const events = loadFixture(NATIVE_TOOL_CALL_FIXTURE);
-    const s = summariseEvents(events);
-    expect(s.success).toBe(true);
-    expect(s.filesTouched).toEqual(expect.arrayContaining(['demo.txt', 'src/config.json']));
-    expect(s.filesTouched).not.toContain('src/should-not-count.ts');
-    expect(s.summary).toContain('Created demo.txt');
+  it('reads is_error as an error and keeps its text', () => {
+    const s = summariseEvents([{ type: 'result', subtype: 'success', is_error: true, result: 'boom' }]);
+    expect(s.success).toBe(false);
+    expect(s.stopReason).toBe('error');
+    expect(s.errorDetail).toBe('boom');
   });
 
-  it('extractResolvedModel finds a concrete model id in the stream', () => {
-    const events = loadFixture(NESTED_TOOL_USE_FIXTURE);
-    expect(extractResolvedModel(events)).toBe('claude-4.6-sonnet-medium');
+  it('keeps a result subtype other than success as the stop reason', () => {
+    const s = summariseEvents([{ type: 'result', subtype: 'error_max_turns', is_error: true }]);
+    expect(s.stopReason).toBe('error_max_turns');
+    expect(s.success).toBe(false);
+  });
+});
+
+describe('modelStarted', () => {
+  it('is false for system and user events and true from the first model event', () => {
+    const events = loadFixture(HAPPY_FIXTURE);
+    expect(modelStarted(events[0])).toBe(false);
+    expect(modelStarted(events[1])).toBe(false);
+    expect(events.some(modelStarted)).toBe(true);
+    expect(loadFixture(REFUSED_FIXTURE).some(modelStarted)).toBe(false);
+  });
+});
+
+describe('shellCommandResult', () => {
+  it('ignores the started event and non-shell tools', () => {
+    const events = loadFixture(FAILED_COMMAND_FIXTURE).filter((e) => e.type === 'tool_call');
+    const results = events.map(shellCommandResult).filter(Boolean);
+    expect(results).toHaveLength(2);
+  });
+});
+
+describe('claimsFileChanges', () => {
+  it.each([
+    'Created src/a.mjs with the retry helper.',
+    'I updated the file and ran the tests.',
+    'Wrote [notes](docs/notes) for the next step.',
+    'Modified [greet](file:///C:/repo/greet) to export the helper.',
+  ])('reads %j as a claim', (text) => {
+    expect(claimsFileChanges(text)).toBe(true);
   });
 
-  it('extractResolvedModel returns undefined when no model field is present', () => {
-    expect(extractResolvedModel(loadFixture(HAPPY_FIXTURE))).toBeUndefined();
+  it.each([
+    'Six of them open `file://` playgrounds.\nNone of them start the CLI.',
+    "Google's [pricing](https://ai.google.dev/gemini-api/docs/pricing) (updated 16 Oct 2026): $0.75 per million tokens.",
+    'The plan was updated.\nSee README.md for the rest.',
+  ])('does not read %j as a claim', (text) => {
+    expect(claimsFileChanges(text)).toBe(false);
+  });
+});
+
+describe('write-up length', () => {
+  const long = (n) => [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(n) }] } },
+  ];
+
+  it('keeps a long answer whole', () => {
+    const out = summariseEvents(long(30_000));
+    expect(out.summary.length).toBe(30_000);
+    expect(out.summary).not.toContain('truncated');
   });
 
-  it('records non-zero shellToolCall exit codes as failedCommands', () => {
-    const events = [
-      { type: 'system', subtype: 'init', session_id: 's1' },
-      {
-        type: 'tool_call',
-        subtype: 'completed',
-        call_id: 't1',
-        tool_call: {
-          shellToolCall: {
-            args: { command: 'grep nope' },
-            result: {
-              failure: {
-                command: 'grep nope',
-                exitCode: 1,
-                stdout: '',
-                stderr: 'no matches',
-                interleavedOutput: 'no matches',
-                aborted: false,
-              },
-            },
-          },
-        },
-      },
-      {
-        type: 'tool_call',
-        subtype: 'completed',
-        call_id: 't2',
-        tool_call: {
-          shellToolCall: {
-            args: { command: 'echo ok' },
-            result: {
-              success: {
-                command: 'echo ok',
-                exitCode: 0,
-                stdout: 'ok\n',
-                stderr: '',
-                interleavedOutput: 'ok\n',
-              },
-            },
-          },
-        },
-      },
-      { type: 'result', subtype: 'success', result: 'done' },
-    ];
-    const s = summariseEvents(events);
-    expect(s.success).toBe(true);
-    expect(s.failedCommands).toEqual([
-      { command: 'grep nope', exitCode: 1, output: 'no matches', timedOut: false },
-    ]);
-  });
-
-  it('marks aborted shellToolCall failures as timedOut', () => {
-    const events = [
-      {
-        type: 'tool_call',
-        subtype: 'completed',
-        call_id: 't-abort',
-        tool_call: {
-          shellToolCall: {
-            args: { command: 'sleep 999' },
-            result: {
-              failure: {
-                command: 'sleep 999',
-                exitCode: 1,
-                stdout: '',
-                stderr: '',
-                interleavedOutput: '',
-                aborted: true,
-              },
-            },
-          },
-        },
-      },
-      { type: 'result', subtype: 'success', result: 'ok' },
-    ];
-    expect(summariseEvents(events).failedCommands[0].timedOut).toBe(true);
-  });
-
-  it('dedupes absolute and relative spellings of the same file under root', () => {
-    const events = [
-      { type: 'tool_use', name: 'write', input: { path: 'src/foo.ts' } },
-      { type: 'tool_use', name: 'write', input: { path: '/tmp/repo/src/foo.ts' } },
-      { type: 'result', subtype: 'success', result: 'ok' },
-    ];
-    expect(summariseEvents(events, '/tmp/repo').filesTouched).toEqual(['src/foo.ts']);
+  it('says so, and where the rest is, when the storage ceiling fires', () => {
+    const out = summariseEvents(long(MAX_SUMMARY_CHARS + 500));
+    expect(out.summary).toContain(`${MAX_SUMMARY_CHARS + 500} characters produced`);
+    expect(out.summary).toContain('.ndjson');
   });
 });

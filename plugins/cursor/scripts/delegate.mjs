@@ -1,300 +1,211 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
-import { existsSync, openSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { collapseCommandArgv, parseArgv, parseTimeout } from './lib/args.mjs';
-import { resolveModel, runHeadless } from './lib/cursor.mjs';
-import { isGitRepo, repoRoot } from './lib/git.mjs';
-import { id as newId } from './lib/id.mjs';
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { invokedAsScript, parseCommandArgv, parseTimeout } from './lib/args.mjs';
+import { parseVersion, runHeadless, versionInfo } from './lib/cursor.mjs';
+import { isGitRepo, porcelain, porcelainDelta, repoRoot, snapshotFiles } from './lib/git.mjs';
 import {
   createJob,
   pruneOlderThanDays,
-  rawLogPath as rawLogPathFor,
+  rawLogPath,
+  readJob,
+  uniqueJobName,
   updateJob,
 } from './lib/jobs.mjs';
-import { ensureDir, jobsDir, logsDir } from './lib/paths.mjs';
-import {
-  extractChatId,
-  extractResolvedModel,
-  isFileWriteTool,
-  pickToolPath,
-  summariseEvents,
-  walkToolUses,
-} from './lib/parse.mjs';
-import { renderOutcome } from './lib/render.mjs';
+import { pluginVersion, recordDetected } from './lib/papercuts.mjs';
+import { modelStarted, summariseEvents } from './lib/parse.mjs';
+import { isUnfinished, renderResult, warnings } from './lib/render.mjs';
+import { latestRelease, updateNotice } from './update.mjs';
 
-const BOOLEAN_FLAGS = ['background', 'wait', 'fresh', 'force', 'cloud', 'help', 'resume'];
+// Runs in the foreground of its child process; the orchestrator invokes it
+// under a backgrounded Bash call to receive the exit notification without
+// detaching.
 
-function parseFlags(argv) {
-  // `honorDoubleDash: false` — `collapseCommandArgv` already consumed the
-  // slash-command delimiter, so a `--` left in here is part of the task text.
-  // Without this, a task containing `--` silently swallowed every flag after
-  // it (e.g. `--model`) and the run proceeded on the default model.
-  const { positional, flags } = parseArgv(argv, BOOLEAN_FLAGS, { honorDoubleDash: false });
-  const fresh = Boolean(flags['fresh']);
-  const cloud = Boolean(flags['cloud']);
-  // Single canonical spelling: `--no-git-check`. The parser's `--no-*`
-  // negation unconditionally populates both `git-check` (false) and its
-  // camelCase mirror from that one token, so checking `git-check === false`
-  // alongside the rare explicit `--no-git-check=true` form is the whole of
-  // the "minimal internal normalization" needed here.
-  const noGitCheck = flags['no-git-check'] === true || flags['git-check'] === false;
-  const explicitForceFlag = 'force' in flags ? Boolean(flags['force']) : undefined;
-  const force = explicitForceFlag === undefined ? true : explicitForceFlag;
-  // `--wait` forces the foreground even if `--background` is also present,
-  // so it is a real toggle rather than a no-op.
-  const explicitWait = flags['wait'] === true;
-  const background = Boolean(flags['background']) && !explicitWait;
-  const wait = !background;
-  const timeout = parseTimeout(flags['timeout']);
-  const resume = flags['resume'];
-  const model = typeof flags['model'] === 'string' ? flags['model'] : undefined;
-  const worker = typeof flags['worker'] === 'string' ? flags['worker'] : undefined;
-  // `undefined` = flag absent; `'-'` = stdin; a string path; `true` = bare
-  // `--prompt-file` with no value (a usage error, caught in main).
-  const promptFile = flags['prompt-file'];
-  return {
-    positional,
-    model,
-    background,
-    wait,
-    fresh,
-    resume,
-    force,
-    cloud,
-    timeout,
-    noGitCheck,
-    worker,
-    promptFile,
-  };
-}
+const BOOLEAN_FLAGS = ['help'];
+const USAGE =
+  'Usage: /cursor:delegate [--model <id>] [--timeout <sec>] [--session <chatId>] <task... | --prompt-file <path>>\n';
+
+// No watchdog unless --timeout is given. A run that is working is never cut
+// off; `/cursor:cancel` stops one that is not.
+const DEFAULT_TIMEOUT_SEC = 0;
 
 /**
- * Resolve `--prompt-file <path>` / `--prompt-file -` (stdin) into the actual
- * prompt text. Lets callers pass long, multi-line, or quote-heavy prompts
- * without CLI-arg mangling — the same robustness the background worker already
- * gets from `CCD_PROMPT`. Returns the trimmed text; throws on a missing value,
- * missing file, or empty content.
+ * Read the brief from `--prompt-file <path>`. Claude writes the file with its
+ * Write tool; this only reads it back.
  *
- * @param {unknown} spec  raw flag value: `'-'` for stdin, a path, or `true` when bare
+ * @param {unknown} spec
  * @returns {string}
  */
-function readPromptSource(spec) {
+function readPromptFile(spec) {
   if (spec === true || spec === '') {
-    throw new Error('--prompt-file needs a path, or `-` to read stdin.');
+    throw new Error('--prompt-file needs a path.');
   }
+  const path = String(spec);
   let raw;
-  if (spec === '-') {
-    // fd 0 = stdin; a synchronous read matches the one-shot nature of the command.
-    raw = readFileSync(0, 'utf8');
-  } else {
-    const path = String(spec);
-    if (!existsSync(path)) throw new Error(`prompt file not found: ${path}`);
+  try {
     raw = readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `could not read --prompt-file ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   const text = raw.trim();
   if (text.length === 0) {
-    throw new Error(spec === '-' ? 'stdin was empty.' : `prompt file is empty: ${spec}`);
+    throw new Error(`prompt file is empty: ${path}`);
   }
   return text;
 }
 
-function isResumeRequested(resume, fresh) {
-  if (fresh) return false;
-  if (resume === undefined) return false;
-  if (typeof resume === 'boolean') return resume;
-  // Any non-boolean value (string id, or a numeric id auto-cast by the parser)
-  // means "resume" — with an explicit chat id when one was supplied.
-  return true;
+function parseFlags(argv) {
+  const { positional, flags } = parseCommandArgv(argv, BOOLEAN_FLAGS);
+  const session =
+    typeof flags['session'] === 'string' && flags['session'].trim()
+      ? String(flags['session']).trim()
+      : undefined;
+  return {
+    positional,
+    model:
+      typeof flags['model'] === 'string' && flags['model'].trim() ? flags['model'].trim() : undefined,
+    timeout: parseTimeout(flags['timeout'], DEFAULT_TIMEOUT_SEC),
+    help: flags['help'] === true,
+    session,
+    // `undefined` = flag absent; `true` = bare `--prompt-file` with no value
+    // (a usage error, caught in main); otherwise the path as given.
+    promptFile: flags['prompt-file'],
+  };
 }
 
-function resumeChatId(resume) {
-  if (resume == null || typeof resume === 'boolean') return undefined;
-  const s = String(resume).trim();
-  if (s.length > 0 && s.toLowerCase() !== 'true') return s;
-  return undefined;
+/**
+ * The installed cursor-agent version, or null when `--version` does not answer.
+ *
+ * @returns {Promise<string|null>}
+ */
+async function installedVersion() {
+  const info = await versionInfo();
+  return info.ok ? parseVersion(info.detail) : null;
 }
 
-async function foreground(flags, prompt, jobId, root) {
-  const model = resolveModel(flags.model);
-  const logPath = rawLogPathFor(root, jobId);
-  ensureDir(jobsDir(root));
-  ensureDir(logsDir(root));
-  createJob({
-    id: jobId,
-    repoPath: root,
-    prompt,
-    model,
-    cloud: flags.cloud,
+/**
+ * @param {ReturnType<typeof parseFlags>} flags
+ * @param {string} prompt
+ * @param {string} jobId
+ * @param {string} root
+ * @param {Promise<string|null>} toolVersion
+ */
+async function runAndRecord(flags, prompt, jobId, root, toolVersion) {
+  updateJob(root, jobId, {
+    pid: process.pid,
+    model: flags.model ?? '',
+    briefPath: typeof flags.promptFile === 'string' ? flags.promptFile : undefined,
   });
-  updateJob(root, jobId, { pid: process.pid });
 
-  const resume = isResumeRequested(flags.resume, flags.fresh);
-  const resumeId = resume ? resumeChatId(flags.resume) : undefined;
+  // Two `git status --porcelain` readings, one either side of the run. The
+  // write-up is a claim; the wander warning fires when it and the repo
+  // disagree.
+  const inRepo = await isGitRepo(root);
+  const before = inRepo ? ((await porcelain(root)) ?? []) : [];
 
-  process.stdout.write(`cursor \`${jobId}\` (${model})\n\n`);
+  // A fresh run names its chat up front with `--new-session-id`, so a run
+  // killed before its `result` event can still be resumed. The id is recorded
+  // once the model starts: a refused run (not signed in, a model the plan
+  // does not allow) sends `system` and `user` events and nothing more.
+  const chatId = flags.session ?? randomUUID();
+  let chatRecorded = false;
 
-  // Tool-use blocks are typically nested inside `assistant.message.content[]`
-  // (Anthropic Messages API shape), not flat on the event — `walkToolUses`
-  // finds them wherever they live. Progress lines show "tool → file" when the
-  // tool looks like a file write and a path can be extracted, so a human
-  // skimming a long-running job sees *what* is being touched, not just a
-  // bare tool name (or, worse, a collapsed "• tool ×N" counter).
-  let toolCalls = 0;
-  let omittedToolCalls = 0;
   const result = await runHeadless({
     prompt,
-    model,
-    resumeChatId: resumeId,
-    resumeLatest: resume && !resumeId,
-    cloud: flags.cloud,
-    force: flags.force,
+    model: flags.model,
+    chatId: flags.session ? undefined : chatId,
+    resumeChatId: flags.session,
     timeoutSec: flags.timeout,
-    logPath,
+    logPath: rawLogPath(root, jobId),
     onSpawn: (cliPid) => {
       try {
         updateJob(root, jobId, { cliPid });
       } catch {
-        // noop
+        // A failed pid write must not tear down a running cursor-agent.
       }
     },
     onEvent: (ev) => {
-      for (const tu of walkToolUses(ev)) {
-        toolCalls += 1;
-        if (toolCalls > 20) {
-          omittedToolCalls += 1;
-          continue;
-        }
-        const path = isFileWriteTool(tu.name) ? pickToolPath(tu.input) : undefined;
-        process.stdout.write(path ? `• ${tu.name} → ${path}\n` : `• ${tu.name}\n`);
+      if (chatRecorded || !modelStarted(ev)) return;
+      chatRecorded = true;
+      try {
+        updateJob(root, jobId, { chatId });
+      } catch {
+        // Losing the id costs resumability, not the run.
       }
     },
   });
-  if (omittedToolCalls > 0) {
-    process.stdout.write(
-      `• … (${omittedToolCalls} further tool call${omittedToolCalls === 1 ? '' : 's'} omitted)\n`,
-    );
-  }
 
-  const summary = summariseEvents(result.events, root);
-  const chatId = extractChatId(result.events);
-  // If the caller asked for `auto`, prefer whatever concrete model id the
-  // stream reveals Cursor actually picked — the job record should say what
-  // ran, not just the placeholder that was requested (issue F).
-  const resolvedModel = model === 'auto' ? (extractResolvedModel(result.events) ?? model) : model;
+  const summary = summariseEvents(result.events);
+  // An error `result` event when there is one; otherwise the stderr tail, and
+  // only on a failing exit. This is where `ActionRequiredError: Named models
+  // unavailable …` arrives, verbatim.
+  const errorDetail =
+    summary.errorDetail ??
+    (result.exitCode !== 0 && result.stderrTail.length > 0
+      ? result.stderrTail.join('\n')
+      : undefined);
   const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
-  const killedNote = result.killed
-    ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete. Re-run with a larger `--timeout` if needed.'
-    : '';
+  const gitFiles = inRepo ? porcelainDelta(before, (await porcelain(root)) ?? []) : [];
 
   updateJob(root, jobId, {
     status,
     exitCode: result.exitCode,
     finishedAt: new Date().toISOString(),
-    summary: summary.summary + killedNote,
-    filesTouched: summary.filesTouched,
-    failedCommands: summary.failedCommands,
-    // Persisted so `/cursor:result` can tell cursor-agent's own verdict apart
-    // from a non-zero process exit rather than inferring one from the other.
-    cliSuccess: summary.success,
-    model: resolvedModel,
-    ...(chatId ? { cursorChatId: chatId } : {}),
+    summary: summary.summary,
+    stopReason: summary.stopReason,
+    errorDetail,
+    killed: result.killed || undefined,
+    failedCommands: summary.failedCommands.length ? summary.failedCommands : undefined,
+    toolCalls: summary.toolCalls,
+    ...(chatRecorded && summary.sessionId ? { chatId: summary.sessionId } : {}),
+    gitRepo: inRepo,
+    gitFiles: snapshotFiles(gitFiles),
+    claimedFileChanges: summary.claimedFileChanges,
   });
 
-  process.stdout.write('\n');
-  process.stdout.write(
-    renderOutcome({
-      summary: summary.summary,
-      success: summary.success,
-      exitReason: summary.exitReason,
+  // Sole write site for detected papercuts. `/cursor:result` re-renders the
+  // same warnings on read without logging them again.
+  const finalJob = readJob(root, jobId);
+  if (finalJob) {
+    recordDetected(warnings(finalJob), {
+      toolVersion: (await toolVersion) ?? undefined,
+      pluginVersion,
+      model: flags.model,
+      repo: root,
+      jobId,
+      sessionId: finalJob.chatId,
+      toolCalls: summary.toolCalls,
       exitCode: result.exitCode,
-      killed: result.killed,
+      stopReason: summary.stopReason,
       failedCommands: summary.failedCommands,
-      ranAs: resolvedModel !== model ? resolvedModel : undefined,
-      chatLost: result.killed && !chatId,
-    }),
-  );
-  return result.exitCode;
+    });
+  }
 }
 
-function spawnBackground(jobId, argv, root, extraEnv = {}) {
-  const selfPath = fileURLToPath(import.meta.url);
-  // Base the capture logs on the resolved repo root (not process.cwd()) so they
-  // land in the same jobs/<repo-hash>/ dir as the job record and NDJSON.
-  const logPath = rawLogPathFor(root, jobId);
-  ensureDir(logsDir(root));
-  const out = openSync(`${logPath}.stdout`, 'a');
-  const err = openSync(`${logPath}.stderr`, 'a');
-  const child = spawn(process.execPath, [selfPath, '--worker', jobId, ...argv], {
-    detached: true,
-    // Mandatory alongside `detached` on Windows. Without it the OS gives the
-    // detached child its own console, which on Win11 surfaces as a Windows
-    // Terminal window that opens on dispatch and sits there for the whole life
-    // of the job. `killtree.mjs` already sets this on its own spawn; this call
-    // was simply missed.
-    windowsHide: true,
-    stdio: ['ignore', out, err],
-    env: {
-      ...process.env,
-      CCD_WORKER: '1',
-      CCD_REPO_ROOT: root,
-      ...extraEnv,
-    },
-  });
-  child.unref();
-  return child.pid ?? -1;
-}
-
-async function runWorker(jobId, flags, prompt, root) {
-  const model = resolveModel(flags.model);
-  const logPath = rawLogPathFor(root, jobId);
-  updateJob(root, jobId, { pid: process.pid, model });
-  const resume = isResumeRequested(flags.resume, flags.fresh);
-  const resumeId = resume ? resumeChatId(flags.resume) : undefined;
-  const result = await runHeadless({
-    prompt,
-    model,
-    resumeChatId: resumeId,
-    resumeLatest: resume && !resumeId,
-    cloud: flags.cloud,
-    force: flags.force,
-    timeoutSec: flags.timeout,
-    logPath,
-    onSpawn: (cliPid) => {
-      try {
-        updateJob(root, jobId, { cliPid });
-      } catch {
-        // noop
-      }
-    },
-    onEvent: (ev) => {
-      const chatId = ev.chat_id ?? ev.chatId ?? ev.session_id ?? ev.sessionId;
-      if (typeof chatId === 'string' && chatId.length > 0) {
-        try {
-          updateJob(root, jobId, { cursorChatId: chatId });
-        } catch {
-          // noop
-        }
-      }
-    },
-  });
-  const summary = summariseEvents(result.events, root);
-  const chatId = extractChatId(result.events);
-  const resolvedModel = model === 'auto' ? (extractResolvedModel(result.events) ?? model) : model;
-  const status = result.exitCode === 0 && summary.success && !result.killed ? 'done' : 'failed';
-  const killedNote = result.killed
-    ? '\n\n[plugin post-flight]\nThe run was killed (timeout or watchdog) before finishing — output may be incomplete.'
-    : '';
-  updateJob(root, jobId, {
-    status,
-    exitCode: result.exitCode,
-    finishedAt: new Date().toISOString(),
-    summary: summary.summary + killedNote,
-    filesTouched: summary.filesTouched,
-    failedCommands: summary.failedCommands,
-    model: resolvedModel,
-    ...(chatId ? { cursorChatId: chatId } : {}),
-  });
+/**
+ * Run `runAndRecord`, marking the job failed if it throws before finishing
+ * (cursor-agent not found, an unwritable log), then rethrow.
+ *
+ * @param {ReturnType<typeof parseFlags>} flags
+ * @param {string} prompt
+ * @param {string} jobId
+ * @param {string} root
+ * @param {Promise<string|null>} toolVersion
+ */
+async function runOrMarkFailed(flags, prompt, jobId, root, toolVersion) {
+  try {
+    await runAndRecord(flags, prompt, jobId, root, toolVersion);
+  } catch (err) {
+    updateJob(root, jobId, {
+      status: 'failed',
+      exitCode: 1,
+      finishedAt: new Date().toISOString(),
+      errorDetail: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 /**
@@ -302,14 +213,10 @@ async function runWorker(jobId, flags, prompt, root) {
  * @returns {Promise<number>}
  */
 export async function main(rawArgv) {
-  const flags = parseFlags(collapseCommandArgv(rawArgv));
+  const flags = parseFlags(rawArgv);
 
-  if (flags.worker) {
-    // The prompt is handed over verbatim via env to avoid a second collapse
-    // pass mangling quotes/backslashes; fall back to positional for safety.
-    const prompt = process.env.CCD_PROMPT ?? flags.positional.join(' ').trim();
-    const root = process.env.CCD_REPO_ROOT ?? (await repoRoot(process.cwd()));
-    await runWorker(flags.worker, flags, prompt, root);
+  if (flags.help) {
+    process.stdout.write(USAGE);
     return 0;
   }
 
@@ -322,72 +229,41 @@ export async function main(rawArgv) {
       return 2;
     }
     try {
-      prompt = readPromptSource(flags.promptFile);
+      prompt = readPromptFile(flags.promptFile);
     } catch (err) {
       process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
       return 2;
     }
   }
-  if (!prompt && !isResumeRequested(flags.resume, flags.fresh)) {
+  if (!prompt && !flags.session) {
     process.stderr.write('Error: no task description provided.\n');
-    process.stderr.write('Usage: /cursor:delegate [flags] <task | --prompt-file <path|->>\n');
+    process.stderr.write(USAGE);
     return 2;
   }
 
-  const inGit = await isGitRepo(process.cwd());
-  if (!inGit && !flags.noGitCheck) {
-    process.stderr.write(
-      'Error: current directory is not a git repository. Pass --no-git-check to override.\n',
-    );
-    return 2;
-  }
   const root = await repoRoot(process.cwd());
-
   pruneOlderThanDays(root, 30);
 
-  const jobId = newId(10);
+  // Both run alongside cursor-agent, so no dispatch waits on them. The
+  // release check runs at most once a day.
+  const release = latestRelease().catch(() => null);
+  const toolVersion = installedVersion().catch(() => null);
 
-  if (flags.background) {
-    const model = resolveModel(flags.model);
-    createJob({
-      id: jobId,
-      repoPath: root,
-      prompt: prompt || '(resume)',
-      model,
-      background: true,
-      cloud: flags.cloud,
-    });
-    const forwardedArgs = [];
-    if (flags.model) forwardedArgs.push('--model', flags.model);
-    if (flags.fresh) forwardedArgs.push('--fresh');
-    if (flags.cloud) forwardedArgs.push('--cloud');
-    if (flags.resume !== undefined) {
-      if (typeof flags.resume === 'boolean') {
-        if (flags.resume) forwardedArgs.push('--resume');
-      } else {
-        // String or numeric id — String() keeps a numeric id from being dropped.
-        forwardedArgs.push(`--resume=${flags.resume}`);
-      }
-    }
-    if (!flags.force) forwardedArgs.push('--no-force');
-    forwardedArgs.push('--timeout', String(flags.timeout));
-    const extraEnv = prompt ? { CCD_PROMPT: prompt } : {};
-    const pid = spawnBackground(jobId, forwardedArgs, root, extraEnv);
-    updateJob(root, jobId, { pid });
-    process.stdout.write(
-      `Job \`${jobId}\` started in background (model \`${model}\`, pid ${pid}).\n`,
-    );
-    process.stdout.write(`Fetch the write-up with \`/cursor:result ${jobId}\` once it finishes.\n`);
-    return 0;
-  }
+  const jobId = uniqueJobName(root, prompt || 'continue');
+  const task = prompt || 'Continue from where you left off.';
 
-  return foreground(flags, prompt || '(resume)', jobId, root);
+  createJob({ id: jobId, repoPath: root, prompt: task, model: flags.model ?? '' });
+  process.stdout.write(`cursor \`${jobId}\`\n\n`);
+
+  await runOrMarkFailed(flags, task, jobId, root, toolVersion);
+  const finished = readJob(root, jobId);
+
+  if (finished) process.stdout.write(renderResult(finished));
+  process.stdout.write(updateNotice(await release, await toolVersion));
+  return finished && isUnfinished(finished) ? 1 : 0;
 }
 
-import { invokedAsScript as __isScript } from './lib/invoked.mjs';
-const invokedAsScript = __isScript(import.meta.url);
-
-if (invokedAsScript) {
+if (invokedAsScript(import.meta.url)) {
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {

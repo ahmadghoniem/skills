@@ -4,29 +4,50 @@ import {
   collapseCommandArgv,
   parseArgv,
   parseCommandArgv,
+  parseTimeout,
   splitArgString,
 } from '../scripts/lib/args.mjs';
 
 describe('splitArgString', () => {
   it('splits on whitespace', () => {
-    expect(splitArgString('--model composer hello world')).toEqual([
+    expect(splitArgString('--model composer-2 hello world')).toEqual([
       '--model',
-      'composer',
+      'composer-2',
       'hello',
       'world',
     ]);
   });
 
   it('preserves double-quoted spans', () => {
-    expect(splitArgString('--model opus "write a haiku about git"')).toEqual([
+    expect(splitArgString('--model composer-2 "write a haiku about git"')).toEqual([
       '--model',
-      'opus',
+      'composer-2',
       'write a haiku about git',
     ]);
   });
 
   it('preserves single-quoted spans', () => {
     expect(splitArgString("--flag 'value with spaces'")).toEqual(['--flag', 'value with spaces']);
+  });
+
+  it('treats backslashes inside single quotes as literal', () => {
+    expect(splitArgString("'a\\b'")).toEqual(['a\\b']);
+  });
+
+  it('honours a backslash escape inside double quotes', () => {
+    expect(splitArgString('"a\\"b"')).toEqual(['a"b']);
+  });
+
+  it('honours a backslash escape outside quotes', () => {
+    expect(splitArgString('a\\ b')).toEqual(['a b']);
+  });
+
+  it('keeps a trailing lone backslash rather than dropping the escape', () => {
+    expect(splitArgString('a\\')).toEqual(['a\\']);
+  });
+
+  it('splits on tabs and newlines as well as spaces', () => {
+    expect(splitArgString('a\tb\nc')).toEqual(['a', 'b', 'c']);
   });
 });
 
@@ -35,8 +56,8 @@ describe('a `--` inside the task text does not swallow flags', () => {
   // end-of-flags mode, so `--model` never arrived and the job silently ran on
   // the default model while reporting success.
   it('keeps flags that follow a `--` in the user text', () => {
-    const r = parseCommandArgv(['--', 'fix the bug -- see notes', '--model', 'composer-2.5']);
-    expect(r.flags['model']).toBe('composer-2.5');
+    const r = parseCommandArgv(['--', 'fix the bug -- see notes', '--model', 'composer-2']);
+    expect(r.flags['model']).toBe('composer-2');
     expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
   });
 
@@ -44,25 +65,31 @@ describe('a `--` inside the task text does not swallow flags', () => {
     const r = parseCommandArgv([
       '--',
       '--arg-string',
-      'fix the bug -- see notes --model composer-2.5 --timeout 60',
+      'fix the bug -- see notes --model composer-2 --timeout 60',
     ]);
-    expect(r.flags['model']).toBe('composer-2.5');
+    expect(r.flags['model']).toBe('composer-2');
     expect(r.flags['timeout']).toBe(60);
     expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
   });
 
   it('still honours `--` for direct parseArgv callers', () => {
-    const r = parseArgv(['a', '--', '--model', 'opus']);
+    const r = parseArgv(['a', '--', '--model', 'composer-2']);
     expect(r.flags['model']).toBeUndefined();
-    expect(r.positional).toEqual(['a', '--model', 'opus']);
+    expect(r.positional).toEqual(['a', '--model', 'composer-2']);
+  });
+
+  it('treats `--` as ordinary text when honorDoubleDash is false', () => {
+    const r = parseArgv(['a', '--', '--model', 'composer-2'], [], { honorDoubleDash: false });
+    expect(r.flags['model']).toBe('composer-2');
+    expect(r.positional).toEqual(['a', '--']);
   });
 });
 
 describe('parseArgv', () => {
   it('splits positional vs flags', () => {
-    const r = parseArgv(['--model', 'opus', '--background', 'do', 'thing'], ['background']);
-    expect(r.flags['model']).toBe('opus');
-    expect(r.flags['background']).toBe(true);
+    const r = parseArgv(['--model', 'composer-2', '--fresh', 'do', 'thing'], ['fresh']);
+    expect(r.flags['model']).toBe('composer-2');
+    expect(r.flags['fresh']).toBe(true);
     expect(r.positional).toEqual(['do', 'thing']);
   });
 
@@ -72,42 +99,70 @@ describe('parseArgv', () => {
     expect(r.flags['gitCheck']).toBe(false);
   });
 
+  it('populates kebab and camel for a positive kebab flag', () => {
+    const r = parseArgv(['--git-check'], ['git-check']);
+    expect(r.flags['git-check']).toBe(true);
+    expect(r.flags['gitCheck']).toBe(true);
+  });
+
   it('auto-casts numeric flag values', () => {
     const r = parseArgv(['--timeout', '60'], []);
     expect(r.flags['timeout']).toBe(60);
   });
 
+  it('does not cast an integer that would lose precision', () => {
+    const r = parseArgv(['--id', '12345678901234567890'], []);
+    expect(r.flags['id']).toBe('12345678901234567890');
+  });
+
   it('handles --foo=value form', () => {
-    const r = parseArgv(['--resume=chat_abc', '--model=opus'], []);
-    expect(r.flags['resume']).toBe('chat_abc');
-    expect(r.flags['model']).toBe('opus');
+    const r = parseArgv(['--resume=sess_abc', '--model=composer-2'], []);
+    expect(r.flags['resume']).toBe('sess_abc');
+    expect(r.flags['model']).toBe('composer-2');
   });
 
   it('treats everything after -- as positional', () => {
-    const r = parseArgv(['--model', 'opus', '--', '--weird', 'arg'], []);
-    expect(r.flags['model']).toBe('opus');
+    const r = parseArgv(['--model', 'composer-2', '--', '--weird', 'arg'], []);
+    expect(r.flags['model']).toBe('composer-2');
     expect(r.positional).toEqual(['--weird', 'arg']);
   });
 
   it('boolean flag does not consume next token', () => {
-    const r = parseArgv(['--background', 'task-text'], ['background']);
-    expect(r.flags['background']).toBe(true);
+    const r = parseArgv(['--fresh', 'task-text'], ['fresh']);
+    expect(r.flags['fresh']).toBe(true);
     expect(r.positional).toEqual(['task-text']);
   });
 
-  // Regression: resume.mjs unshifts `--resume` onto argv. Before declaring
-  // `resume` as boolean this consumed the first prompt word as chat-id,
-  // producing bogus `--resume=<word>` calls to cursor-agent.
-  it('--resume followed by a prompt does not eat the prompt token', () => {
-    const r = parseArgv(['--resume', 'řekni', 'mi', 'něco', 'o', 'teto', 'službě'], ['resume']);
-    expect(r.flags['resume']).toBe(true);
-    expect(r.positional).toEqual(['řekni', 'mi', 'něco', 'o', 'teto', 'službě']);
+  it('undeclared flag with no following value becomes true', () => {
+    const r = parseArgv(['--fresh'], []);
+    expect(r.flags['fresh']).toBe(true);
   });
 
-  it('--resume=<id> still extracts the chat id even when boolean-declared', () => {
-    const r = parseArgv(['--resume=chat_abc', 'follow', 'up'], ['resume']);
-    expect(r.flags['resume']).toBe('chat_abc');
+  it('undeclared flag does not consume a following flag-looking token', () => {
+    const r = parseArgv(['--model', '--fresh'], []);
+    expect(r.flags['model']).toBe(true);
+    expect(r.flags['fresh']).toBe(true);
+  });
+
+  // resume.mjs unshifts `--resume` onto argv. Delegate declares `resume` as a
+  // boolean so a follow-up prompt is not eaten as a session id. `--resume=<id>`
+  // still extracts the id because inline values bypass the boolean rule.
+  it('--resume followed by a prompt does not eat the prompt token', () => {
+    const r = parseArgv(['--resume', 'fix', 'the', 'parser'], ['resume']);
+    expect(r.flags['resume']).toBe(true);
+    expect(r.positional).toEqual(['fix', 'the', 'parser']);
+  });
+
+  it('--resume=<id> still extracts the session id even when boolean-declared', () => {
+    const r = parseArgv(['--resume=sess_abc', 'follow', 'up'], ['resume']);
+    expect(r.flags['resume']).toBe('sess_abc');
     expect(r.positional).toEqual(['follow', 'up']);
+  });
+
+  it('keeps the inline value of --no-foo=value instead of discarding it', () => {
+    const { flags } = parseArgv(['--no-cache=5']);
+    expect(flags['no-cache']).toBe(5);
+    expect(flags['cache']).toBeUndefined();
   });
 });
 
@@ -120,8 +175,8 @@ describe('collapseCommandArgv', () => {
   });
 
   it('splits an --arg-string blob and merges it in order', () => {
-    expect(collapseCommandArgv(['--', '--arg-string', '--background fix the parser'])).toEqual([
-      '--background',
+    expect(collapseCommandArgv(['--', '--arg-string', '--fresh fix the parser'])).toEqual([
+      '--fresh',
       'fix',
       'the',
       'parser',
@@ -130,6 +185,24 @@ describe('collapseCommandArgv', () => {
 
   it('preserves newlines when --arg-string is absent', () => {
     expect(collapseCommandArgv(['--', 'line one\nline two'])).toEqual(['line one\nline two']);
+  });
+
+  it('leaves already-split argv untouched', () => {
+    expect(collapseCommandArgv(['--model', 'composer-2', '--', 'do "a thing"'])).toEqual([
+      '--model',
+      'composer-2',
+      'do "a thing"',
+    ]);
+  });
+
+  it('splits only an explicit --arg-string blob', () => {
+    expect(collapseCommandArgv(['--model', 'composer-2', '--', '--arg-string', 'do "a thing"'])).toEqual(
+      ['--model', 'composer-2', 'do', 'a thing'],
+    );
+  });
+
+  it('drops a trailing --arg-string with no blob', () => {
+    expect(collapseCommandArgv(['--', '--arg-string'])).toEqual([]);
   });
 });
 
@@ -140,10 +213,33 @@ describe('collapseArguments', () => {
   });
 
   it('tokenises with quoting', () => {
-    expect(collapseArguments('--model composer "hello world"')).toEqual([
+    expect(collapseArguments('--model composer-2 "hello world"')).toEqual([
       '--model',
-      'composer',
+      'composer-2',
       'hello world',
     ]);
+  });
+});
+
+describe('parseTimeout', () => {
+  it('falls back for junk, zero, and negatives', () => {
+    expect(parseTimeout('abc')).toBe(1800);
+    expect(parseTimeout('0')).toBe(1800);
+    expect(parseTimeout(0)).toBe(1800);
+    expect(parseTimeout(-1)).toBe(1800);
+    expect(parseTimeout('-10')).toBe(1800);
+    expect(parseTimeout(undefined)).toBe(1800);
+    expect(parseTimeout('')).toBe(1800);
+    expect(parseTimeout(Number.NaN)).toBe(1800);
+  });
+
+  it('keeps a positive number or numeric string', () => {
+    expect(parseTimeout('60')).toBe(60);
+    expect(parseTimeout(45)).toBe(45);
+  });
+
+  it('honours a custom fallback', () => {
+    expect(parseTimeout('x', 5)).toBe(5);
+    expect(parseTimeout(0, 3600)).toBe(3600);
   });
 });

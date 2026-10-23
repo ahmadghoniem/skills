@@ -12,6 +12,9 @@
 // `--` is treated as an explicit delimiter: tokens after it are ALL positional
 // (no further flag parsing), matching the conventional Unix meaning.
 
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 /**
  * Split a raw argument string on whitespace, honouring single/double quotes
  * and backslash escapes. Quoted spans preserve inner whitespace.
@@ -33,8 +36,8 @@ export function splitArgString(arg) {
       escape = false;
       continue;
     }
-    // Inside single quotes everything is literal (POSIX semantics): a
-    // backslash is NOT an escape character there.
+    // Inside single quotes everything is literal: a backslash is NOT an
+    // escape character there.
     if (ch === '\\' && quote !== "'") {
       escape = true;
       continue;
@@ -190,35 +193,14 @@ export function parseArgv(argv, booleans = [], opts = {}) {
 }
 
 /**
- * Expand a `--arg-string <blob>` marker: `<blob>` is a single unsplit string
- * that never passed through a shell, so it still needs `splitArgString`.
- * Tokens before the flag, the split blob, and tokens after its value stay in
- * that order. Absent the flag, `tokens` is returned untouched.
+ * Apply the shared slash-command argv prologue.
  *
- * @param {string[]} tokens
- * @returns {string[]}
- */
-function expandArgString(tokens) {
-  const idx = tokens.indexOf('--arg-string');
-  if (idx === -1) return tokens;
-  const blob = tokens[idx + 1] ?? '';
-  return [...tokens.slice(0, idx), ...splitArgString(blob), ...tokens.slice(idx + 2)];
-}
-
-/**
- * Apply the shared slash-command argv prologue: everything before a `--`
- * delimiter is taken verbatim. After it, `--arg-string <blob>` is the only
- * thing that still needs splitting — Claude Code hands `"$ARGUMENTS"` as one
- * string that has never been through a shell.
- *
- * A real shell has already split and unquoted argv, so joining then
- * re-splitting is lossy: `--prompt-file "/c/Users/Ahmed Ibrahim/x.md"`
- * arrives as one path token, the join makes its spaces indistinguishable
- * from separators, and the re-split tears it into `/c/Users/Ahmed` +
- * `Ibrahim/x.md`. The fragment lands in `positional` and dispatch dies on
- * the misleading "pass the task either on the command line or via
- * --prompt-file, not both". When `--arg-string` is absent, argv is returned
- * untouched (newlines included).
+ * A leading `--` delimiter is stripped (tokens before it are kept verbatim).
+ * `--arg-string <blob>` marks `<blob>` as one unsplit string that never passed
+ * through a shell — Claude Code's `"$ARGUMENTS"` arrives this way — and is
+ * replaced in place by `splitArgString(blob)`. With the marker absent, argv
+ * is returned untouched: inferring "needs a split" from token count flattened
+ * newlines and collapsed whitespace on a bare one-token prompt.
  *
  * @param {string[]} rawArgv
  * @returns {string[]}
@@ -227,7 +209,13 @@ export function collapseCommandArgv(rawArgv) {
   const delimiterIdx = rawArgv.indexOf('--');
   const firstHalf = delimiterIdx === -1 ? [] : rawArgv.slice(0, delimiterIdx);
   const rest = delimiterIdx === -1 ? rawArgv : rawArgv.slice(delimiterIdx + 1);
-  return [...firstHalf, ...expandArgString(rest)];
+  const tokens = [...firstHalf, ...rest];
+  const markerIdx = tokens.indexOf('--arg-string');
+  if (markerIdx === -1) return tokens;
+  const blob = tokens[markerIdx + 1];
+  const split = blob === undefined ? [] : splitArgString(blob);
+  const afterStart = blob === undefined ? markerIdx + 1 : markerIdx + 2;
+  return [...tokens.slice(0, markerIdx), ...split, ...tokens.slice(afterStart)];
 }
 
 /**
@@ -254,4 +242,24 @@ export function parseCommandArgv(rawArgv, booleans = []) {
 export function parseTimeout(raw, fallback = 1800) {
   const n = typeof raw === 'number' ? raw : raw == null || raw === '' ? NaN : Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * `process.argv[1] === fileURLToPath(import.meta.url)` is the usual "am I
+ * the entry point?" check, but junctions and 8.3 short names make lexical
+ * comparison unreliable on Windows. Compare real paths instead.
+ *
+ * @param {string} moduleUrl    Pass `import.meta.url` from the calling script.
+ * @returns {boolean}
+ */
+export function invokedAsScript(moduleUrl) {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    const entryReal = realpathSync(entry);
+    const selfReal = realpathSync(fileURLToPath(moduleUrl));
+    return entryReal === selfReal;
+  } catch {
+    return false;
+  }
 }

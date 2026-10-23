@@ -1,7 +1,7 @@
 {
   "name": "cursor",
-  "version": "0.12.0",
-  "description": "Hand off tasks from Claude Code to cursor-agent. Composer-optimised.",
+  "version": "0.13.0",
+  "description": "Hand off tasks from Claude Code to the Cursor CLI (cursor-agent).",
   "author": {
     "name": "Ahmed Ghoniem",
     "url": "https://github.com/ahmadghoniem"
