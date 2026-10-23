@@ -113,7 +113,9 @@ not approve, and a headless run cannot answer.
 - **Plus plan models** (2026.10.22): `auto` is refused (`Cannot use this model: auto`);
   plain `grok-4.7`, `grok-4.7-low`, `grok-4.7-low-fast` and `grok-4.7-medium-fast` are
   refused (`Model unavailable on Plus ... with fixed settings`); `grok-4.7-medium` runs,
-  although `cursor-agent models` lists all the `grok-4.7-<effort>` ids.
+  although `cursor-agent models` lists all the `grok-4.7-<effort>` ids. `composer-2.5`
+  runs; `composer-2.5-fast` is refused. Setting `model` in `cli-config.json` to
+  `grok-4.7-medium` lasts only until the next run, which writes `composer-2.5` back.
 - **`--trust` is not needed headless.** A print-mode run in an untrusted repo works and
   loads the same context.
 - **The model in `system`/`init` is a display name** (`"Auto"`, `"Grok 4.7 256K High

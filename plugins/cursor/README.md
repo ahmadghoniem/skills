@@ -39,7 +39,7 @@ Jobs are named from the task's first words plus a 4-character suffix, such as `a
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. |
-| `--model <id>` | Pin a model. Omitted, Cursor uses the account default, which `/cursor:setup` shows. A model the plan does not allow is refused and the refusal is shown as `⚠ error:`. |
+| `--model <id>` | The model. Defaults to `grok-4.7-medium`: Cursor resets its own default to the account's (Composer 2.5 on Plus) on every run, so the plugin names one. A model the plan does not allow is refused and the refusal is shown as `⚠ error:`. |
 | `--timeout <sec>` | Kill the run after this many seconds. Off by default. cursor-agent has no overall or idle limit of its own; see `docs/unverified.md`. |
 | `--session <chat-id>` | Continue that Cursor chat. `/cursor:resume` sets it for you. |
 
@@ -82,7 +82,7 @@ Cursor has no switch for the context it loads. It reads Claude-format files as w
 
 Cursor finds your user-level files through `os.homedir()`, which reads `USERPROFILE` on Windows. So the plugin sets `USERPROFILE` to an empty `~/.ccd/cursor-home` and keeps the rest in place with two variables:
 
-- `CURSOR_CONFIG_DIR` stays `~/.cursor`, so your settings, default model, `mcp.json` and chats are the same as in your own terminal, and `cursor-agent ls` lists plugin runs.
+- `CURSOR_CONFIG_DIR` stays `~/.cursor`, so your settings, `mcp.json` and chats are the same as in your own terminal, and `cursor-agent ls` lists plugin runs.
 - `HOME` stays your home folder, so git in Cursor's shell reads your `~/.gitconfig`.
 
 The login is not stored in either, so it still works. Cursor then does not load `~/.claude/` (CLAUDE.md, rules, skills, commands, hooks and permissions), `~/.agents/` or `~/.cursor/skills`. Only Cursor's built-in skills remain. A "Reply OK" run took 4,769 input tokens this way and 8,389 with the real home. Tools in Cursor's shell that find their config through `USERPROFILE` (Windows OpenSSH, npm's `~/.npmrc`) do not see it.

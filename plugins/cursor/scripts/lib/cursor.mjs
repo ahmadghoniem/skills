@@ -15,7 +15,7 @@ import { defaultWindowsBin } from './winbin.mjs';
  * `~/.claude/settings.json`), and finds it through `os.homedir()`, which reads
  * `USERPROFILE` on Windows. So `USERPROFILE` points at an empty
  * `~/.ccd/cursor-home`, and two variables keep the rest where it was:
- * `CURSOR_CONFIG_DIR` (settings, default model and chats) and `HOME`, which git
+ * `CURSOR_CONFIG_DIR` (settings and chats) and `HOME`, which git
  * in Cursor's shell reads for `.gitconfig`. The login is not stored in either.
  *
  * @param {NodeJS.ProcessEnv} [env]
