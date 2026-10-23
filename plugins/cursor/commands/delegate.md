@@ -22,13 +22,14 @@ This command prints one (``cursor `add-retry-to-fetchuser-a7f3` ``). `/cursor:re
 Cursor starts with none of your context. It does not see:
 
 - this conversation
-- anything under your home folder: `~/.claude/CLAUDE.md`, `~/.claude/rules/`, your skills,
-  hooks and Cursor skills. The plugin points Cursor's home folder at an empty one and
-  keeps only your Cursor settings and git config.
+- `~/.claude/CLAUDE.md` and `~/.claude/rules/`
+- Claude Code plugins, and MCP servers not listed in `~/.cursor/mcp.json`
 
 It does load on its own, from the repo and every parent directory: `AGENTS.md`,
-`CLAUDE.md`, `CLAUDE.local.md`, `.cursor/rules/`, the skills under `.cursor/`, `.claude/`
-and `.agents/`, and the hooks in `.claude/settings.json`. Do not repeat those in the brief.
+`CLAUDE.md`, `CLAUDE.local.md` and `.cursor/rules/`. It also loads the skills under
+`.cursor/`, `.claude/` and `.agents/` in the repo and in your home folder, the MCP servers in
+`~/.cursor/mcp.json`, and the hooks in `.claude/settings.json` and
+`~/.claude/settings.json`. Do not repeat those in the brief.
 
 Whatever of the first list the result depends on goes in the brief.
 
@@ -62,9 +63,10 @@ One dispatch per coherent slice. Run at most three Cursor jobs at once.
 ## Model
 
 Omit `--model`. The plugin then runs `grok-4.7-medium`, the only Grok 4.7 setting the Plus
-plan allows. Pass a model only when the user names one, and
-never invent an id; `/cursor:setup` lists the ones the account has. An id the plan does
-not allow is refused, and the refusal arrives as the `⚠ error:` line.
+plan allows. Do not try to change Cursor's own default instead: every run writes the account
+default (Composer 2.5 on Plus) back into `~/.cursor/cli-config.json`. Pass a model only when
+the user names one, and never invent an id; `/cursor:setup` lists the ones the account has.
+An id the plan does not allow is refused, and the refusal arrives as the `⚠ error:` line.
 
 ## Run it
 

@@ -1,16 +1,11 @@
 # Changelog
 
-## 0.13.1 — runs only see the brief and the repo
+## 0.13.1 — grok-4.7-medium by default
 
 Checked against cursor-agent `2026.10.22-27dcf5f` on the Plus plan.
 
 ### Changed
 
-- **Cursor runs with `USERPROFILE` set to an empty `~/.ccd/cursor-home`.** Cursor has no
-  switch for the user-level context it loads, so runs no longer see `~/.claude/` (CLAUDE.md,
-  rules, skills, hooks), `~/.agents/` or `~/.cursor/skills`. `CURSOR_CONFIG_DIR` and `HOME`
-  keep your Cursor settings, chats and git config; the login is unaffected. A "Reply OK"
-  run dropped from 8,389 to 4,769 input tokens. Repo files still load.
 - **The default model is `grok-4.7-medium`.** Cursor resets the model in `cli-config.json` to
   the account default (Composer 2.5 on Plus) on every run, so the plugin passes `--model`
   unless one is named. Plus refuses `grok-4.7-low`.

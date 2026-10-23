@@ -1,36 +1,10 @@
 import { once } from 'node:events';
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { createWriteStream, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { killTree } from './killtree.mjs';
 import { parseLine } from './parse.mjs';
-import { pluginHome } from './paths.mjs';
 import { run, spawnDirect } from './run.mjs';
 import { defaultWindowsBin } from './winbin.mjs';
-
-/**
- * The environment a run gets. Cursor has no switch for the user-level context
- * it loads (skills under `~/.claude`, `~/.agents` and `~/.cursor`, the hooks in
- * `~/.claude/settings.json`), and finds it through `os.homedir()`, which reads
- * `USERPROFILE` on Windows. So `USERPROFILE` points at an empty
- * `~/.ccd/cursor-home`, and two variables keep the rest where it was:
- * `CURSOR_CONFIG_DIR` (settings and chats) and `HOME`, which git
- * in Cursor's shell reads for `.gitconfig`. The login is not stored in either.
- *
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {NodeJS.ProcessEnv}
- */
-export function runEnv(env = process.env) {
-  const home = join(pluginHome(), 'cursor-home');
-  mkdirSync(home, { recursive: true });
-  return {
-    ...env,
-    USERPROFILE: home,
-    HOME: env.HOME || homedir(),
-    CURSOR_CONFIG_DIR: env.CURSOR_CONFIG_DIR || join(homedir(), '.cursor'),
-  };
-}
 
 /**
  * The version in `cursor-agent --version` output, e.g. `2026.10.22-27dcf5f`.
@@ -236,7 +210,7 @@ export async function runHeadless(opts) {
   const child = spawnDirect(bin, args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: runEnv(),
+    env: process.env,
     // Mandatory on Windows: a dispatch from a backgrounded Bash call has no
     // console, and without this the OS opens a new terminal window for the
     // child that stays up for the whole run.

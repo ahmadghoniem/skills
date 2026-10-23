@@ -104,12 +104,12 @@ not approve, and a headless run cannot answer.
   user, team, or selected model`. The CLI's `getThirdPartyExtensibilityEnabled` is
   `()=>!0` and no caller replaces it; `importThirdPartyPlugins` is hard-coded false, so
   Claude Code plugins are never imported.
-- **An empty `USERPROFILE` hides user-level context and keeps the login** (2026.10.22,
-  Plus). With `USERPROFILE` pointed at an empty folder, `CURSOR_CONFIG_DIR` at `~/.cursor`
-  and `HOME` unchanged, the run stays signed in, lists only Cursor's built-in skills (not
-  `~/.cursor/skills/reui`), `git config user.name` answers, and the chat is written to
-  `~/.cursor/chats`. Cursor reads `.claude/settings.json` and the skill folders through
-  `os.homedir()`, and its config dir through `CURSOR_CONFIG_DIR`.
+- **Hiding the home-folder files was tried and dropped** (2026.10.22, Plus). Cursor reads
+  `~/.claude/settings.json` and the home skill folders through `os.homedir()`
+  (`USERPROFILE` on Windows), and its own config and chats through `CURSOR_CONFIG_DIR`.
+  Pointing `USERPROFILE` at an empty folder, with `CURSOR_CONFIG_DIR` and `HOME` left in
+  place, kept the login and git config and cut a "Reply OK" run from 8,389 to 4,769 input
+  tokens. The plugin uses stock settings instead.
 - **Plus plan models** (2026.10.22): `auto` is refused (`Cannot use this model: auto`);
   plain `grok-4.7`, `grok-4.7-low`, `grok-4.7-low-fast` and `grok-4.7-medium-fast` are
   refused (`Model unavailable on Plus ... with fixed settings`); `grok-4.7-medium` runs,

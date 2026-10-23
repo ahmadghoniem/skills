@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HAPPY_FIXTURE, STUB_BIN, makeTempHome } from './helpers.mjs';
@@ -192,39 +192,6 @@ describe('escalateSigkill', () => {
     const child = { killed: true, exitCode: 1, signalCode: null, kill: vi.fn() };
     escalateSigkill(child);
     expect(child.kill).not.toHaveBeenCalled();
-  });
-});
-
-describe('runEnv', () => {
-  let tmp;
-  let saved;
-
-  beforeEach(() => {
-    tmp = makeTempHome();
-    saved = process.env.CCD_HOME;
-    process.env.CCD_HOME = join(tmp.dir, 'ccd');
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    if (saved === undefined) delete process.env.CCD_HOME;
-    else process.env.CCD_HOME = saved;
-    tmp.cleanup();
-  });
-
-  it('moves USERPROFILE to an empty folder and keeps HOME and the Cursor config dir', async () => {
-    const { runEnv } = await import('../scripts/lib/cursor.mjs');
-    const env = runEnv({ HOME: 'H', USERPROFILE: 'U', PATH: 'P' });
-    expect(env.USERPROFILE).toBe(join(tmp.dir, 'ccd', 'cursor-home'));
-    expect(readdirSync(env.USERPROFILE)).toEqual([]);
-    expect(env.HOME).toBe('H');
-    expect(env.PATH).toBe('P');
-    expect(env.CURSOR_CONFIG_DIR).toMatch(/\.cursor$/);
-  });
-
-  it('keeps a CURSOR_CONFIG_DIR the user already set', async () => {
-    const { runEnv } = await import('../scripts/lib/cursor.mjs');
-    expect(runEnv({ HOME: 'H', CURSOR_CONFIG_DIR: 'C' }).CURSOR_CONFIG_DIR).toBe('C');
   });
 });
 
