@@ -116,8 +116,7 @@ not approve, and a headless run cannot answer.
   although `cursor-agent models` lists all the `grok-4.7-<effort>` ids. `composer-2.5`
   runs; `composer-2.5-fast` is refused. Setting `model` in `cli-config.json` to
   `grok-4.7-medium` lasts only until the next run, which writes `composer-2.5` back.
-- **`--trust` is not needed headless.** A print-mode run in an untrusted repo works and
-  loads the same context.
+- **`--trust` is passed again.** A print-mode run in an untrusted repo is refused without `-f`, which the plugin always passes. `--trust` is kept so delegated work runs in folders the main session already trusts.
 - **The model in `system`/`init` is a display name** (`"Auto"`, `"Grok 4.7 256K High
   Fast"`). The plugin records only the id it was given.
 - **Releases:** `cursor-agent about --format json` reports `latestStatus` and

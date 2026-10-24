@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`--trust` is passed again.** It was dropped in 0.5.0. Delegated runs work in folders the
+  main session already trusts, so the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks and
+  skills now load too. The home-level Claude and Cursor config stays off (`COMPAT_OFF_ENV`).
+
 ## 0.5.1 — grok 1.0.67
 
 Checked against grok 1.0.67. Every flag `buildArgs` passes is still accepted; the eleven

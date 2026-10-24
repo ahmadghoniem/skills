@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`--trust` is passed again.** It was dropped in 0.13.0. Delegated runs work in folders the
+  main session already trusts. `--approve-mcps` is still not passed.
+
 ## 0.13.1 — README corrections
 
 Checked against cursor-agent `2026.10.22-27dcf5f` on the Plus plan.

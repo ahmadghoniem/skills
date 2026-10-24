@@ -74,7 +74,7 @@ Every dispatch runs `cursor-agent -p --output-format stream-json --force --disab
 - **`--new-session-id <uuid>`** on a new run (hidden in `--help`), or **`--resume <chat-id>`** on a resume: the chat id is fixed before the run starts, so a killed run can still be resumed.
 - **`--`** before the brief, so a brief that starts with `-` is not read as a flag. A brief over 24,000 characters is saved next to the job log and Cursor is told to read it from there, because Windows caps a command line at 32,767 characters.
 
-Not passed: `--trust` (a headless run does not ask for workspace trust), `--approve-mcps`, `--stream-partial-output` (without it each `assistant` event is one whole message), and `--continue` or a bare `--resume`, which pick the newest chat in the directory, which may belong to someone else.
+`--trust` is passed, so Cursor works in a repo the main session already trusts. Not passed: `--approve-mcps`, `--stream-partial-output` (without it each `assistant` event is one whole message), and `--continue` or a bare `--resume`, which pick the newest chat in the directory, which may belong to someone else.
 
 ### What Cursor loads on its own
 

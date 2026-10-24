@@ -75,9 +75,9 @@ describe('buildArgs', () => {
     expect(buildArgs({ promptFile: '/tmp/brief.md' })).not.toContain('-m');
   });
 
-  it('does not trust the repo, so grok sees only the brief', async () => {
+  it('trusts the repo, as the main session does', async () => {
     const { buildArgs } = await import('../scripts/lib/grok.mjs');
-    expect(buildArgs({ promptFile: '/tmp/brief.md' })).not.toContain('--trust');
+    expect(buildArgs({ promptFile: '/tmp/brief.md' })).toContain('--trust');
   });
 
   it('turns plan mode off and removes the tools a delegated run has no use for', async () => {

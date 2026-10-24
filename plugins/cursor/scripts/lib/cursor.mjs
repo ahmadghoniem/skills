@@ -133,8 +133,9 @@ export function promptArg(prompt, promptFile) {
  *
  * `--` ends the options, so a brief that starts with `-` is not read as a flag.
  *
- * Not passed: `--trust` (a print-mode run does not prompt for workspace trust,
- * and passing it loads no less context), `--approve-mcps`, `--model` unless
+ * `--trust` is passed: the delegate runs in a workspace Claude already trusts.
+ *
+ * Not passed: `--approve-mcps`, `--model` unless
  * the user named one, and `--stream-partial-output` (without it each
  * `assistant` event is one whole message).
  *
@@ -142,7 +143,7 @@ export function promptArg(prompt, promptFile) {
  * @returns {string[]}
  */
 export function buildArgs(opts) {
-  const args = ['-p', '--output-format', 'stream-json', '--force', '--disable-auto-update'];
+  const args = ['-p', '--output-format', 'stream-json', '--force', '--trust', '--disable-auto-update'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.resumeChatId) args.push('--resume', opts.resumeChatId);
   else if (opts.chatId) args.push('--new-session-id', opts.chatId);

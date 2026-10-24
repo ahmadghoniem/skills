@@ -76,7 +76,7 @@ Every dispatch passes these flags:
 - **`--no-auto-update`**: the binary changes only when you run `/grok:update`.
 - **`-s <uuid>`** on a new run, or **`--resume <uuid>`** on a resume: the session id is fixed before the run starts, so a killed run can still be resumed.
 
-`--trust` is never passed, so grok does not load the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks or skills. Claude puts what the task needs in the brief.
+`--trust` is passed, so grok works in a repo the main session already trusts and loads the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks and skills. Claude puts what the task needs in the brief.
 
 `--sandbox` is never passed: grok accepts an unknown profile name without an error and runs anyway, so it offers no guarantee. `--continue` is never passed either: it picks the newest session in the directory, which may belong to another Claude session or a grok TUI.
 

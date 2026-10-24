@@ -36,14 +36,15 @@ describe('parseVersion', () => {
 });
 
 describe('buildArgs', () => {
-  it('runs headless with stream-json, --force and no auto-update', async () => {
+  it('runs headless with stream-json, --force, --trust and no auto-update', async () => {
     const { buildArgs } = await import('../scripts/lib/cursor.mjs');
     const args = buildArgs({ prompt: 'do it' });
-    expect(args.slice(0, 5)).toEqual([
+    expect(args.slice(0, 6)).toEqual([
       '-p',
       '--output-format',
       'stream-json',
       '--force',
+      '--trust',
       '--disable-auto-update',
     ]);
     expect(args.slice(-2)).toEqual(['--', 'do it']);
@@ -63,7 +64,7 @@ describe('buildArgs', () => {
       buildArgs({ prompt: 'x', chatId: '11111111-2222-3333-4444-555555555555' }),
       buildArgs({ prompt: 'x', resumeChatId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }),
     ]) {
-      expect(args).not.toContain('--trust');
+      expect(args).toContain('--trust');
       expect(args).not.toContain('--approve-mcps');
       expect(args).not.toContain('--continue');
     }

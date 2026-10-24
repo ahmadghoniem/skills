@@ -182,11 +182,10 @@ export async function resolveBin() {
  * the run's `available_commands`, and none draws the stderr warning grok
  * prints for a name that matches no tool.
  *
- * `--trust` is deliberately absent. Without it a headless run skips the repo's
- * `AGENTS.md`/`CLAUDE.md`, MCP servers, hooks and skills (checked on 1.0.52
- * with a codeword in each file), so grok sees only the brief, and Claude puts
- * in it what the task needs. The home-level Claude and Cursor config is
- * switched off separately; see `COMPAT_OFF_ENV`.
+ * `--trust` is passed: the delegate runs in a workspace Claude already trusts.
+ * It also loads the repo's `AGENTS.md`/`CLAUDE.md`, MCP servers, hooks and
+ * skills. The home-level Claude and Cursor config is switched off separately;
+ * see `COMPAT_OFF_ENV`.
  *
  * `--continue` is deliberately absent. It means "the most recent session for this
  * directory", which grok resolves by looking at the directory rather than at who
@@ -205,6 +204,7 @@ export function buildArgs(opts) {
     '--output-format',
     'streaming-json',
     '--always-approve',
+    '--trust',
     '--no-auto-update',
     '--no-plan',
     '--disallowed-tools',
