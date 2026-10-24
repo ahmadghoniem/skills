@@ -37,6 +37,11 @@ _write_lock = threading.Lock()
 _cache: tuple[re.Pattern | None, list[tuple[str, str, str]], float] = (None, [], -1.0)
 
 
+def is_regex(src: str) -> bool:
+    """Whether `from` uses regex syntax. Spaces alone do not count."""
+    return bool(re.search(r"[.^$*+?{}\[\]\\|()]", src))
+
+
 def _body(rule: dict) -> str:
     src = rule["from"]
     body = src if rule.get("type") == "regex" else re.escape(src)

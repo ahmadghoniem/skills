@@ -15,7 +15,6 @@ without a restart.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from datetime import date
 
@@ -25,7 +24,7 @@ import dictlog
 
 def _rule(args) -> dict:
     rule = {"from": args.src, "to": args.to}
-    if args.regex or args.src != re.escape(args.src):
+    if args.regex or corrections.is_regex(args.src):
         rule["type"] = "regex"
     return rule
 
@@ -66,7 +65,7 @@ def _flag(note: str, suggested: str | None = None) -> dict:
 def cmd_narrow(args) -> int:
     def change(rule: dict) -> None:
         rule["from"] = args.src
-        if args.src != re.escape(args.src):
+        if corrections.is_regex(args.src):
             rule["type"] = "regex"
         else:
             rule.pop("type", None)

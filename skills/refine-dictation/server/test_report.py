@@ -14,6 +14,7 @@ import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+# Before the imports below: home.py reads STT_HOME once, when it is first imported.
 os.environ["STT_HOME"] = tempfile.mkdtemp(prefix="stt-test-")
 
 from fastapi.testclient import TestClient  # noqa: E402

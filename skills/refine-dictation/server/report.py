@@ -6,7 +6,6 @@ record the fixes it made in a reply.
 
 from __future__ import annotations
 
-import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -104,7 +103,7 @@ def update_rule(body: dict = Body(...)):
             if not pattern.strip():
                 raise ValueError("The pattern is empty.")
             rule["from"] = pattern
-            if pattern != re.escape(pattern):
+            if corrections.is_regex(pattern):
                 rule["type"] = "regex"
             else:
                 rule.pop("type", None)

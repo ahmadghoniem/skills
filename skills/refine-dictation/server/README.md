@@ -18,14 +18,18 @@ Vowen: Speech models → Local / Self-hosted → Custom Server, URL
 
 ## Your data
 
-Everything that is yours is in `~/.stt`, outside the repo:
+Everything that is yours is in `~/.stt`, outside the repo. The kit plugin installs a
+copy of this folder into Claude Code's plugin cache, and /refine-dictation runs from
+that copy while the server runs from the repo; keeping the data in one place outside
+both is what lets them share it.
 
     corrections.json     the rules, one per line
     dictations.jsonl     every dictation for 90 days, before and after the rules
     removed.jsonl        rules removed after 60 days without a fix
     models/              Parakeet v3 bf16 weights (1.2 GB)
 
-Set `STT_HOME` to keep them somewhere else.
+`test_report.py` sets the `STT_HOME` environment variable to a temporary folder, so
+the tests never read or change these files. Leave it unset in normal use.
 
 ## Pages and endpoints
 
