@@ -6,6 +6,8 @@
 # in claude-grok-delegate (two suites, unnoticed). `text=auto eol=lf` overrides
 # autocrlf for this repo so a fresh clone cannot reintroduce it.
 * text=auto eol=lf
+# cmd.exe misreads labels and goto in LF batch files.
+*.cmd text eol=crlf
 
 # Binaries git must not touch.
 *.png binary

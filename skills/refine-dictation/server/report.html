@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dictation report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  // Before first paint, so a dark-mode visit never flashes light.
+  document.documentElement.dataset.theme = localStorage.getItem('theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
+<style>
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --sunk: #f6f8fa;
+  --ink: #18212b;
+  --muted: #5d6875;
+  --faint: #8a95a1;
+  --line: #dce1e6;
+  --fix: #1d5fd0;
+  --fix-bg: #e8f0fd;
+  --reply: #6b4fa0;
+  --wrong: #b8352b;
+  --warn: #8a5300;
+  --warn-bg: #fff3dc;
+  --warn-line: #f0d29a;
+  --on: #1d5fd0;
+  --focus: #1d5fd0;
+  --ui: "Schibsted Grotesk", system-ui, sans-serif;
+  --text: "Literata", Georgia, serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #13171c;
+  --surface: #1b2027;
+  --sunk: #161a20;
+  --ink: #e6eaee;
+  --muted: #a0abb7;
+  --faint: #76818d;
+  --line: #2b323b;
+  --fix: #86b4ff;
+  --fix-bg: #1d2a40;
+  --reply: #c2a8f0;
+  --wrong: #ff8f84;
+  --warn: #f2c57a;
+  --warn-bg: #2a2214;
+  --warn-line: #5a4520;
+  --on: #5f97f5;
+  --focus: #86b4ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 var(--ui);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* Header */
+header {
+  display: flex;
+  align-items: flex-end;
+  gap: 48px;
+  padding: 20px 32px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.title h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+.title p { margin: 2px 0 0; color: var(--muted); }
+.stats { display: flex; gap: 36px; margin: 0; flex: 1; }
+.stats div { display: flex; flex-direction: column-reverse; }
+.stats dt { color: var(--muted); font-size: 13px; }
+.stats dd { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; }
+.stats dd small { font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.stats .gain dd { color: var(--fix); }
+.theme {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; color: var(--muted);
+}
+
+/* Columns */
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  min-height: 0;
+}
+.col { min-height: 0; overflow: auto; padding: 20px 32px 32px; }
+.col + .col { border-left: 1px solid var(--line); background: var(--sunk); }
+h2 { font-size: 17px; font-weight: 600; margin: 0; }
+.col-head { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.col-head .count { color: var(--muted); }
+
+/* Needs a look */
+.notice {
+  background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 20px;
+}
+.notice h2 { color: var(--warn); font-size: 15px; margin-bottom: 4px; }
+.notice p { margin: 0 0 4px; }
+.notice q { font-family: var(--text); quotes: "\201C" "\201D"; }
+.notice code, td code, .narrow code { font: 500 13px/1.3 ui-monospace, Consolas, monospace; }
+.notice .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 7px;
+  padding: 5px 11px; cursor: pointer; font-size: 14px; font-weight: 500;
+}
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: var(--fix); border-color: var(--fix); color: var(--surface); }
+.btn.danger { color: var(--wrong); }
+.btn.quiet { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+.btn.quiet:hover { color: var(--ink); background: var(--sunk); }
+
+/* Filters */
+.filters { display: flex; gap: 4px; margin-left: auto; }
+.filters button {
+  border: 0; background: transparent; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  color: var(--muted); font-size: 14px;
+}
+.filters button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.search {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 7px;
+  padding: 5px 10px; font: inherit; font-size: 14px; width: 180px; color: var(--ink);
+}
+
+/* Rules table */
+.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 13px; font-weight: 500; color: var(--muted);
+  padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  position: sticky; top: 0; background: var(--surface);
+}
+th button { border: 0; background: none; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+th button[aria-sort]::after { content: " \2193"; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+td.num, td.date { font-variant-numeric: tabular-nums; }
+td.num { font-weight: 500; }
+td.zero { color: var(--faint); font-weight: 400; }
+td.heard { color: var(--wrong); }
+td.heard s { text-decoration-thickness: 1px; }
+td.written { font-weight: 600; }
+td.date { color: var(--muted); white-space: nowrap; }
+td.date em { font-style: normal; color: var(--warn); display: block; font-size: 13px; }
+tr.off td.heard, tr.off td.written, tr.off td.num { opacity: 0.45; }
+tr.off td.written::after { content: " off"; font-weight: 400; font-size: 13px; color: var(--muted); }
+td.row-actions { white-space: nowrap; text-align: right; }
+
+.switch {
+  width: 34px; height: 20px; border-radius: 10px; border: 0; padding: 0; cursor: pointer;
+  background: var(--line); position: relative; vertical-align: middle;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--surface); transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.switch[aria-checked="true"] { background: var(--on); }
+.switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+/* Narrow editor */
+tr.editor td { background: var(--sunk); padding: 14px 16px 16px; }
+.narrow label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.narrow .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.narrow input {
+  flex: 1; min-width: 260px; border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  background: var(--surface); color: var(--ink); font: 500 14px ui-monospace, Consolas, monospace;
+}
+.narrow input[aria-invalid="true"] { border-color: var(--wrong); }
+.narrow .result { margin: 10px 0 0; color: var(--muted); }
+.narrow ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-width: 90ch; }
+.narrow li { font-family: var(--text); font-size: 14px; }
+.narrow li mark { background: var(--fix-bg); color: var(--fix); border-radius: 3px; padding: 0 2px; }
+.narrow li .when { font-family: var(--ui); color: var(--faint); font-size: 12px; margin-right: 8px; }
+
+/* Feed */
+.legend { display: flex; gap: 14px; color: var(--muted); font-size: 13px; margin-left: auto; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 6px; }
+.legend .l-rule::before { background: var(--fix); }
+.legend .l-reply::before { border-top: 2px dotted var(--reply); }
+.day { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 6px; }
+.day:first-of-type { margin-top: 4px; }
+article { padding: 12px 0 14px; border-bottom: 1px solid var(--line); }
+article:last-child { border-bottom: 0; }
+.meta { display: flex; gap: 12px; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.meta .fixes { color: var(--fix); }
+.text {
+  font: 400 16px/1.62 var(--text); margin: 0; max-width: 68ch;
+  overflow-wrap: break-word;
+}
+.text.clamped { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.text s { color: var(--wrong); text-decoration-thickness: 1px; font-size: 0.9em; }
+.text ins { text-decoration: none; color: var(--fix); background: var(--fix-bg); border-radius: 3px; padding: 0 2px; margin-left: 3px; }
+.text ins.reply { color: var(--reply); background: none; text-decoration: underline dotted 2px; text-underline-offset: 3px; }
+.more { margin-top: 4px; border: 0; background: none; padding: 2px 0; cursor: pointer; color: var(--fix); font-size: 14px; font-weight: 500; }
+
+/* Toast */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); opacity: 0;
+  background: var(--ink); color: var(--bg); padding: 10px 14px 10px 16px; border-radius: 10px;
+  display: flex; gap: 14px; align-items: center; transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast button { border: 0; background: none; color: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+@media (max-width: 1100px) {
+  body { display: block; height: auto; }
+  header { flex-wrap: wrap; gap: 20px; padding: 18px 20px; }
+  .stats { flex-wrap: wrap; gap: 20px 28px; }
+  main { display: block; }
+  .col { overflow: visible; padding: 18px 20px; }
+  .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+  .table-wrap { overflow-x: auto; }
+  th { position: static; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+td.heard code { color: var(--wrong); }
+.notice + .notice { margin-top: -8px; }
+.empty { color: var(--muted); padding: 16px 0; max-width: 60ch; }
+td.empty { padding: 16px 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>Dictation report</h1>
+    <p id="period">Last 7 days</p>
+  </div>
+  <dl class="stats">
+    <div><dt>dictations</dt><dd id="s-dictations">–</dd></div>
+    <div><dt>words dictated</dt><dd id="s-words">–</dd></div>
+    <div><dt>fixed by rules</dt><dd id="s-rule">–</dd></div>
+    <div><dt>fixed in replies</dt><dd id="s-reply">–</dd></div>
+    <div class="gain"><dt>accuracy gained from rules</dt><dd id="s-points">–</dd></div>
+    <div><dt>without this week's new rules</dt><dd id="s-old">–</dd></div>
+  </dl>
+  <button class="theme" id="theme" type="button"></button>
+</header>
+
+<main>
+  <section class="col" aria-labelledby="rules-h">
+    <div id="notices"></div>
+
+    <div class="col-head">
+      <h2 id="rules-h">Rules</h2>
+      <span class="count" id="rule-count"></span>
+      <div class="filters" role="group" aria-label="Show">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="week" aria-pressed="false">Used this week</button>
+        <button type="button" data-filter="off" aria-pressed="false">Off</button>
+        <button type="button" data-filter="stale" aria-pressed="false">Unused 30+ days</button>
+      </div>
+      <input class="search" id="search" type="search" placeholder="Find a rule" aria-label="Find a rule">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col"><span class="sr">On</span></th>
+            <th scope="col">Heard as</th>
+            <th scope="col">Written as</th>
+            <th scope="col" class="num"><button type="button" data-sort="week" aria-sort="descending">This week</button></th>
+            <th scope="col" class="num"><button type="button" data-sort="total">90 days</button></th>
+            <th scope="col"><button type="button" data-sort="last">Last fix</button></th>
+            <th scope="col"><button type="button" data-sort="added">Added</button></th>
+            <th scope="col"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="rules"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col" aria-labelledby="feed-h">
+    <div class="col-head">
+      <h2 id="feed-h">Recent dictations</h2>
+      <div class="legend"><span class="l-rule">Rule fix</span><span class="l-reply">Fixed in that reply only</span></div>
+    </div>
+    <div id="feed"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-undo">Undo</button></div>
+
+<script>
+let data = null;
+let filter = 'all';
+let sortKey = 'week';
+let query = '';
+let openEditor = null;   // the `from` of the rule whose pattern editor is open
+let editorValue = null;  // text to put in it, when not the rule's own pattern
+const expanded = new Set();
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const day = (iso) => { const [y, m, d] = iso.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
+const fmt = (iso) => day(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const today = () => day(data.now);
+const daysBetween = (a, b) => Math.round((b - a) / 864e5);
+const words = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
+const num = (n) => n.toLocaleString('en-US');
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error || `The server answered ${res.status}.`);
+  return out;
+}
+
+async function load() {
+  const res = await fetch('/report/data');
+  data = await res.json();
+  render();
+}
+
+// Run an action, reload, and offer to undo it. A refusal from the server is shown as is.
+async function act(fn, message, undoFn) {
+  try {
+    await fn();
+    await load();
+    toast(message, undoFn && (async () => { try { await undoFn(); } catch (e) { toast(e.message); } await load(); }));
+  } catch (e) {
+    toast(e.message);
+    await load();
+  }
+}
+
+function render() {
+  const s = data.stats;
+  $('period').textContent = `Last 7 days, since ${fmt(data.week_start)}`;
+  $('s-dictations').textContent = num(s.dictations);
+  $('s-words').textContent = num(s.words);
+  $('s-rule').textContent = num(s.rule_fixes);
+  $('s-reply').textContent = num(s.reply_fixes);
+  $('s-points').textContent = `+${s.points} points`;
+  $('s-old').textContent = `+${s.points_old} points`;
+  renderNotices();
+  renderRules();
+  renderFeed();
+}
+
+/* Needs a look */
+function renderNotices() {
+  const flagged = data.rules.filter((r) => r.flag);
+  $('notices').innerHTML = flagged.map((r) => `
+    <div class="notice" role="region" aria-label="${esc(r.from)} needs a look" data-from="${esc(r.from)}">
+      <h2>${esc(r.from)} → ${esc(r.to)} needs a look</h2>
+      <p>${esc(r.flag.note || '')}</p>
+      ${r.flag.suggested ? `<p>Suggested pattern: <code>${esc(r.flag.suggested)}</code></p>` : ''}
+      <div class="actions">
+        ${r.flag.suggested ? '<button class="btn primary" type="button" data-notice="apply">Use suggested pattern</button>' : ''}
+        <button class="btn" type="button" data-notice="edit">Edit pattern</button>
+        ${r.on ? '<button class="btn" type="button" data-notice="off">Turn rule off</button>' : ''}
+        <button class="btn quiet" type="button" data-notice="keep">Rule is right</button>
+      </div>
+    </div>`).join('');
+}
+$('notices').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-notice]');
+  if (!b) return;
+  const r = data.rules.find((x) => x.from === b.closest('.notice').dataset.from);
+  const flag = r.flag;
+  const reflag = () => post('/report/rules/update', { from: r.from, flag: null }).then(() => {});
+  if (b.dataset.notice === 'apply') {
+    act(() => post('/report/rules/update', { from: r.from, pattern: flag.suggested, flag: null }),
+      `${r.to} now uses the suggested pattern.`,
+      () => post('/report/rules/update', { from: flag.suggested, pattern: r.from }));
+  } else if (b.dataset.notice === 'edit') {
+    filter = 'all'; query = ''; $('search').value = '';
+    openEditor = r.from;
+    editorValue = flag.suggested || r.from;
+    renderRules();
+    $('pattern').focus();
+  } else if (b.dataset.notice === 'off') {
+    act(() => post('/report/rules/update', { from: r.from, on: false, flag: null }),
+      `Turned off ${r.from} → ${r.to}.`,
+      () => post('/report/rules/update', { from: r.from, on: true }));
+  } else if (b.dataset.notice === 'keep') {
+    act(reflag, `Kept ${r.from} → ${r.to} as it is.`);
+  }
+});
+
+/* Rules */
+function visibleRules() {
+  const q = query.trim().toLowerCase();
+  const stale = (r) => daysBetween(day(r.last || r.added || data.now), today()) >= 30;
+  return data.rules
+    .filter((r) => filter === 'all'
+      || (filter === 'week' && r.week > 0)
+      || (filter === 'off' && !r.on)
+      || (filter === 'stale' && stale(r)))
+    .filter((r) => !q || `${r.from} ${r.to}`.toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (sortKey === 'week') return b.week - a.week || b.total - a.total;
+      if (sortKey === 'total') return b.total - a.total;
+      return String(b[sortKey] || '').localeCompare(String(a[sortKey] || ''));
+    });
+}
+
+function lastCell(r) {
+  const left = daysBetween(today(), day(r.removes_on));
+  const note = left <= 15 ? `<em>removed in ${left} ${left === 1 ? 'day' : 'days'} unless it fixes something</em>` : '';
+  return `${r.last ? fmt(r.last) : 'Never'}${note}`;
+}
+
+function renderRules() {
+  const list = visibleRules();
+  const on = data.rules.filter((r) => r.on).length;
+  $('rule-count').textContent = `${on} on, ${data.rules.length - on} off`;
+  if (!data.rules.length) {
+    $('rules').innerHTML = '<tr><td colspan="8" class="empty">No rules yet. /refine-dictation adds one when it fixes a word you would never say on purpose.</td></tr>';
+    return;
+  }
+  $('rules').innerHTML = list.map((r) => `
+    <tr class="${r.on ? '' : 'off'}" data-from="${esc(r.from)}">
+      <td><button class="switch" type="button" role="switch" aria-checked="${r.on}" aria-label="${esc(r.from)} to ${esc(r.to)}" data-act="toggle"></button></td>
+      <td class="heard">${r.regex ? `<code>${esc(r.from)}</code>` : `<s>${esc(r.from)}</s>`}</td>
+      <td class="written">${esc(r.to)}</td>
+      <td class="num ${r.week ? '' : 'zero'}">${r.week}</td>
+      <td class="num ${r.total ? '' : 'zero'}">${r.total}</td>
+      <td class="date">${lastCell(r)}</td>
+      <td class="date">${r.added ? fmt(r.added) : ''}</td>
+      <td class="row-actions">
+        <button class="btn quiet" type="button" data-act="narrow" aria-expanded="${openEditor === r.from}">Narrow</button>
+        <button class="btn quiet danger" type="button" data-act="delete">Delete</button>
+      </td>
+    </tr>
+    ${openEditor === r.from ? editorRow(r) : ''}`).join('')
+    || '<tr><td colspan="8" class="empty">No rules match. Clear the search or pick another filter.</td></tr>';
+  if (openEditor && $('pattern')) testPattern();
+}
+
+function editorRow(r) {
+  const value = editorValue ?? r.from;
+  return `<tr class="editor"><td colspan="8"><div class="narrow">
+    <label for="pattern">Pattern for ${esc(r.from)} → ${esc(r.to)}, matched without case. Saving checks it against the rule's own test.</label>
+    <div class="row">
+      <input id="pattern" value="${esc(value)}" spellcheck="false" autocomplete="off">
+      <button class="btn primary" type="button" data-act="save">Save pattern</button>
+      <button class="btn" type="button" data-act="cancel">Cancel</button>
+    </div>
+    <p class="result" id="pattern-result"></p>
+    <ul id="pattern-hits"></ul>
+  </div></td></tr>`;
+}
+
+// The page tries the pattern in JavaScript, with the same word edges the server adds.
+function jsPattern(src) {
+  const left = /^[a-z0-9]/i.test(src) ? '\\b' : '';
+  const right = /[a-z0-9]$/i.test(src) ? '\\b' : '';
+  return new RegExp(left + src.replace(/\(\?P</g, '(?<') + right, 'gi');
+}
+
+function testPattern() {
+  const input = $('pattern');
+  let re;
+  try {
+    re = jsPattern(input.value);
+    input.setAttribute('aria-invalid', 'false');
+  } catch {
+    input.setAttribute('aria-invalid', 'true');
+    $('pattern-result').textContent = "The page can't read this pattern. Saving still checks it on the server.";
+    $('pattern-hits').innerHTML = '';
+    return;
+  }
+  const hits = [];
+  for (const e of data.log) {
+    for (const m of e.raw.matchAll(re)) {
+      if (!m[0]) break;
+      hits.push({ at: e.at, before: e.raw.slice(Math.max(0, m.index - 50), m.index), hit: m[0], after: e.raw.slice(m.index + m[0].length, m.index + m[0].length + 50) });
+    }
+  }
+  const dictations = new Set(hits.map((h) => h.at)).size;
+  $('pattern-result').textContent = hits.length
+    ? `Last 90 days: ${hits.length} ${hits.length === 1 ? 'match' : 'matches'} in ${dictations} ${dictations === 1 ? 'dictation' : 'dictations'}. Check that each one should change.`
+    : 'Last 90 days: no matches.';
+  $('pattern-hits').innerHTML = hits.slice(-8).reverse().map((h) =>
+    `<li><span class="when">${fmt(h.at)}</span>…${esc(h.before)}<mark>${esc(h.hit)}</mark>${esc(h.after)}…</li>`).join('')
+    + (hits.length > 8 ? `<li class="when">and ${hits.length - 8} older</li>` : '');
+}
+
+$('rules').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const row = btn.closest('tr[data-from]') || btn.closest('tr').previousElementSibling;
+  const r = data.rules.find((x) => x.from === row.dataset.from);
+  const what = `${r.from} → ${r.to}`;
+  switch (btn.dataset.act) {
+    case 'toggle':
+      act(() => post('/report/rules/update', { from: r.from, on: !r.on }),
+        `${r.on ? 'Turned off' : 'Turned on'} ${what}.`,
+        () => post('/report/rules/update', { from: r.from, on: r.on }));
+      break;
+    case 'narrow':
+      openEditor = openEditor === r.from ? null : r.from;
+      editorValue = null;
+      renderRules();
+      $('pattern')?.focus();
+      break;
+    case 'cancel':
+      openEditor = null;
+      renderRules();
+      break;
+    case 'save': {
+      const pattern = $('pattern').value;
+      if (pattern === r.from) { openEditor = null; renderRules(); break; }
+      openEditor = null;
+      act(() => post('/report/rules/update', { from: r.from, pattern, flag: null }),
+        `Saved the new pattern for ${r.to}.`,
+        () => post('/report/rules/update', { from: pattern, pattern: r.from }));
+      break;
+    }
+    case 'delete': {
+      let removed;
+      act(async () => { removed = await post('/report/rules/delete', { from: r.from }); },
+        `Deleted ${what}.`,
+        () => post('/report/rules/add', removed));
+      break;
+    }
+  }
+});
+$('rules').addEventListener('input', (ev) => { if (ev.target.id === 'pattern') testPattern(); });
+
+document.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+  filter = b.dataset.filter;
+  document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+  renderRules();
+}));
+document.querySelectorAll('[data-sort]').forEach((b) => b.addEventListener('click', () => {
+  sortKey = b.dataset.sort;
+  document.querySelectorAll('[data-sort]').forEach((x) => x === b ? x.setAttribute('aria-sort', 'descending') : x.removeAttribute('aria-sort'));
+  renderRules();
+}));
+$('search').addEventListener('input', (ev) => { query = ev.target.value; renderRules(); });
+
+/* Feed */
+// The raw text cut into plain runs and fixes: rule fixes by their offsets, then
+// reply fixes at the first plain run that holds the words they replaced.
+function segments(e) {
+  const out = [];
+  let at = 0;
+  for (const f of [...e.fixes].sort((a, b) => a.start - b.start)) {
+    if (f.start > at) out.push({ plain: e.raw.slice(at, f.start) });
+    out.push({ from: e.raw.slice(f.start, f.end), to: f.to, rule: f.rule });
+    at = f.end;
+  }
+  if (at < e.raw.length) out.push({ plain: e.raw.slice(at) });
+  for (const r of e.reply) {
+    const i = out.findIndex((s) => s.plain !== undefined && s.plain.toLowerCase().includes(r.from.toLowerCase()));
+    if (i < 0) continue;
+    const s = out[i].plain;
+    const k = s.toLowerCase().indexOf(r.from.toLowerCase());
+    out.splice(i, 1,
+      { plain: s.slice(0, k) },
+      { from: s.slice(k, k + r.from.length), to: r.to, reply: true },
+      { plain: s.slice(k + r.from.length) });
+  }
+  return out;
+}
+function marked(e) {
+  return segments(e).map((s) => {
+    if (s.plain !== undefined) return esc(s.plain);
+    return s.reply
+      ? `<s>${esc(s.from)}</s><ins class="reply" title="Fixed in that reply only">${esc(s.to)}</ins>`
+      : `<s>${esc(s.from)}</s><ins title="Rule: ${esc(s.rule)} → ${esc(s.to)}">${esc(s.to)}</ins>`;
+  }).join('');
+}
+function dayLabel(iso) {
+  const n = daysBetween(day(iso), today());
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Yesterday';
+  return day(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+function renderFeed() {
+  if (!data.recent.length) {
+    $('feed').innerHTML = '<p class="empty">No dictations in the last 90 days. Dictate with Vowen pointed at this server, then reload.</p>';
+    return;
+  }
+  let lastDay = '';
+  $('feed').innerHTML = data.recent.map((e) => {
+    const label = dayLabel(e.at);
+    const head = label !== lastDay ? `<h3 class="day">${label}</h3>` : '';
+    lastDay = label;
+    const n = words(e.raw);
+    const rule = e.fixes.length;
+    const reply = e.reply.length;
+    const fixes = [rule && `${rule} rule ${rule > 1 ? 'fixes' : 'fix'}`, reply && `${reply} in reply`].filter(Boolean).join(', ');
+    const long = n > 90;
+    const open = expanded.has(e.id);
+    return `${head}<article>
+      <div class="meta"><time datetime="${e.at}">${new Date(e.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</time><span>${n} words</span>${fixes ? `<span class="fixes">${fixes}</span>` : ''}</div>
+      <p class="text${long && !open ? ' clamped' : ''}" id="t${e.id}">${marked(e)}</p>
+      ${long ? `<button class="more" type="button" aria-expanded="${open}" aria-controls="t${e.id}" data-id="${e.id}">${open ? 'Show less' : `Show all ${n} words`}</button>` : ''}
+    </article>`;
+  }).join('');
+}
+$('feed').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.more');
+  if (!b) return;
+  expanded.has(b.dataset.id) ? expanded.delete(b.dataset.id) : expanded.add(b.dataset.id);
+  renderFeed();
+});
+
+/* Toast with one level of undo */
+let undo = null;
+let toastTimer;
+function toast(text, undoFn) {
+  undo = undoFn || null;
+  $('toast-text').textContent = text;
+  $('toast-undo').hidden = !undo;
+  $('toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').classList.remove('show'), undo ? 6000 : 8000);
+}
+$('toast-undo').addEventListener('click', () => {
+  const fn = undo;
+  undo = null;
+  $('toast').classList.remove('show');
+  fn?.();
+});
+
+function themeLabel() { $('theme').textContent = document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; }
+$('theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('theme', next);
+  themeLabel();
+});
+themeLabel();
+
+load().catch(() => {
+  $('feed').innerHTML = '<p class="empty">Could not load the report data. Check that the server window is still open, then reload.</p>';
+});
+</script>
+</body>
+</html>
