@@ -1,36 +1,24 @@
 ---
 name: recall
-description: Orient on the brief /snapshot wrote, injected by the last /clear.
-disable-model-invocation: true
+description: Search and read past Claude Code sessions from their transcripts. Use whenever the user refers to earlier work ("last session", "the transcript", "we tried", "remember when", "where we left off", "when did X change") or you need a decision, error, number or file from before this session.
 ---
 
-A brief from the prior session is injected at session start by the `SessionStart` hook
-(matcher `clear`).
+`python "<this skill's base directory>/scripts/recall.py" <command>` parses the
+transcripts in `~/.claude/projects` for you and leaves out the current session. Use it
+instead of writing your own JSONL parser.
 
-If there is none, reply with exactly:
+- `recent [-n 3] [--all]`: this project's latest sessions, with dates and last prompts.
+- `grep TERM... [--role you,claude,call,out,summary] [--since D] [--until D] [--project P]`:
+  sessions holding every term, oldest first, each match one line with its role, time
+  and receipt. `re:PATTERN` for a regex.
+- `calls TERM... [--tool Bash] [--errors]`: one line per tool call whose input or
+  result holds the terms: time, receipt, tool, ok/ERR, input => result. Pipe it to
+  `awk`/`uniq -c` to count.
+- `show ID [--prompts | --around LINE | --tail N] [-C 3] [--tools]`: read a session.
+  Tool calls are folded unless `--tools`.
 
-    Nothing to recall — no brief was injected at session start: either this session didn't
-    begin with /clear, or no snapshot was taken. Run /snapshot in the session you're leaving,
-    then /clear, then /recall.
-
-and stop. Do not guess what the previous session was doing.
-
-Otherwise orient. Read only — make no edits to files this turn:
-
-1. Read the whole brief.
-2. Read the files relevant to the brief.
-3. Don't open an artifact the brief lists — that is a whole page into a fresh context
-   before you know you will touch it. Read it when you go to change it.
-4. Check the brief's **Running** claims against live state — anything it says is still
-   up. That section describes the moment it was written, not now, and the gap may have
-   moved the tree under you. Verify only that section; re-checking the rest repeats the
-   last session's work.
-
-Then either:
-
-- **The brief and those files are enough** — say what you would start on, in one line, and
-  wait for the go-ahead. If the brief and the files disagree anywhere, add one line saying
-  where; otherwise say nothing about it. Do not summarise the brief back.
-- **The brief leaves a genuine gap** — call AskUserQuestion. Ask only for what cannot be
-  found by reading. Never ask the user to confirm something the brief already says.
-
+Output never cuts silently; it says what it left out and how to get it. Every hit has a
+receipt `id:line`: open it with `show id --around line` before citing it, and quote it.
+Older sessions can be outdated; check the newer ones. Prompts of sessions whose
+transcript was deleted (before September 2026) are in `~/.claude/history.jsonl`, one JSON
+line each; search it with `rg`.

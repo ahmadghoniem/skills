@@ -1,7 +1,7 @@
 {
   "name": "kit",
   "version": "1.0.0",
-  "description": "Standalone Claude Code skills: grounded read-back before edits, a Tailwind v4 house style, a one-brief handoff across /clear, and a measured cut of what every request carries.",
+  "description": "Standalone Claude Code skills: grounded read-back before edits, a Tailwind v4 house style, recall of past sessions from their transcripts, and a measured cut of what every request carries.",
   "author": {
     "name": "Ahmed Ghoniem",
     "url": "https://github.com/ahmadghoniem"
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/ahmadghoniem/skills",
   "repository": "https://github.com/ahmadghoniem/skills",
   "license": "MIT",
-  "keywords": ["skills", "claude-code", "tailwind", "context", "snapshot"]
+  "keywords": ["skills", "claude-code", "tailwind", "context", "transcripts"]
 }
