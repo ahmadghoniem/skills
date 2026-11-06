@@ -1,6 +1,6 @@
 ---
 name: recall
-description: Search and read past Claude Code sessions from their transcripts. Use whenever the user refers to earlier work ("last session", "the transcript", "we tried", "remember when", "where we left off", "when did X change") or you need a decision, error, number or file from before this session.
+description: Search and read past Claude Code sessions from their transcripts. Use whenever the user mentions a transcript ("the recent transcript", "look into the transcripts related to X", "ground yourself with the transcript", "where we left off", "we tried") or you need a decision, error, number or file from an earlier session.
 ---
 
 `python "<this skill's base directory>/scripts/recall.py" <command>` parses the

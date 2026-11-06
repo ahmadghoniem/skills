@@ -124,7 +124,7 @@ def items(rec):
         text = REMINDER.sub("", text_of(c)).strip()
         if not text or rec.get("isMeta"):
             return
-        if text.startswith("This session is being continued from a previous conversation"):
+        if rec.get("isCompactSummary") or text.startswith("This session is being continued from a previous conversation"):
             yield "summary", text, {}
             return
         if text.startswith(("<local-command", "<task-notification>", "Base directory for this skill", "[Request interrupted")):
