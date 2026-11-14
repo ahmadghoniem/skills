@@ -218,23 +218,28 @@ describe('summariseEvents — context compactions', () => {
   });
 });
 
-describe('summariseEvents — denied actions', () => {
-  it('captures denied_actions from the result event', () => {
-    const events = [
+
+describe('summariseEvents — finished_reason', () => {
+  // Shape seen on agy 1.4.12 with `--print-timeout 5s`.
+  it('reads agy’s finished_reason from the result event', () => {
+    const s = summariseEvents([
       {
         event: 'result',
         result: {
+          conversation_id: 'c3450fd4-d6c2-47e3-bf02-3138229201d4',
           status: 'SUCCESS',
-          conversation_id: 'c',
-          response: 'ok',
-          denied_actions: ['run_command: rm -rf build'],
+          response: '# Spanning the Void',
+          duration_seconds: 0,
+          num_turns: 1,
+          finished_reason: 'print_timeout',
         },
       },
-    ];
-    expect(summariseEvents(events).deniedActions).toEqual(['run_command: rm -rf build']);
+    ]);
+    expect(s.status).toBe('SUCCESS');
+    expect(s.finishedReason).toBe('print_timeout');
   });
 
-  it('is undefined when agy denied nothing', () => {
-    expect(summariseEvents(load(READ_AND_COMMAND)).deniedActions).toBeUndefined();
+  it('is undefined when the turn finished normally, which agy marks by omitting it', () => {
+    expect(summariseEvents(load(READ_AND_COMMAND)).finishedReason).toBeUndefined();
   });
 });

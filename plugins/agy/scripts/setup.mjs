@@ -2,41 +2,37 @@
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import {
   cachedModels,
-  familyLevels,
   installBashServer,
   listModels,
   mcpConfigPath,
-  readAccountDefaultLabel,
   refreshModelCache,
   resolveBin,
   writeModelCache,
 } from './lib/agy.mjs';
 import { run } from './lib/run.mjs';
+import { compareVersions, reviewedAgyVersion } from './update.mjs';
 
 const INSTALL_HINT =
-  'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe on Windows, ~/.local/bin/agy elsewhere), or set AGY_BIN to its full path.\n' +
+  'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n' +
   'Then re-run `/agy:setup`.';
 
-/** Effort levels in the order they print, when a family has any. */
-const LEVEL_ORDER = ['low', 'medium', 'high'];
-
 /**
- * Format one family's levels for the table: a comma-joined list, or `none`
- * when the family's ids carry no effort suffix at all.
+ * Whether `agy --version` output is at least `min`, the version the plugin was
+ * last reviewed against. Output with no version number passes.
  *
- * @param {Set<string>} levels
- * @returns {string}
+ * @param {string} text
+ * @param {string|null} [min]
+ * @returns {boolean}
  */
-function formatLevels(levels) {
-  if (!levels || levels.size === 0) return 'none';
-  return LEVEL_ORDER.filter((l) => levels.has(l)).join(', ');
+export function versionOk(text, min = reviewedAgyVersion()) {
+  const v = /\d+\.\d+\.\d+/.exec(text)?.[0];
+  return !v || !min || compareVersions(v, min) >= 0;
 }
 
 /**
- * Print a family/levels table (`family<TAB>levels|none`, one line per
- * family) for `commands/delegate.md` to embed and `/agy:delegate` to read.
- * Reads `cachedModels()`, and refreshes the cache only when it is missing or
- * empty.
+ * Print the model ids agy accepts, one per line, for `commands/delegate.md` to
+ * embed. Reads `cachedModels()`, and refreshes the cache only when it is
+ * missing or empty.
  *
  * @returns {Promise<number>}
  */
@@ -51,9 +47,7 @@ async function printModels() {
       return 1;
     }
   }
-  for (const [family, levels] of familyLevels(models)) {
-    process.stdout.write(`${family}\t${formatLevels(levels)}\n`);
-  }
+  for (const m of models) process.stdout.write(`${m.id}\n`);
   return 0;
 }
 
@@ -81,6 +75,11 @@ async function baseCheck() {
     process.stdout.write(lines.join('\n') + '\n');
     return 1;
   }
+  if (!versionOk(versionText)) {
+    lines.push(`- ✗ version: ${versionText}; the plugin needs agy ${reviewedAgyVersion()} or newer. Run \`/agy:update\`.`);
+    process.stdout.write(lines.join('\n') + '\n');
+    return 1;
+  }
   lines.push(`- ✓ version: ${versionText}`);
 
   let models;
@@ -91,11 +90,7 @@ async function baseCheck() {
     process.stdout.write(lines.join('\n') + '\n');
     return 1;
   }
-  const defaultLabel = readAccountDefaultLabel();
-  // One writer among several: `delegate.mjs`'s weekly, cache-miss, and
-  // rejected-model refreshes also call `writeModelCache`. Dispatch reads
-  // this cache without fetching.
-  writeModelCache(models, defaultLabel, versionText, bin);
+  writeModelCache(models, versionText, bin);
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
 
   try {

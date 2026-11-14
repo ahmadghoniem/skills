@@ -86,8 +86,8 @@ r7–r9 and 0 of 802 in r10–r12. (Session `3b1c2be7`, 13:57.)
   made 3 `view_file` calls in one turn.
 
 So the model can batch; it does not choose to when it has to find the files first, which is
-the normal case for a lookup. Briefs that name files can use `--read` instead, which puts
-them in the first message at zero turns.
+the normal case for a lookup. The plugin's `--read` flag, since removed, put files the brief
+named in the first message at zero turns.
 
 ### 7. agy runs a batch one call at a time
 
@@ -116,9 +116,8 @@ for them (issue #26643). (Session `06dc627c`, 20:14.)
   `echo '== <label>'` before each command…" The bash tool shortens each section on its own.
   This is batching inside one call, and the A/B in section 2 shows it is the thing parallel
   wording damages.
-- **`--read <path>`** for files the caller already knows: they arrive in the first message.
-- **Fewer, larger views** (whole files up to 800 lines), and the 120-word report limit, which
-  cut views from 5.0 to 4.1 per run.
+- **Fewer, larger views** (whole files up to 800 lines), and the 120-word report limit (since
+  removed), which cut views from 5.0 to 4.1 per run.
 
 ## What it would take to try again
 

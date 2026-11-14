@@ -3,7 +3,6 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
-  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -22,7 +21,6 @@ import { jobName } from './slug.mjs';
  * @property {string} repoPath
  * @property {string} prompt
  * @property {string} model
- * @property {string=} effort
  * @property {string=} agent
  * @property {string=} conversationId
  * @property {number=} pid
@@ -39,11 +37,10 @@ import { jobName } from './slug.mjs';
  * @property {{tool: string, message: string}[]=} toolErrors
  * @property {string|null=} error
  * @property {number=} durationSeconds
- * @property {boolean=} killed
  * @property {boolean=} timedOut
  * @property {string=} timedOutAfter
+ * @property {string=} finishedReason   agy's `finished_reason`, verbatim
  * @property {number=} compactions
- * @property {string[]=} deniedActions
  * @property {boolean=} sandbox
  */
 
@@ -69,19 +66,6 @@ export function jobFilePath(repoPath, id) {
  */
 export function agyLogPath(repoPath, id) {
   return join(jobsDir(repoPath), `${id}.agy.log`);
-}
-
-/**
- * The job's scratch directory, named in its first message. agy's default
- * prompt gives the model `<appDataDir>/brain/<conversation-id>/scratch/`, but
- * the plugin's agents leave the default prompt out, and the conversation id is
- * only known once agy has started.
- *
- * @param {string} repoPath
- * @param {string} id
- */
-export function scratchPath(repoPath, id) {
-  return join(jobsDir(repoPath), `${id}.scratch`);
 }
 
 /**
@@ -302,17 +286,6 @@ export function updateJob(repoPath, id, patch) {
     merged.status = 'cancelled';
   }
   atomicWrite(file, JSON.stringify(merged, null, 2));
-  if (merged.status && merged.status !== 'running') {
-    // Most jobs never write a script. rmdir refuses a non-empty directory, so
-    // only an unused scratch directory goes.
-    if (merged.scratchDir) {
-      try {
-        rmdirSync(merged.scratchDir);
-      } catch {
-        // kept: it has files, or is already gone
-      }
-    }
-  }
   return merged;
 }
 

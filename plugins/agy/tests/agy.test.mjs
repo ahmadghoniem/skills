@@ -5,40 +5,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildArgs,
   cachedModels,
-  familyLevels,
   formatPrintTimeout,
   listModels,
   modelCacheStale,
-  modelEncodesEffort,
-  modelFamily,
   parseModelList,
-  pickDefaultModel,
   resetBinCache,
   resolveBin,
-  resolveDefaultModel,
   runHeadless,
   stdinLine,
-  taskMessage,
   writeModelCache,
 } from '../scripts/lib/agy.mjs';
 import { STUB_BIN, ADD_DIR_WORKS } from './helpers.mjs';
 
 const ADD_DIR = 'C:\\Users\\Ahmed Ibrahim\\Desktop\\app';
 const LOG = 'C:\\Users\\Ahmed Ibrahim\\.cad\\jobs\\deadbeef\\add-retry-to-fetchuser-a7f3.agy.log';
-
-describe('modelEncodesEffort', () => {
-  it('is true when the slug ends in -low/-medium/-high', () => {
-    expect(modelEncodesEffort('gemini-3.7-flash-low')).toBe(true);
-    expect(modelEncodesEffort('gemini-3.1-pro-high')).toBe(true);
-    expect(modelEncodesEffort('gpt-oss-120b-medium')).toBe(true);
-  });
-
-  it('is false when effort is not in the slug', () => {
-    expect(modelEncodesEffort('claude-sonnet-4-6')).toBe(false);
-    expect(modelEncodesEffort('claude-opus-4-6-thinking')).toBe(false);
-    expect(modelEncodesEffort(undefined)).toBe(false);
-  });
-});
 
 describe('formatPrintTimeout', () => {
   it('emits Go durations', () => {
@@ -69,26 +49,6 @@ describe('buildArgs', () => {
     expect(args[args.indexOf('--print-timeout') + 1]).toBe('15m');
     expect(args.some((a) => a.startsWith('--print='))).toBe(false);
     expect(args.some((a) => a === '--effort' || a.startsWith('--effort='))).toBe(false);
-  });
-
-  it('never sends --effort when the model id encodes it', () => {
-    const args = buildArgs({
-      ...fresh,
-      model: 'gemini-3.7-flash-low',
-      effort: 'high',
-    });
-    expect(args).not.toContain('--effort');
-    expect(args).not.toContain('high');
-  });
-
-  it('sends --effort when the model id does not encode it', () => {
-    const args = buildArgs({
-      ...fresh,
-      model: 'claude-sonnet-4-6',
-      effort: 'high',
-    });
-    expect(args).toContain('--effort');
-    expect(args[args.indexOf('--effort') + 1]).toBe('high');
   });
 
   it('never emits --new-project: --add-dir alone binds the cwd', () => {
@@ -133,7 +93,6 @@ describe('buildArgs', () => {
     const args = buildArgs({
       ...fresh,
       model: 'claude-sonnet-4-6',
-      effort: 'medium',
       sandbox: true,
     });
     const allowed = new Set([
@@ -144,7 +103,6 @@ describe('buildArgs', () => {
       '--print-timeout',
       '--log-file',
       '--model',
-      '--effort',
       '--dangerously-skip-permissions',
       '--sandbox',
       '--conversation',
@@ -167,77 +125,6 @@ describe('parseModelList', () => {
       { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     ]);
-  });
-});
-
-describe('pickDefaultModel', () => {
-  const list = [
-    { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
-    { id: 'gemini-3.1-flash-high', label: 'Gemini 3.1 Flash (High)' },
-    { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
-    { id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' },
-    { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
-    { id: 'gemini-3.7-pro-high', label: 'Gemini 3.7 Pro (High)' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  ];
-
-  it('picks the newest flash at medium when the caller says nothing', () => {
-    expect(pickDefaultModel(list)).toBe('gemini-3.7-flash-medium');
-  });
-
-  it('prefers 3.8 flash over a newer flash while agy lists it', () => {
-    const newer = [
-      ...list,
-      { id: 'gemini-3.8-flash-medium', label: 'a' },
-      { id: 'gemini-3.8-flash-low', label: 'b' },
-      { id: 'gemini-3.9-flash-medium', label: 'c' },
-    ];
-    expect(pickDefaultModel(newer)).toBe('gemini-3.8-flash-medium');
-    expect(pickDefaultModel(newer, null, 'low')).toBe('gemini-3.8-flash-low');
-    const without = newer.filter((m) => !m.id.startsWith('gemini-3.8-flash'));
-    expect(pickDefaultModel(without)).toBe('gemini-3.9-flash-medium');
-  });
-
-  it('honours the requested effort within the newest flash version', () => {
-    expect(pickDefaultModel(list, null, 'low')).toBe('gemini-3.7-flash-low');
-    expect(pickDefaultModel(list, null, 'medium')).toBe('gemini-3.7-flash-medium');
-    expect(pickDefaultModel(list, null, 'high')).toBe('gemini-3.7-flash-high');
-  });
-
-  it('never drops to an older version to satisfy the effort', () => {
-    // 3.1 offers high and 3.7 does not; the newer version still wins.
-    const gapped = [
-      { id: 'gemini-3.1-flash-high', label: 'a' },
-      { id: 'gemini-3.7-flash-low', label: 'b' },
-    ];
-    expect(pickDefaultModel(gapped, null, 'high')).toBe('gemini-3.7-flash-low');
-  });
-
-  it('prefers a newer flash over an older one even at higher effort', () => {
-    const older = [
-      { id: 'gemini-3.1-flash-high', label: 'a' },
-      { id: 'gemini-3.7-flash-low', label: 'b' },
-    ];
-    expect(pickDefaultModel(older)).toBe('gemini-3.7-flash-low');
-  });
-
-  it('falls back to the account default when nothing is flash', () => {
-    const noFlash = [
-      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-      { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
-    ];
-    expect(pickDefaultModel(noFlash, 'Claude Opus 4.6 (Thinking)')).toBe(
-      'claude-opus-4-6-thinking',
-    );
-  });
-
-  it('falls back to the first model when there is no flash and no default', () => {
-    expect(pickDefaultModel([{ id: 'claude-sonnet-4-6', label: 'x' }])).toBe('claude-sonnet-4-6');
-  });
-
-  it('returns null for an empty list rather than inventing an id', () => {
-    expect(pickDefaultModel([])).toBe(null);
-    expect(pickDefaultModel(undefined)).toBe(null);
   });
 });
 
@@ -280,9 +167,7 @@ describe('stubbed spawn (never the real binary)', () => {
     resetBinCache();
     const result = await runHeadless({
       args: ['--output-format', 'stream-json'],
-      timeoutSec: 10,
     });
-    expect(result.killed).toBe(false);
     expect(result.exitCode).toBe(0);
     expect(result.events.some((e) => e.event === 'init')).toBe(true);
     expect(result.events.some((e) => e.event === 'result')).toBe(true);
@@ -310,12 +195,9 @@ describe('model cache', () => {
   it('returns null on a cold cache instead of fetching', () => {
     freshHome();
     expect(cachedModels()).toBeNull();
-    // The whole point: a cold cache costs nothing and yields no --model, which
-    // lets agy fall back to the account default on its own.
-    expect(resolveDefaultModel()).toBeNull();
   });
 
-  it('round-trips a written list and auto-picks the newest flash from it', () => {
+  it('round-trips a written list', () => {
     freshHome();
     writeModelCache(
       [
@@ -323,17 +205,15 @@ describe('model cache', () => {
         { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash' },
         { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash Low' },
       ],
-      'Gemini 3.1 Pro',
+      '1.5.7',
     );
     expect(cachedModels()).toHaveLength(3);
-    expect(resolveDefaultModel()).toBe('gemini-3.7-flash-high');
   });
 
   it('survives a corrupt cache file without throwing', () => {
     const dir = freshHome();
     writeFileSync(join(dir, 'models.json'), '{ not json', 'utf8');
     expect(cachedModels()).toBeNull();
-    expect(resolveDefaultModel()).toBeNull();
   });
 
   it('never expires on its own — a stale timestamp is still served', () => {
@@ -349,47 +229,7 @@ describe('model cache', () => {
       }),
       'utf8',
     );
-    expect(resolveDefaultModel()).toBe('gemini-3.7-flash-high');
-  });
-});
-
-describe('modelFamily and familyLevels', () => {
-  it('strips a trailing effort suffix to get the family', () => {
-    expect(modelFamily('gemini-3.8-flash-high')).toBe('gemini-3.8-flash');
-    expect(modelFamily('claude-opus-4-6-thinking')).toBe('claude-opus-4-6-thinking');
-  });
-
-  const models = [
-    { id: 'gemini-3.8-flash-high', label: 'a' },
-    { id: 'gemini-3.8-flash-medium', label: 'b' },
-    { id: 'gemini-3.8-flash-low', label: 'c' },
-    { id: 'gemini-3.1-pro-high', label: 'd' },
-    { id: 'gemini-3.1-pro-low', label: 'e' },
-    { id: 'gpt-oss-120b-medium', label: 'f' },
-    { id: 'claude-opus-4-6-thinking', label: 'g' },
-    { id: 'claude-sonnet-4-6', label: 'h' },
-  ];
-  const families = familyLevels(models);
-
-  it('a flash-style family collects every level seen', () => {
-    expect([...families.get('gemini-3.8-flash')]).toEqual(
-      expect.arrayContaining(['low', 'medium', 'high']),
-    );
-  });
-
-  it('a family missing a level only has the ones it takes (3.1 Pro has no medium)', () => {
-    expect([...families.get('gemini-3.1-pro')].sort()).toEqual(['high', 'low']);
-  });
-
-  it('a single-level family has just that level', () => {
-    expect([...families.get('gpt-oss-120b')]).toEqual(['medium']);
-  });
-
-  it('a full id with no suffix is its own family, with an empty level set', () => {
-    expect(families.has('claude-opus-4-6-thinking')).toBe(true);
-    expect(families.get('claude-opus-4-6-thinking').size).toBe(0);
-    expect(families.has('claude-sonnet-4-6')).toBe(true);
-    expect(families.get('claude-sonnet-4-6').size).toBe(0);
+    expect(cachedModels()).toHaveLength(1);
   });
 });
 
@@ -418,7 +258,7 @@ describe('modelCacheStale', () => {
 
   it('not stale just after a write', () => {
     freshHome();
-    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null);
     expect(modelCacheStale()).toBe(false);
   });
 
@@ -465,7 +305,7 @@ describe('resolveBin: cached path (T1, "store the resolved path")', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cad-bin-'));
     dirs.push(dir);
     process.env.CAD_HOME = dir;
-    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null, STUB_BIN);
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, STUB_BIN);
     resetBinCache();
     const bin = await resolveBin();
     expect(bin).toBe(STUB_BIN);
@@ -478,7 +318,6 @@ describe('resolveBin: cached path (T1, "store the resolved path")', () => {
     process.env.CAD_HOME = dir;
     writeModelCache(
       [{ id: 'gemini-3.8-flash-high', label: 'a' }],
-      null,
       null,
       join(dir, 'nonexistent-agy.exe'),
     );
@@ -493,40 +332,14 @@ describe('buildArgs: custom agent', () => {
   const fresh = { addDir: ADD_DIR };
 
   it('passes --agent on a fresh dispatch', () => {
-    const args = buildArgs({ ...fresh, agent: 'agy-delegate' });
-    expect(args[args.indexOf('--agent') + 1]).toBe('agy-delegate');
+    const args = buildArgs({ ...fresh, agent: 'bash-delegate' });
+    expect(args[args.indexOf('--agent') + 1]).toBe('bash-delegate');
   });
 
   // A resumed conversation keeps the agent it started with.
   it('drops --agent on resume', () => {
-    const args = buildArgs({ conversationId: 'abc', agent: 'agy-delegate' });
+    const args = buildArgs({ conversationId: 'abc', agent: 'bash-delegate' });
     expect(args).not.toContain('--agent');
-  });
-});
-
-describe('taskMessage', () => {
-  it('puts the environment note, then the task', () => {
-    const msg = taskMessage({ workspace: ADD_DIR, isGit: true, task: 'Do X.' });
-    expect(msg).toBe(
-      'Environment\n- Working directory: C:/Users/Ahmed Ibrahim/Desktop/app\n- Git repository: yes\n\n# Task\n\nDo X.',
-    );
-  });
-
-  it('notes a short git history after "yes"', () => {
-    const msg = taskMessage({ workspace: '/w', isGit: true, history: '1 commit, so no history to search', task: 'Do X.' });
-    expect(msg.split('\n')[2]).toBe('- Git repository: yes (1 commit, so no history to search)');
-  });
-
-  it('leaves the rules pointer out when there is none', () => {
-    const msg = taskMessage({ workspace: '/w', isGit: false, task: 'Do X.' });
-    expect(msg).toBe('Environment\n- Working directory: /w\n- Git repository: no\n\n# Task\n\nDo X.');
-  });
-
-  it('names the scratch directory after the environment note, with forward slashes', () => {
-    const msg = taskMessage({ workspace: '/w', isGit: false, scratch: 'C:\\h\\jobs\\x.scratch', files: 'F', task: 'Do X.' });
-    const parts = msg.split('\n\n# ');
-    expect(parts.map((p) => p.split('\n')[0])).toEqual(['Environment', 'Scratch files', 'Files', 'Task']);
-    expect(parts[1]).toContain('write it to `C:/h/jobs/x.scratch`. The directory already exists');
   });
 });
 

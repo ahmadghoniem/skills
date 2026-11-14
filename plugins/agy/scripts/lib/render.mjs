@@ -34,11 +34,10 @@ function firstLine(message) {
  * @property {number|undefined} durationSeconds
  * @property {string|undefined} conversationId
  * @property {string|undefined} summary
- * @property {boolean} [killed]
  * @property {boolean} [timedOut]
  * @property {string} [timedOutAfter]
+ * @property {string} [finishedReason]
  * @property {number} [compactions]
- * @property {string[]} [deniedActions]
  * @property {string[]} [stderrTail]
  * @property {{tool: string, message: string}[]} [toolErrors]
  */
@@ -57,10 +56,9 @@ export const WARNING_IDS = Object.freeze([
   "stderr",
   "tool-errors",
   "compaction",
-  "denied",
   "agy-error",
-  "watchdog",
   "timeout",
+  "finished-reason",
   "resume",
 ]);
 
@@ -84,17 +82,16 @@ function statusContext(job) {
  */
 
 /**
- * agy 1.2.6+ exits 3 when a turn ends on a model or agent API error, even
+ * agy exits 3 when a turn ends on a model or agent API error, even
  * after streaming part of a response, and prints an `AGY_ERROR: {...}` line.
  */
 const AGY_API_ERROR_EXIT = 3;
 
 /**
  * Whether the run ended before agy finished: the plugin's own record says so
- * (`failed`, `cancelled`, `orphaned`), the watchdog killed it, agy hit its own
- * print timeout, agy's own status says `ERROR`, or agy exited on an API error.
- * One definition shared by the resume offer, the exit code, and the
- * watchdog/timeout lines — they used to diverge.
+ * (`failed`, `cancelled`, `orphaned`), agy hit its own print timeout, agy gave
+ * a `finished_reason`, agy's own status says `ERROR`, or agy exited on an API
+ * error. One definition shared by the resume offer and the exit code.
  *
  * @param {ResultView} job
  * @returns {boolean}
@@ -104,8 +101,8 @@ export function isUnfinished(job) {
     job.status === 'failed' ||
     job.status === 'cancelled' ||
     job.status === 'orphaned' ||
-    Boolean(job.killed) ||
     Boolean(job.timedOut) ||
+    Boolean(job.finishedReason) ||
     String(job.agyStatus ?? '').toUpperCase() === 'ERROR' ||
     job.exitCode === AGY_API_ERROR_EXIT
   );
@@ -182,18 +179,6 @@ export function anomalies(job) {
     });
   }
 
-  // Empty on every run the plugin makes, since it passes
-  // `--dangerously-skip-permissions`. Kept as a guard: if agy ever does skip a
-  // tool action, the caller sees which one instead of a silent gap.
-  const denied = Array.isArray(job.deniedActions) ? job.deniedActions : [];
-  if (denied.length > 0) {
-    out.push({
-      id: 'denied',
-      line: `agy skipped ${denied.length} action${denied.length === 1 ? '' : 's'} it was not allowed to take:`,
-      detail: denied.map((d) => `  ${d}`),
-    });
-  }
-
   if (job.error != null && String(job.error).length > 0) {
     const errText = String(job.error);
     const errLines = errText.split('\n');
@@ -201,7 +186,7 @@ export function anomalies(job) {
     if (/invalid model selection/i.test(errText) && /not recognized/i.test(errText)) {
       // agy's own message names display labels ("Gemini 3.8 Flash (High)"),
       // which cannot be passed back to `--model`; the cache is the source of
-      // truth for ids that can. An `--effort` mismatch is not about the id,
+      // truth for ids that can. An effort mismatch is not about the id,
       // and agy's message already names the levels the model has.
       const models = cachedModels() ?? [];
       detail = ['Valid ids:', ...models.map((m) => `  ${m.id}`)];
@@ -216,13 +201,6 @@ export function anomalies(job) {
     out.push({ id: 'agy-error', line: errLines[0], detail });
   }
 
-  if (job.killed) {
-    out.push({
-      id: 'watchdog',
-      line: 'watchdog killed the run — print-timeout plus 60s grace elapsed',
-    });
-  }
-
   if (job.timedOut) {
     out.push({
       id: 'timeout',
@@ -230,9 +208,19 @@ export function anomalies(job) {
     });
   }
 
+  // agy's own reason for ending the turn early, verbatim. `print_timeout` is
+  // the `timeout` line above; any other value (`interrupted`, `error`, or one a
+  // later agy adds) is shown here.
+  if (job.finishedReason && job.finishedReason !== 'print_timeout') {
+    out.push({
+      id: 'finished-reason',
+      line: `agy ended the turn early: finished_reason ${job.finishedReason}`,
+    });
+  }
+
   // Offer resume whenever the run ended before agy finished and kept a
-  // conversation to continue, whatever stopped it (agy's own timeout, the
-  // watchdog, a dropped connection, a quota error) — not only a watchdog kill.
+  // conversation to continue, whatever stopped it (agy's own timeout, a
+  // dropped connection, a quota error).
   if (isUnfinished(job) && job.conversationId) {
     out.push({
       id: 'resume',

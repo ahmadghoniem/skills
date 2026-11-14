@@ -74,11 +74,6 @@ describe('renderResult', () => {
     expect(out).toContain('echo SHELLOK');
   });
 
-  it('reports a watchdog kill', () => {
-    const out = renderResult({ ...base, killed: true });
-    expect(out).toContain('\u26a0 watchdog killed the run');
-  });
-
   it('reports agy’s own print timeout, with its Go duration token verbatim', () => {
     const out = renderResult({ ...base, timedOut: true, timedOutAfter: '1h0m0s' });
     expect(out).toContain(
@@ -86,14 +81,31 @@ describe('renderResult', () => {
     );
   });
 
-  it('offers a resume on a killed run that captured a conversation id', () => {
-    const killed = renderResult({ ...base, killed: true });
-    expect(killed).toContain(
+  it('reports a timeout from finished_reason alone, without the stderr duration', () => {
+    const out = renderResult({ ...base, timedOut: true, finishedReason: 'print_timeout' });
+    expect(out).toContain('⚠ agy hit its print timeout after its limit; the output is partial');
+    expect(out).not.toContain('finished_reason');
+  });
+
+  it('reports any other finished_reason verbatim, on its own line', () => {
+    const interrupted = renderResult({ ...base, finishedReason: 'interrupted' });
+    expect(interrupted).toContain('⚠ agy ended the turn early: finished_reason interrupted');
+    expect(interrupted).not.toContain('print timeout');
+    expect(interrupted).toContain('/agy:resume');
+
+    const error = anomalies({ ...base, agyStatus: 'ERROR', finishedReason: 'error' }).map((a) => a.id);
+    expect(error).toContain('agy-status');
+    expect(error).toContain('finished-reason');
+  });
+
+  it('offers a resume on a timed-out run that captured a conversation id', () => {
+    const timedOut = renderResult({ ...base, timedOut: true });
+    expect(timedOut).toContain(
       '\u26a0 this run can be resumed where it stopped: /agy:resume add-retry-to-fetchuser-a7f3',
     );
 
     // No id captured means the line would point at nothing.
-    expect(renderResult({ ...base, killed: true, conversationId: undefined })).not.toContain(
+    expect(renderResult({ ...base, timedOut: true, conversationId: undefined })).not.toContain(
       '/agy:resume',
     );
   });
@@ -134,9 +146,12 @@ describe('isUnfinished', () => {
     expect(isUnfinished({ id: 'x', status: 'orphaned' })).toBe(true);
   });
 
-  it('is true when the watchdog killed the run or agy hit its own timeout', () => {
-    expect(isUnfinished({ id: 'x', status: 'done', killed: true })).toBe(true);
+  it('is true when agy hit its own timeout', () => {
     expect(isUnfinished({ id: 'x', status: 'done', timedOut: true })).toBe(true);
+  });
+
+  it('is true when agy gives any finished_reason', () => {
+    expect(isUnfinished({ id: 'x', status: 'done', agyStatus: 'SUCCESS', finishedReason: 'interrupted' })).toBe(true);
   });
 
   it('is true when agy itself reports status ERROR, even with plugin status done', () => {
@@ -329,7 +344,6 @@ describe('invalid model selection', () => {
         { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
       ],
       null,
-      null,
     );
     const out = renderResult({
       id: 'x-9999',
@@ -349,7 +363,7 @@ describe('invalid model selection', () => {
 
   it('is case-insensitive and matches anywhere in the error text', () => {
     freshHome();
-    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
+    writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null);
     const out = renderResult({
       id: 'x-8888',
       agyStatus: 'ERROR',
@@ -363,7 +377,7 @@ describe('invalid model selection', () => {
 
   it('keeps agy’s own text for an --effort mismatch, which already names the levels', () => {
     freshHome();
-    writeModelCache([{ id: 'gemini-3.1-pro-high', label: 'a' }], null, null);
+    writeModelCache([{ id: 'gemini-3.1-pro-high', label: 'a' }], null);
     const out = renderResult({
       id: 'x-6666',
       agyStatus: 'ERROR',
@@ -405,7 +419,7 @@ describe('agy API errors', () => {
   });
 });
 
-describe('compaction and denied lines', () => {
+describe('compaction line', () => {
   const base = {
     id: 'audit-the-router-9x2a',
     agyStatus: 'SUCCESS',
@@ -429,24 +443,13 @@ describe('compaction and denied lines', () => {
     expect(renderResult(base)).toBe('Done.\n');
   });
 
-  it('lists the actions agy was not allowed to take', () => {
-    const out = renderResult({ ...base, deniedActions: ['run_command: rm -rf build'] });
-    expect(out).toContain('⚠ agy skipped 1 action it was not allowed to take:');
-    expect(out).toContain('run_command: rm -rf build');
-  });
-
-  it('stays silent when agy denied nothing, which is every run under --dangerously-skip-permissions', () => {
-    expect(renderResult({ ...base, deniedActions: [] })).toBe('Done.\n');
-  });
-
-  it('prints compaction before denied, and both before the error line', () => {
+  it('prints compaction before the error line', () => {
     const ids = anomalies({
       ...base,
       agyStatus: 'ERROR',
       error: 'nope',
       compactions: 1,
-      deniedActions: ['write_file: /etc/hosts'],
     }).map((a) => a.id);
-    expect(ids).toEqual(['agy-status', 'compaction', 'denied', 'agy-error', 'resume']);
+    expect(ids).toEqual(['agy-status', 'compaction', 'agy-error', 'resume']);
   });
 });

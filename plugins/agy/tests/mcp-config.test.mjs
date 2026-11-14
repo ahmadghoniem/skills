@@ -32,7 +32,7 @@ describe('installBashServer', () => {
     expect(args[0]).not.toContain('\\');
     expect(existsSync(args[0])).toBe(true);
     expect(timeoutSeconds).toBe(1260);
-    expect(tools).toEqual({ bash: { eager: true } });
+    expect(tools).toEqual({ bash: { eager: true }, bash_bg: { eager: true, background: 'always' } });
   });
 
   it('keeps other servers and top-level keys', () => {

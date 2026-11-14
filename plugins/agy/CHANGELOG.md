@@ -1,5 +1,102 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`bash_bg` and the timeout handoff.** `mcp/bash.mjs` now serves `bash_bg`, which runs a
+  command as an agy background task (`background: "always"`); agy sends its output to the
+  model when it exits, and a headless run waits for it before exiting. A `bash` command
+  still running at its timeout is no longer killed: it becomes a job that `bash_bg` with
+  `job` takes over. The agent also gets agy's `manage_task`, to stop a task that does not
+  exit on its own.
+- **`⚠ agy ended the turn early: finished_reason <reason>`** (`finished-reason`). agy
+  puts a `finished_reason` in its result when a turn ends early; any value other
+  than `print_timeout` (`interrupted`, `error`) is shown verbatim, and the run counts as
+  unfinished.
+- **The plugin records the agy version it was reviewed against** as `engines.agy` in
+  package.json. `/agy:setup` fails on an older agy. `/agy:update` prints the changelog
+  since that version and then sets it to the version it installed. A test fails while the
+  installed agy is newer, so an agy updated some other way is caught.
+
+### Changed
+
+- **The bash tool starts Git's `usr/bin/bash.exe` directly**, with the environment Git's
+  `bin/bash.exe` launcher would set (`MSYSTEM`, `EXEPATH`, `PLINK_PROTOCOL`, `HOME`, and
+  `mingw64/bin`, `usr/bin`, `~/bin` at the front of `PATH`). Skipping the launcher cut a
+  call from about 66 ms to 46 ms (60 calls x 3 rounds). The bash environment is
+  identical whether agy inherits Git Bash's environment or a plain Windows one, and a
+  cancel still kills the command's child processes. `AGY_BASH` still overrides the
+  shell, and is passed the unchanged environment.
+- **The print timeout is read from `finished_reason: print_timeout`.** agy's stderr notice
+  still supplies the duration.
+- **One agent, `bash-delegate`.** It replaces `agy-delegate` and takes the useful rules of
+  `agy-chore`: say so when a file cannot be read, search before calling code unused, read
+  the defining line before stating a value, count with a script, and batch labelled
+  searches in one bash call. Installing it removes the old `agy-delegate.md` and
+  `agy-chore.md` from `~/.gemini/config/agents/`.
+- **Packages.** The agent runs project scripts with the package manager whose lockfile is
+  in the repo, and installs packages only when the task asks.
+- **The environment note gives the OS and workspace** (`OS: Windows (shell: Git Bash,
+  through the bash tool)`, `Workspace: <path>`)
+  above the git line. `excludeDefaultComponents` drops agy's `user_information`, and
+  `read_file` takes only absolute paths: Hydrogen passed relative ones in 1 of 6 runs
+  (2026-11-14).
+- **`read_file`, not `view_file`.** agy 1.5.8 resolves `view_file` to `read_file` (listing
+  both fails with a tool-name conflict), so the agent and the bash tool's cut notes name
+  `read_file`.
+- **Rules written for 3.8 Flash are gone:** view files up to 800 lines whole and longer
+  ones 300 lines at a time; never view lines already seen; batch searches with
+  `echo '== <label>'`. Flash ignored the first, and Hydrogen, which followed it, read
+  about 50k tokens of whole files on one task where stock read ranges after `rg`.
+
+### Removed
+
+- **`--effort` and the plugin's model picking.** The default is `gemini-4-hydrogen-medium`;
+  `--model` takes a full id from `agy models`, which carries the effort level, and goes to
+  agy as given. agy checks it and names the valid levels or ids. `--effort` is refused
+  with a pointer to `--model`. The pre-run refresh for an uncached `--model` is gone.
+  `--print-models` prints one id per line.
+- **The watchdog** that killed agy 60 s after its `--print-timeout`, and its `⚠ watchdog`
+  line. It fired 9 times in October, when agy hung after its timeout; agy 1.5.0 and
+  1.5.8 fixed headless runs that never exited. `/agy:cancel` still stops a run.
+- **The `⚠ agy skipped N actions` line** (`denied`). The plugin bypasses permissions, and
+  it never fired in any recorded job.
+- **The `view_file` `toolAction`/`toolSummary` rule** from `bash-delegate`. agy no longer
+  requires them, and on 2026-11-11 it rejected them on image reads.
+- **The working directory and the per-job scratch directory from the environment note.**
+  The note keeps only its git line, which agy gives no agent and which stopped `git log`
+  searches on one-commit clones. agy already gives `bash-delegate` the working directory. In six
+  `bash-delegate` runs without the note (Hydrogen and 3.8 Flash at medium, 2026-11-13),
+  no run left a file in the workspace: the models wrote scripts inline, and 3.8 Flash put
+  its one script file in `/tmp`. The "scratch wander" this guarded against was recorded on
+  3.7 Flash.
+- **`--chore`, `--read` and `agy-chore`.** An investigation is now an ordinary brief. The
+  120-word citation report went with them.
+- **`evals/bench/`**, the ContextBench and recall benchmark harness, and `docs/pickup.md`.
+- **Linux support.** The plugin is Windows only: `resolveBin` no longer tries `which` or
+  `~/.local/bin/agy`, `killTree` no longer has a POSIX path, and `package.json` lists
+  `win32` alone.
+
+### Fixed
+
+- **The bash tool runs in the workspace when agy starts it elsewhere.** A plugin's MCP
+  server starts in the plugin's folder, not the workspace, so commands and patches ran
+  there. Unless `AGY_BASH_CWD` is set, `mcp/bash.mjs` now asks agy for its workspace
+  through MCP `roots/list` and uses the first root, waiting up to 3 s for the answer
+  before it lists or runs the tool.
+- **apply-patch ships with the plugin.** The bash tool ran `tools/apply-patch` from the
+  repo root, which an install copied from GitHub does not include.
+  `mcp/apply-patch.mjs` is now a copy of it; update both when apply-patch changes.
+
+### Changed
+
+- **apply-patch errors say how to fix the patch.** A SEARCH that is not found now names
+  the first differing line and prints the closest span of the file; a SEARCH that matches
+  more than once names, for each hit, the nearest line that tells the hits apart; a
+  missing file prints the cwd and the one existing path it probably meant. Synced from
+  `tools/apply-patch`.
+
 ## 0.4.1
 
 ### Changed

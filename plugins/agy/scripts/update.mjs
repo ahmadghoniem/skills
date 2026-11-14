@@ -4,7 +4,8 @@
 // than the recorded version so the orchestrator can check them against this
 // plugin's workarounds, followed by the open papercuts to review against them.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { refreshModelCache, resolveBin } from './lib/agy.mjs';
 import { formatOpenPapercuts } from './lib/papercuts.mjs';
@@ -26,6 +27,27 @@ const UPSTREAM_CHANGELOG_URL =
 
 /** `agy update` downloads a ~200 MB binary; 2m50s was measured on 1.2.2 -> 1.2.11. */
 const UPDATE_TIMEOUT_MS = 15 * 60_000;
+
+const PACKAGE_JSON = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+
+/**
+ * The agy version this plugin was last reviewed against: `engines.agy` in
+ * package.json. `/agy:setup` refuses an older agy, and `/agy:update` sets it to
+ * the version it installs, after printing the changelog since the last one.
+ *
+ * @returns {string|null}
+ */
+export function reviewedAgyVersion() {
+  const range = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8')).engines?.agy ?? '';
+  return /\d+\.\d+\.\d+/.exec(range)?.[0] ?? null;
+}
+
+/** @param {string} version */
+function setReviewedAgyVersion(version) {
+  const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'));
+  pkg.engines = { ...pkg.engines, agy: `>=${version}` };
+  writeFileSync(PACKAGE_JSON, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+}
 
 /**
  * Parse a dotted version string into numeric components. Non-numeric or
@@ -211,7 +233,7 @@ export async function main(rawArgv) {
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     process.stderr.write(
-      'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe on Windows, ~/.local/bin/agy elsewhere), or set AGY_BIN to its full path.\n',
+      'Install the Antigravity CLI so `agy` is on PATH (or at %LOCALAPPDATA%\\agy\\bin\\agy.exe), or set AGY_BIN to its full path.\n',
     );
     return 1;
   }
@@ -250,7 +272,11 @@ export async function main(rawArgv) {
     return 1;
   }
 
-  if (compareVersions(newVersion, oldVersion) === 0) {
+  // The review covers every release since the last reviewed one, which is older
+  // than `oldVersion` when agy was updated some other way.
+  const reviewed = reviewedAgyVersion();
+  const since = reviewed && compareVersions(reviewed, oldVersion) < 0 ? reviewed : oldVersion;
+  if (compareVersions(newVersion, since) === 0) {
     process.stdout.write(`agy is already up to date at ${oldVersion}.\n${papercutSection()}`);
     return 0;
   }
@@ -258,13 +284,15 @@ export async function main(rawArgv) {
   // Stamps the new version in the model cache, which the update notice and
   // new papercuts read, and picks up any models the release added.
   await refreshModelCache().catch(() => {});
+  const installed = /\d+\.\d+\.\d+/.exec(newVersion)?.[0];
+  if (installed) setReviewedAgyVersion(installed);
 
-  const { entries, source } = await changesSince(bin, oldVersion);
+  const { entries, source } = await changesSince(bin, since);
   if (entries.length === 0) {
     // The update itself worked, so this is not a failure: neither changelog
     // lists the new version yet.
     process.stdout.write(
-      `Updated ${oldVersion} -> ${newVersion}. Neither ${UPSTREAM_CHANGELOG_URL} nor \`agy changelog\` lists an entry newer than ${oldVersion}.\n${papercutSection()}`,
+      `Updated ${since} -> ${newVersion}. Neither ${UPSTREAM_CHANGELOG_URL} nor \`agy changelog\` lists an entry newer than ${since}.\n${papercutSection()}`,
     );
     return 0;
   }
@@ -272,7 +300,9 @@ export async function main(rawArgv) {
   const lines = [
     `### /agy:update\n`,
     `- old version: ${oldVersion}`,
+    ...(since !== oldVersion ? [`- last reviewed version: ${since}`] : []),
     `- new version: ${newVersion}`,
+    `- package.json \`engines.agy\` set to \`>=${installed}\``,
     `- changelog: ${source}`,
     '',
   ];

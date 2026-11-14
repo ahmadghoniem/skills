@@ -75,13 +75,13 @@ export function parseEvents(text) {
  * @property {string|null} status
  * @property {string} response
  * @property {string|null} error
+ * @property {string|undefined} finishedReason
  * @property {number|undefined} durationSeconds
  * @property {unknown} usage
  * @property {number} toolCalls
  * @property {string|undefined} lastTool
  * @property {{tool: string, message: string}[]} toolErrors
  * @property {number} compactions
- * @property {string[]|undefined} deniedActions
  */
 
 /**
@@ -104,10 +104,12 @@ export function summariseEvents(events) {
   let response = '';
   /** @type {string|null} */
   let error = null;
+  // agy says why a turn ended early (`print_timeout`, `interrupted`, `error`)
+  // and omits the field when the turn finished normally.
+  /** @type {string|undefined} */
+  let finishedReason;
   /** @type {number|undefined} */
   let durationSeconds;
-  /** @type {string[]|undefined} */
-  let deniedActions;
   /** @type {unknown} */
   let usage;
   // Total tool steps during the run, successful or failed. agy sends one
@@ -183,11 +185,9 @@ export function summariseEvents(events) {
       if (typeof r.response === 'string') response = r.response;
       if (typeof r.error === 'string') error = r.error;
       else if (r.error != null) error = String(r.error);
+      if (typeof r.finished_reason === 'string' && r.finished_reason) finishedReason = r.finished_reason;
       if (typeof r.duration_seconds === 'number') durationSeconds = r.duration_seconds;
       if (r.usage != null) usage = r.usage;
-      if (Array.isArray(r.denied_actions) && r.denied_actions.length) {
-        deniedActions = r.denied_actions;
-      }
     }
   }
 
@@ -199,12 +199,12 @@ export function summariseEvents(events) {
     status,
     response,
     error,
+    finishedReason,
     durationSeconds,
     usage,
     toolCalls,
     lastTool,
     toolErrors,
     compactions,
-    deniedActions,
   };
 }

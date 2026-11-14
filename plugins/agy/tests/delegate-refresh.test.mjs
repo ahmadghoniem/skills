@@ -111,28 +111,10 @@ describe('delegate.mjs: weekly refresh trigger', () => {
   });
 });
 
-describe('delegate.mjs: cache-miss refresh before dispatch', () => {
-  it('refreshes once before the run when the requested --model is not cached', async () => {
+describe('delegate.mjs: a named --model', () => {
+  it('goes to agy as given, with no refresh before the run', async () => {
     const agy = await import('../scripts/lib/agy.mjs');
     agy.modelCacheStale.mockReturnValue(false);
-    agy.refreshModelCache.mockResolvedValue([]);
-    const { main } = await import('../scripts/delegate.mjs');
-    const fixture = writeFixture(home, 'pinned.ndjson', {
-      status: 'SUCCESS',
-      conversation_id: 'c0ffee00-0000-4000-8000-000000000013',
-      response: 'done',
-    });
-    process.env.AGY_STUB_FIXTURE = fixture;
-
-    await main(['--model', 'some-new-model', 'a task with a fresh model']);
-
-    expect(agy.refreshModelCache).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not refresh when the requested --model is already cached', async () => {
-    const agy = await import('../scripts/lib/agy.mjs');
-    agy.modelCacheStale.mockReturnValue(false);
-    agy.writeModelCache([{ id: 'gemini-3.8-flash-high', label: 'a' }], null, null);
     const { main } = await import('../scripts/delegate.mjs');
     const fixture = writeFixture(home, 'pinned2.ndjson', {
       status: 'SUCCESS',
@@ -141,7 +123,7 @@ describe('delegate.mjs: cache-miss refresh before dispatch', () => {
     });
     process.env.AGY_STUB_FIXTURE = fixture;
 
-    await main(['--model', 'gemini-3.8-flash-high', 'a task with a cached model']);
+    await main(['--model', 'some-new-model', 'a task with a new model']);
 
     expect(agy.refreshModelCache).not.toHaveBeenCalled();
   });

@@ -67,5 +67,6 @@ try {
 for (const line of content.split('\n').filter((l) => l.length > 0)) {
   process.stdout.write(line + '\n');
 }
+if (process.env.AGY_STUB_STDERR) process.stderr.write(process.env.AGY_STUB_STDERR + '\n');
 const code = process.env.AGY_STUB_EXIT ? Number(process.env.AGY_STUB_EXIT) : 0;
 process.exit(Number.isFinite(code) ? code : 0);

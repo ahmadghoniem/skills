@@ -35,11 +35,13 @@ export const pluginVersion = (() => {
  * Which renderer warnings become papercuts.
  *
  * `agy-status` and `exit` fire on runs that worked and `resume` is an offer
- * rather than a problem, so the three of them are left out.
+ * rather than a problem, so the three of them are left out. So is
+ * `finished-reason`: `interrupted` is a cancellation, and the failure behind
+ * `error` is filed as `agy-error`.
  *
  * @type {readonly string[]}
  */
-export const DETECTED_WARNINGS = Object.freeze(['stderr', 'agy-error', 'watchdog', 'timeout', 'tool-errors']);
+export const DETECTED_WARNINGS = Object.freeze(['stderr', 'agy-error', 'timeout', 'tool-errors']);
 
 /**
  * @typedef {Object} Papercut
@@ -132,9 +134,8 @@ function oneLine(s) {
 /**
  * Whether a stderr line repeats what the same run files under another key:
  * agy's print-timeout notice (`timeout`), or its error, printed again as
- * `error: <text>` and as an `AGY_ERROR: {...}` line (`agy-error`). Every
- * `stderr` cut recorded on agy 1.3.2 was such a copy, so each of those runs
- * counted twice.
+ * `error: <text>` and as an `AGY_ERROR: {...}` line (`agy-error`). Filing
+ * those copies again would count each run twice.
  *
  * @param {string} line one stderr line, already through `oneLine`
  * @param {{id: string, line: string}[]} anomalyList

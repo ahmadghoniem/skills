@@ -15,6 +15,7 @@ const prevHome = process.env.CAD_HOME;
 const prevBin = process.env.AGY_BIN;
 const prevFixture = process.env.AGY_STUB_FIXTURE;
 const prevExit = process.env.AGY_STUB_EXIT;
+const prevStderr = process.env.AGY_STUB_STDERR;
 const prevCwd = process.cwd();
 
 let home;
@@ -39,6 +40,8 @@ afterEach(() => {
   else process.env.AGY_STUB_FIXTURE = prevFixture;
   if (prevExit === undefined) delete process.env.AGY_STUB_EXIT;
   else process.env.AGY_STUB_EXIT = prevExit;
+  if (prevStderr === undefined) delete process.env.AGY_STUB_STDERR;
+  else process.env.AGY_STUB_STDERR = prevStderr;
   resetBinCache();
   rmSync(home, { recursive: true, force: true });
   rmSync(repo, { recursive: true, force: true });
@@ -122,6 +125,47 @@ describe('delegate.mjs: exit code', () => {
   });
 });
 
+describe('delegate.mjs: agy’s print timeout', () => {
+  const NOTICE = '[agy] print timeout after 5s with turn in progress; returning partial output';
+
+  async function run(result, stderr) {
+    const { main } = await import('../scripts/delegate.mjs');
+    process.env.AGY_STUB_FIXTURE = writeFixture(home, 'timeout.ndjson', {
+      status: 'SUCCESS',
+      conversation_id: 'c0ffee00-0000-4000-8000-000000000009',
+      response: 'part of it',
+      ...result,
+    });
+    process.env.AGY_STUB_EXIT = '0';
+    if (stderr) process.env.AGY_STUB_STDERR = stderr;
+    else delete process.env.AGY_STUB_STDERR;
+    const code = await main(['a task that runs out of time']);
+    return { code, job: listJobs(repo)[0] };
+  }
+
+  it('takes the timeout from finished_reason and the duration from the stderr notice (agy 1.4.11+)', async () => {
+    const { code, job } = await run({ finished_reason: 'print_timeout' }, NOTICE);
+    expect(job.timedOut).toBe(true);
+    expect(job.timedOutAfter).toBe('5s');
+    expect(job.finishedReason).toBe('print_timeout');
+    expect(code).toBe(1);
+  });
+
+  it('marks a timeout from finished_reason alone when no notice was printed', async () => {
+    const { job } = await run({ finished_reason: 'print_timeout' });
+    expect(job.timedOut).toBe(true);
+    expect(job.timedOutAfter).toBeUndefined();
+  });
+
+  it('still marks a timeout from the stderr notice alone, as older agy sends no finished_reason', async () => {
+    const { code, job } = await run({}, NOTICE);
+    expect(job.timedOut).toBe(true);
+    expect(job.timedOutAfter).toBe('5s');
+    expect(job.finishedReason).toBeUndefined();
+    expect(code).toBe(1);
+  });
+});
+
 describe('delegate.mjs: --prompt-file', () => {
   it('dispatches the content of the file as the prompt', async () => {
     const { main } = await import('../scripts/delegate.mjs');
@@ -164,6 +208,15 @@ describe('delegate.mjs: --prompt-file', () => {
     expect(code).toBe(2);
     expect(listJobs(repo)).toHaveLength(0);
   });
+
+  it('refuses --effort, which a full model id replaces, before starting a job', async () => {
+    const { main } = await import('../scripts/delegate.mjs');
+
+    const code = await main(['--effort', 'high', 'a task']);
+
+    expect(code).toBe(2);
+    expect(listJobs(repo)).toHaveLength(0);
+  });
 });
 
 describe('delegate.mjs: the message agy receives', () => {
@@ -176,7 +229,6 @@ describe('delegate.mjs: the message agy receives', () => {
         { id: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' },
         { id: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
       ],
-      null,
       '1.2.11',
       STUB_BIN,
     );
@@ -203,23 +255,16 @@ describe('delegate.mjs: the message agy receives', () => {
     return [args, stdin];
   }
 
-  it('sends the environment note and the task on stdin, without the rules text', async () => {
+  it('sends the OS, the workspace, the git fact and the brief on stdin, without the rules text', async () => {
     writeFileSync(join(repo, 'AGENTS.md'), 'agents rules', 'utf8');
     writeFileSync(join(repo, 'CLAUDE.md'), 'claude rules', 'utf8');
     const [args, stdin] = await dispatch(['do the thing']);
     expect(args).toContain('--input-format');
     expect(args).toContain('--disable-slash-commands');
-    const { content } = JSON.parse(stdin).message;
-    expect(content).toMatch(
-      /^Environment\n- Working directory: .+\n- Git repository: no\n\n# Scratch files\n\n.+\n\n# Task\n\ndo the thing$/,
+    const ws = repo.split(String.fromCharCode(92)).join('/');
+    expect(JSON.parse(stdin).message.content).toBe(
+      `OS: Windows (shell: Git Bash, through the bash tool)\nWorkspace: ${ws}\nGit repository: false\n\n# Task\n\ndo the thing`,
     );
-  });
-
-  it('names the job scratch directory in the message and removes it when the run leaves it empty', async () => {
-    const [, stdin] = await dispatch(['do the thing']);
-    const dir = /write it to `([^`]+\.scratch)`/.exec(JSON.parse(stdin).message.content)?.[1];
-    expect(dir).toBeTruthy();
-    expect(existsSync(dir)).toBe(false);
   });
 
   it('does not point a task at CLAUDE.md', async () => {
@@ -245,40 +290,17 @@ describe('delegate.mjs: the message agy receives', () => {
   });
 
   it('leaves only the job record behind, with the agent it ran', async () => {
-    await dispatch(['--chore', 'count the casts']);
+    await dispatch(['count the casts']);
     expect(readdirSync(jobsDir(repo)).filter((f) => !f.endsWith('.json'))).toEqual([]);
-    expect(listJobs(repo)[0].agent).toBe('agy-chore');
+    expect(listJobs(repo)[0].agent).toBe('bash-delegate');
   });
 
-  it('runs a chore on agy-chore at low effort', async () => {
-    const [args, stdin] = await dispatch(['--chore', 'count the casts']);
-    expect(args[args.indexOf('--agent') + 1]).toBe('agy-chore');
-    expect(args[args.indexOf('--model') + 1]).toBe('gemini-3.7-flash-low');
-    expect(JSON.parse(stdin).message.content.endsWith('# Task\n\ncount the casts')).toBe(true);
-  });
-
-  it('runs --read as a chore with the numbered files before the task', async () => {
-    writeFileSync(join(repo, 'a.txt'), 'one\ntwo\nthree\n', 'utf8');
-    writeFileSync(join(repo, 'b.txt'), 'four\n', 'utf8');
-    const [args, stdin] = await dispatch(['--read', 'a.txt:2-3,b.txt', 'what is two?']);
-    expect(args[args.indexOf('--agent') + 1]).toBe('agy-chore');
-    expect(args[args.indexOf('--model') + 1]).toBe('gemini-3.7-flash-low');
-    expect(JSON.parse(stdin).message.content).toMatch(
-      /\n\n# Files\n\n<file path="a\.txt" lines="2-3">\n {5}2\ttwo\n {5}3\tthree\n<\/file>\n\n<file path="b\.txt">\n {5}1\tfour\n<\/file>\n\n# Task\n\nwhat is two\?$/,
-    );
-    const [job] = listJobs(repo);
-    expect(job.prompt).toBe('what is two?\n\nFiles: a.txt:2-3, b.txt');
-  });
-});
-
-describe('delegate.mjs: --read usage errors', () => {
-  it('starts no job for a missing file, no paths, or no task', async () => {
-    const { main } = await import('../scripts/delegate.mjs');
-    expect(await main(['--read', 'missing.txt', 'q'])).toBe(2);
-    expect(await main(['--read'])).toBe(2);
-    writeFileSync(join(repo, 'a.txt'), 'x\n', 'utf8');
-    expect(await main(['--read', 'a.txt'])).toBe(2);
-    expect(listJobs(repo)).toEqual([]);
+  it('runs every fresh job on bash-delegate with gemini-4-hydrogen-medium', async () => {
+    const [args, stdin] = await dispatch(['count the casts']);
+    expect(args[args.indexOf('--agent') + 1]).toBe('bash-delegate');
+    expect(args[args.indexOf('--model') + 1]).toBe('gemini-4-hydrogen-medium');
+    expect(args).not.toContain('--effort');
+    expect(JSON.parse(stdin).message.content).toMatch(/# Task\n\ncount the casts$/);
   });
 });
 

@@ -1,6 +1,6 @@
-// Integration tests for setup.mjs's `--print-models`: a family/levels
-// table read from the cache, falling back to a live fetch only when there is
-// no cache yet.
+// Tests for setup.mjs: `--print-models` reads model ids from the cache,
+// falling back to a live fetch only when there is no cache yet; `versionOk`
+// checks the minimum agy version.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,7 +38,7 @@ function captureStdout() {
 }
 
 describe('setup.mjs --print-models', () => {
-  it('reads the cache and prints one family<TAB>levels line per family', async () => {
+  it('reads the cache and prints one id per line', async () => {
     writeModelCache(
       [
         { id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
@@ -49,7 +49,6 @@ describe('setup.mjs --print-models', () => {
         { id: 'gpt-oss-120b-medium', label: 'GPT OSS 120B (Medium)' },
         { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 Thinking' },
       ],
-      null,
       '1.2.2',
     );
 
@@ -60,10 +59,15 @@ describe('setup.mjs --print-models', () => {
     out.restore();
 
     expect(code).toBe(0);
-    expect(text).toContain('gemini-3.8-flash\tlow, medium, high');
-    expect(text).toContain('gemini-3.1-pro\tlow, high');
-    expect(text).toContain('gpt-oss-120b\tmedium');
-    expect(text).toContain('claude-opus-4-6-thinking\tnone');
+    expect(text.split('\n').filter(Boolean)).toEqual([
+      'gemini-3.8-flash-high',
+      'gemini-3.8-flash-medium',
+      'gemini-3.8-flash-low',
+      'gemini-3.1-pro-high',
+      'gemini-3.1-pro-low',
+      'gpt-oss-120b-medium',
+      'claude-opus-4-6-thinking',
+    ]);
   });
 
   it('falls back to a live fetch when there is no cache yet, and seeds it', async () => {
@@ -76,10 +80,20 @@ describe('setup.mjs --print-models', () => {
     out.restore();
 
     expect(code).toBe(0);
-    // The stub's live `models` output includes these families.
-    expect(text).toContain('claude-sonnet-4-6\tnone');
-    expect(text).toContain('gemini-3.7-flash\tlow, medium, high');
+    // The stub's live `models` output includes these ids.
+    expect(text).toContain('claude-sonnet-4-6\n');
+    expect(text).toContain('gemini-3.7-flash-low\n');
     // The live fetch seeds the cache so the next dispatch does not pay it.
     expect(cachedModels()).not.toBeNull();
+  });
+});
+
+describe('setup.mjs versionOk', () => {
+  it('passes the minimum and newer, fails older, and passes text with no version', async () => {
+    const { versionOk } = await import('../scripts/setup.mjs');
+    expect(versionOk('1.5.8', '1.5.8')).toBe(true);
+    expect(versionOk('agy 1.5.10', '1.5.8')).toBe(true);
+    expect(versionOk('1.5.7', '1.5.8')).toBe(false);
+    expect(versionOk('(no output)', '1.5.8')).toBe(true);
   });
 });

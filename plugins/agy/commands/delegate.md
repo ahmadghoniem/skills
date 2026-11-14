@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--chore] [--read <path[:from-to]>,...] [--prompt-file <path>] [--model <id>] [--effort <level>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <id>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -48,33 +48,26 @@ noticed but did not fix, the result of each check, and any answer the task needs
 
 One dispatch per coherent slice. Run at most three agy jobs at once.
 
-## Chores
+## Investigations
 
-Pass `--chore` for an investigation that changes nothing: counting, tracing, comparing,
-running a scratch script over data. The brief states the questions to answer, where to
-look, and the facts you need back; leave out Acceptance criteria, Files to touch and
-Guardrails. When you already know files agy will need, pass them as
-`--read <path[:from-to]>,...` (this implies `--chore`) so they arrive numbered in the
-first message. Check a cited line before you edit it.
+A job that changes nothing (counting, tracing, comparing, running a scratch script over
+data) uses the same command. The brief states the questions to answer, where to look,
+and the facts you need back, and says not to change the workspace; leave out Acceptance
+criteria, Files to touch and Guardrails. Check a line agy cites before you edit it.
 
-Send a chore only when you have other work to do while it runs: a chore takes minutes.
-Good chores are long reads you would otherwise do yourself, such as a log, transcript or
-data file to summarise, or a sweep across the repo (call sites, unused code, duplicated
-logic). Do not send a lookup you can answer with a few searches, a file you are about to
-edit, or a number you will have to verify anyway. Ask follow-ups with `/agy:resume`.
+Send one only when you have other work to do while it runs: it takes minutes. Good ones
+are long reads you would otherwise do yourself, such as a log, transcript or data file to
+summarise, or a sweep across the repo (call sites, unused code, duplicated logic). Do not
+send a lookup you can answer with a few searches, a file you are about to edit, or a
+number you will have to verify anyway. Ask follow-ups with `/agy:resume`.
 
-## Model and effort
+## Model
 
-Omit `--model`. The plugin uses `gemini-3.8-flash` at the `--effort` you pass (`low`
-if you pass none). Pass `--effort medium` or `--effort high` only for work that needs
-more reasoning: they take several times as long. Pass a model only when the user names one. Never invent an
-id; the ids agy accepts are listed below.
-
-Models agy accepts right now (family, then the effort levels it takes):
+Omit `--model`: the plugin uses `gemini-4-hydrogen-medium`. Pass `--model` with a full id
+from the list below when the user names a model, or for work that needs more reasoning
+(`gemini-4-hydrogen-high` or `-xhigh`, which take longer). The id carries the effort level.
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
-
-Pass `--model <family> --effort <level>`, or a full id from that list with no `--effort`. A family with no `--effort` runs at agy's default level for that model, not `low`. agy rejects a level the model does not have, and its error names the ones it has.
 
 ## Run it
 
@@ -82,9 +75,9 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
    a brief longer than one line on the command line.
 2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
 
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cad/briefs/<short-name>.md" [--effort <level>] [--timeout <sec>]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cad/briefs/<short-name>.md" [--model <id>] [--timeout <sec>]
 
-   A one-line task can go inline instead: `-- --effort low "Rename X to Y in src/a.mjs"`.
+   A one-line task can go inline instead: `-- "Rename X to Y in src/a.mjs"`.
 3. Stop. The task notification arrives when agy finishes. Do not read the job log, the
    task output file or `~/.cad/jobs` while it runs, and do not loop on `/agy:result`. If
    the user asks how it is going, run `/agy:result <job>` once.
@@ -93,14 +86,11 @@ Pass `--model <family> --effort <level>`, or a full id from that list with no `-
 | --- | --- |
 | `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
 | `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
-| `--model <id>` | Pin a model from `agy models`. Omit unless the user chose one; `--effort` then picks the id for you. |
-| `--effort <level>` | `low`, `medium`, or `high`. Picks the `gemini-3.8-flash` id at that level. Defaults to `low`. Ignored as a CLI arg when `--model` pins an id that already encodes effort — agy rejects the combination. |
-| `--timeout <sec>` | Sets agy's `--print-timeout` and an outer watchdog 60s later. Omitted by default: the run goes until agy finishes. `/agy:cancel` stops it. |
+| `--model <id>` | A full id from the list above. Defaults to `gemini-4-hydrogen-medium`. |
+| `--timeout <sec>` | Sets agy's `--print-timeout`. Omitted by default: the run goes until agy finishes. `/agy:cancel` stops it. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
 | `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |
-| `--chore` | Run the investigation agent. Defaults to `low`. |
-| `--read <path[:from-to]>,...` | Put these files in the chore's first message. Implies `--chore`. |
 
 ## Reading the output
 

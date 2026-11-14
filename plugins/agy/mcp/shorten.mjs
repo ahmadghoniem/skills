@@ -244,8 +244,8 @@ function cutLines(lines, offset, total, savedPath, budget, read) {
   const cut = lines.slice(head, to);
   const what = read ? '' : describeCut(cut, lines.slice(0, head), Math.round(LIST_CHARS * scale));
   const how = read
-    ? ` This is ${read.file}: read its lines ${read.first + head}-${read.first + to - 1} with view_file, which shows up to 800 lines without cutting.]`
-    : ` Full output: ${savedPath} . Read the missing lines with view_file from line ${offset + from}, or narrow the command.]`;
+    ? ` This is ${read.file}: read its lines ${read.first + head}-${read.first + to - 1} with read_file, which shows up to 800 lines without cutting.]`
+    : ` Full output: ${savedPath} . Read the missing lines with read_file from line ${offset + from}, or narrow the command.]`;
   const note = [
     `[cut to fit agy's limit: lines ${offset + from}-${offset + to} of ${total} are not shown (${cut.join('\n').length} characters).${what ? ` ${what}` : ''}`,
     how,

@@ -20,7 +20,7 @@ describe('shorten', () => {
     expect(out).not.toContain(`line ${from} `);
     expect(out).toContain(`line ${Number(to) + 1} `);
     expect(out).toContain('Full output: C:/tmp/x.out');
-    expect(out).toContain(`view_file from line ${from}`);
+    expect(out).toContain(`read_file from line ${from}`);
   });
 
   it('counts the cut rg matches by file, Windows paths included', () => {
@@ -75,7 +75,7 @@ describe('shorten', () => {
     const lines = Array.from({ length: 400 }, (_, i) => `code ${i + 1} ${'q'.repeat(60)}`);
     const out = shorten(lines.join('\n'), 'p', BUDGET, { read: { file: 'C:/repo/a.ts', first: 101 } });
     const [, from, to] = out.match(/lines (\d+)-(\d+) of 400 are not shown/);
-    expect(out).toContain(`This is C:/repo/a.ts: read its lines ${Number(from) + 100}-${Number(to) + 100} with view_file`);
+    expect(out).toContain(`This is C:/repo/a.ts: read its lines ${Number(from) + 100}-${Number(to) + 100} with read_file`);
     expect(out).not.toContain('Full output');
   });
 
