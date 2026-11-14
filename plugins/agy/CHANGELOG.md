@@ -30,13 +30,13 @@
   shell, and is passed the unchanged environment.
 - **The print timeout is read from `finished_reason: print_timeout`.** agy's stderr notice
   still supplies the duration.
-- **One agent, `bash-delegate`.** It replaces `agy-delegate` and takes the useful rules of
-  `agy-chore`: say so when a file cannot be read, search before calling code unused, read
-  the defining line before stating a value, count with a script, and batch labelled
-  searches in one bash call. Installing it removes the old `agy-delegate.md` and
-  `agy-chore.md` from `~/.gemini/config/agents/`.
-- **Packages.** The agent runs project scripts with the package manager whose lockfile is
-  in the repo, and installs packages only when the task asks.
+- **One agent, `bash-delegate`.** It replaces `agy-delegate` and `agy-chore`. Installing
+  it removes the old `agy-delegate.md` and `agy-chore.md` from
+  `~/.gemini/config/agents/`.
+- **Trimmed rules:** the agent no longer carries the rules on unreadable files, searching
+  before calling code unused, reading the defining line before stating a value, staying
+  inside the workspace, git commands that change the tree, and package managers. The
+  trimmed agent tied stock in the benchmark (2026-11-14).
 - **The environment note gives the OS and workspace** (`OS: Windows (shell: Git Bash,
   through the bash tool)`, `Workspace: <path>`)
   above the git line. `excludeDefaultComponents` drops agy's `user_information`, and
