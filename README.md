@@ -55,6 +55,7 @@ Reachable by name, and the agent fires them when a task fits.
 | Skill | What it does |
 | --- | --- |
 | [tailwind](./skills/tailwind/SKILL.md) | Tailwind v4 house style (semantic tokens, OKLCH, canonical syntax), plus a class-list cleanup pass. ([more](./skills/tailwind/README.md)) |
+| [draft-post](./skills/draft-post/SKILL.md) | Reviews a draft for X against X's open-source ranking code (weights, filters, reply and slop labels, with file and line receipts) and tightens the copy. Checks the algorithm repo for new commits on each run and asks before updating its reference. |
 | [recall](./skills/recall/SKILL.md) | Parses past Claude Code transcripts so the agent stops writing its own parser: `recent`, `grep`, `calls`, `show`, with a receipt on every hit. Stores nothing. |
 
 ## Delegation plugins
