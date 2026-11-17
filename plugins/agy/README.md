@@ -36,7 +36,8 @@ copies into `~/.gemini/config/agents/` whenever the installed copy is missing or
 It also removes `agy-delegate.md` and `agy-chore.md`, the agents earlier versions
 installed there.
 
-Its own tools are `read_file`, `search_web`, `read_url_content` and `manage_task`;
+Its own tools are `read_file`, `search_web`, `read_url_content`, `manage_task`, the
+subagent tools (`invoke_subagent`, `define_subagent`, `manage_subagents`) and `run_workflow`;
 everything else goes through the bash tools below (`inheritMcp`). Files are created and edited with
 `apply-patch`, a bash function that runs `mcp/apply-patch.mjs`, a copy of the repo's
 `tools/apply-patch`.

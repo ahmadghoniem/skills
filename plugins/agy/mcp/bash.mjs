@@ -215,7 +215,7 @@ function runBash(command, timeoutMs, reqId, progressToken, handoff = false) {
       });
       resolve({
         text: `${out}\n[still running after ${timeoutMs} ms, as job ${job}. Call bash_bg with {"job": ${job}} ` +
-          `to be sent the rest of its output when it exits; manage_task kill on that task stops it.]`,
+          `to be sent the rest of its output when it exits. To stop it, pass manage_task the id agy gives that background task; it does not take this job number.]`,
         isError: false,
       });
     }, timeoutMs);
