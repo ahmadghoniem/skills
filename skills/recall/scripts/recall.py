@@ -92,10 +92,34 @@ def cut(text, limit):
     return text
 
 
+class Terms(list):
+    """Compiled patterns for the decoded text, plus `raw`: the same terms as ripgrep patterns for
+    the JSON as stored, where a backslash is doubled, a quote is escaped and a line break is `\\n`."""
+
+
 def term_regex(terms):
-    # escape only regex metacharacters, so the same pattern works in ripgrep and Python
-    return [re.compile(t[3:] if t.startswith("re:") else "".join("\\" + ch if ch in META else ch for ch in t), re.I)
-            for t in terms]
+    regs, raw = Terms(), []
+    for t in terms:
+        if t.startswith("re:"):
+            regs.append(re.compile(t[3:], re.I))
+            raw.append(t[3:])
+            continue
+        py, rg = [], []
+        for part in re.split(r"(\s+)", t):
+            if not part:
+                continue
+            if part.isspace():  # a space in a term matches any whitespace, line breaks included
+                py.append(r"\s+")
+                rg.append(r"(?:\s|\\[nrt])+")
+                continue
+            for ch in part:
+                esc = "\\" + ch if ch in META else ch
+                py.append(esc)
+                rg.append(r"\\\\" if ch == "\\" else r'\\?"' if ch == '"' else esc)
+        regs.append(re.compile("".join(py), re.I))
+        raw.append("".join(rg))
+    regs.raw = raw
+    return regs
 
 
 def snippet(text, regs, width=200):
@@ -301,8 +325,8 @@ def candidates(regs, files):
                 "--hidden", "-g", "*.jsonl"]
         if not any(os.sep + "subagents" + os.sep in f for f in files):
             args += ["-g", "!subagents"]
-        for r in regs:
-            args += ["-e", r.pattern]
+        for r in regs.raw:
+            args += ["-e", r]
         # scan only what's wanted: the files themselves when few, else their project folders
         if len(files) <= 120:
             paths = files
@@ -317,9 +341,10 @@ def candidates(regs, files):
             if f:
                 found.setdefault(f, set()).add(int(rest.split(":", 1)[0]))
         return found
+    raw = [re.compile(r, re.I) for r in regs.raw]
     for f in files:
         with open(f, encoding="utf-8", errors="replace") as fh:
-            lines = {ln for ln, line in enumerate(fh, 1) if any(r.search(line) for r in regs)}
+            lines = {ln for ln, line in enumerate(fh, 1) if any(r.search(line) for r in raw)}
         if lines:
             found[f] = lines
     return found
