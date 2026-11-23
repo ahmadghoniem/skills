@@ -45,6 +45,19 @@ if (args[0] === 'models' || args.includes('models')) {
   process.exit(0);
 }
 
+// `plugin install <dir>`: copy the plugin into ~/.gemini/config/plugins/<name>, as agy does.
+if (args[0] === 'plugin' && args[1] === 'install') {
+  const { cpSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { homedir } = await import('node:os');
+  const { name } = JSON.parse(readFileSync(join(args[2], 'plugin.json'), 'utf8'));
+  const dest = join(homedir(), '.gemini', 'config', 'plugins', name);
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(args[2], dest, { recursive: true });
+  process.stdout.write(`  [ok]    ${name}\n`);
+  process.exit(0);
+}
+
 if (args.includes('--version')) {
   process.stdout.write('1.1.19\n');
   process.exit(0);

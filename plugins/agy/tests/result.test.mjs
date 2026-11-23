@@ -66,7 +66,7 @@ describe('result.mjs: a running job', () => {
         { source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE' },
         turn('view_file'),
         ok,
-        turn('mcp_agy_bash'),
+        turn('mcp_agy_shell_bash'),
         { source: 'MODEL', type: 'GENERIC', status: 'INVALID', error: 'invalid arguments' },
         turn('write_file'),
       ]),

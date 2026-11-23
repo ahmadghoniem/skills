@@ -23,6 +23,25 @@ describe('shorten', () => {
     expect(out).toContain(`read_file from line ${from}`);
   });
 
+  it('measures in UTF-8 bytes, as agy does, so CJK output under 9,000 characters is cut', () => {
+    const han = String.fromCharCode(0x6f22);
+    const lines = Array.from({ length: 150 }, (_, i) => `L${i + 1} ${han.repeat(40)}`);
+    const text = lines.join('\n');
+    expect(text.length).toBeLessThan(BUDGET);
+    const out = shorten(text, 'p');
+    expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(BUDGET);
+    expect(out.startsWith('L1 ')).toBe(true);
+    expect(out.endsWith(lines[149])).toBe(true);
+    expect(out).toMatch(/lines \d+-\d+ of 150 are not shown/);
+  });
+
+  it('cuts one long multi-byte line at a character boundary', () => {
+    const out = shorten(String.fromCharCode(0x6f22).repeat(5_000), 'p');
+    expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(BUDGET);
+    expect(out).not.toContain(String.fromCharCode(0xfffd));
+    expect(out).toContain('[cut: this output is 15000 bytes on 1 line.');
+  });
+
   it('counts the cut rg matches by file, Windows paths included', () => {
     const files = ['C:/repo/src/a.ts', 'C:/repo/src/b.ts', 'C:/repo/src/c.ts', 'C:/repo/src/d.ts'];
     const out = shorten(rgLines(files, 60).join('\n'), 'p');
@@ -68,7 +87,7 @@ describe('shorten', () => {
   it('cuts a single huge line to its start', () => {
     const out = shorten('z'.repeat(50_000), 'p');
     expect(out.length).toBeLessThanOrEqual(BUDGET);
-    expect(out).toContain('this output is 50000 characters on 1 line');
+    expect(out).toContain('this output is 50000 bytes on 1 line');
   });
 
   it('points a cut file print at the file itself', () => {

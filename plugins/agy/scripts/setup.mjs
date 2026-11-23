@@ -2,9 +2,9 @@
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import {
   cachedModels,
-  installBashServer,
+  installPlugin,
   listModels,
-  mcpConfigPath,
+  PLUGIN_NAME,
   refreshModelCache,
   resolveBin,
   writeModelCache,
@@ -94,10 +94,10 @@ async function baseCheck() {
   lines.push(`- ✓ model cache refreshed (${models.length} models)`);
 
   try {
-    const state = installBashServer();
-    lines.push(`- ✓ bash tool ${state} in \`${mcpConfigPath().replace(/\\/g, '/')}\``);
+    const state = await installPlugin(bin);
+    lines.push(`- ✓ agy plugin \`${PLUGIN_NAME}\` ${state}: the bash-delegate agent and its bash tool`);
   } catch (err) {
-    lines.push(`- ✗ bash tool: ${err instanceof Error ? err.message : String(err)}`);
+    lines.push(`- ✗ agy plugin: ${err instanceof Error ? err.message : String(err)}`);
     process.stdout.write(lines.join('\n') + '\n');
     return 1;
   }

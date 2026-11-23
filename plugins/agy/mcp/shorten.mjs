@@ -1,10 +1,35 @@
-// Fit a tool result under agy's limit. agy keeps about the first and last
-// 5,000 characters of any MCP result and drops the middle, with only a link to
-// the full text that the model does not follow. Cutting here first lets the
-// note say which lines went missing, what they held, and how to read them.
+// Fit a tool result under agy's limit. agy cuts an MCP result over about
+// 10,240 bytes to its first and last ~4,940 bytes, with only a link to the full
+// text that the model does not follow. Cutting here first lets the note say
+// which lines went missing, what they held, and how to read them.
+//
+// Sizes are UTF-8 bytes, as agy counts them: CJK text is 3 bytes a character,
+// so 8,400 characters of it are 24 KB (probe, 2026-11-21).
 
-/** Characters a result may use, leaving room under agy's ~10,000. */
+/** UTF-8 bytes a result may use, leaving room under agy's ~10,240. */
 export const BUDGET = 9_000;
+
+/** @param {string} s */
+const size = (s) => Buffer.byteLength(s, 'utf8');
+
+/**
+ * The longest start of `s` that is at most `bytes` UTF-8 bytes, never
+ * splitting a character.
+ *
+ * @param {string} s
+ * @param {number} bytes
+ */
+function headBytes(s, bytes) {
+  let used = 0;
+  let end = 0;
+  for (const ch of s) {
+    const n = size(ch);
+    if (used + n > bytes) break;
+    used += n;
+    end += ch.length;
+  }
+  return s.slice(0, end);
+}
 const HEAD = 5_500;
 const TAIL = 2_500;
 const LIST_CHARS = 700;
@@ -13,20 +38,20 @@ const NOTE_ROOM = 900;
 const MIN_SECTION = 600;
 
 /**
- * Keep whole lines from the start (or end) of `lines` up to `chars` characters.
+ * Keep whole lines from the start (or end) of `lines` up to `bytes` bytes.
  *
  * @param {string[]} lines
- * @param {number} chars
+ * @param {number} bytes
  * @param {boolean} fromEnd
  * @returns {number} how many lines fit
  */
-function fit(lines, chars, fromEnd) {
+function fit(lines, bytes, fromEnd) {
   let used = 0;
   let n = 0;
   for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[fromEnd ? lines.length - 1 - i : i];
-    if (used + line.length + 1 > chars) break;
-    used += line.length + 1;
+    const line = size(lines[fromEnd ? lines.length - 1 - i : i]);
+    if (used + line + 1 > bytes) break;
+    used += line + 1;
     n += 1;
   }
   return n;
@@ -45,9 +70,9 @@ function countList(counts, chars) {
   let used = 0;
   for (const [name, n] of sorted) {
     const part = `${name} (${n})`;
-    if (used + part.length > chars) break;
+    if (used + size(part) > chars) break;
     parts.push(part);
-    used += part.length + 2;
+    used += size(part) + 2;
   }
   const rest = sorted.length - parts.length;
   return parts.join(', ') + (rest ? `, and ${rest} more` : '');
@@ -192,7 +217,7 @@ function shares(sizes, budget) {
 }
 
 /**
- * Shorten `text` to about `budget` characters, keeping whole lines from both
+ * Shorten `text` to about `budget` UTF-8 bytes, keeping whole lines from both
  * ends and putting a note where the middle was. Output split by `== label`
  * lines is shortened section by section, so one long section does not push
  * the others out.
@@ -205,13 +230,13 @@ function shares(sizes, budget) {
  * @returns {string}
  */
 export function shorten(text, savedPath, budget = BUDGET, opts = {}) {
-  if (text.length <= budget) return text;
+  if (size(text) <= budget) return text;
   const lines = text.split('\n');
   const starts = sectionStarts(lines);
   if (!starts.length) return cutLines(lines, 0, lines.length, savedPath, budget, opts.read);
 
   const sections = starts.map((s, i) => lines.slice(s, starts[i + 1] ?? lines.length));
-  const sizes = sections.map((s) => s.join('\n').length + 1);
+  const sizes = sections.map((s) => size(s.join('\n')) + 1);
   const share = shares(sizes, budget);
   return sections
     .map((s, i) => {
@@ -237,7 +262,7 @@ function cutLines(lines, offset, total, savedPath, budget, read) {
   const tail = fit(lines.slice(head), TAIL * (budget / BUDGET), true);
   // A single line longer than the budget: keep its start.
   if (head === 0 && tail === 0) {
-    return `${text.slice(0, Math.floor(budget * 0.8))}\n[cut: this output is ${text.length} characters on ${plural(lines.length, 'line')}. Full output: ${read ? read.file : savedPath}]`;
+    return `${headBytes(text, Math.floor(budget * 0.8))}\n[cut: this output is ${Buffer.byteLength(text, 'utf8')} bytes on ${plural(lines.length, 'line')}. Full output: ${read ? read.file : savedPath}]`;
   }
   const from = head + 1;
   const to = lines.length - tail;
@@ -247,7 +272,7 @@ function cutLines(lines, offset, total, savedPath, budget, read) {
     ? ` This is ${read.file}: read its lines ${read.first + head}-${read.first + to - 1} with read_file, which shows up to 800 lines without cutting.]`
     : ` Full output: ${savedPath} . Read the missing lines with read_file from line ${offset + from}, or narrow the command.]`;
   const note = [
-    `[cut to fit agy's limit: lines ${offset + from}-${offset + to} of ${total} are not shown (${cut.join('\n').length} characters).${what ? ` ${what}` : ''}`,
+    `[cut to fit agy's limit: lines ${offset + from}-${offset + to} of ${total} are not shown (${Buffer.byteLength(cut.join('\n'), 'utf8')} bytes).${what ? ` ${what}` : ''}`,
     how,
   ].join('\n');
   return [...lines.slice(0, head), note, ...lines.slice(to)].join('\n');

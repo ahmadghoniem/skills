@@ -274,3 +274,14 @@ describe('the review /agy:update prints', () => {
     expect(await quiet(() => main(['--resolve', id]))).toBe(2);
   });
 });
+
+describe('oneLine', () => {
+  it('keeps the start and the end of a long message, where the cause is', async () => {
+    const { oneLine } = await import('../scripts/lib/papercuts.mjs');
+    const out = oneLine(`Loaded 1299 items. ${'[25/1294] ok '.repeat(200)} [timed out after 1200000 ms; process killed]`);
+    expect(out.length).toBe(500);
+    expect(out.startsWith('Loaded 1299 items.')).toBe(true);
+    expect(out.endsWith('[timed out after 1200000 ms; process killed]')).toBe(true);
+    expect(oneLine('a\n  b')).toBe('a b');
+  });
+});

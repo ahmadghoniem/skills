@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_STDIN_CHARS, resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
+import { MAX_STDIN_BYTES, resetBinCache, writeModelCache } from '../scripts/lib/agy.mjs';
 import { jobsDir } from '../scripts/lib/paths.mjs';
 import { listJobs } from '../scripts/lib/jobs.mjs';
 import { STUB_BIN } from './helpers.mjs';
@@ -283,7 +283,9 @@ describe('delegate.mjs: the message agy receives', () => {
 
   it('refuses a message too long for stdin without starting agy', async () => {
     const { main } = await import('../scripts/delegate.mjs');
-    await expect(main(['x'.repeat(MAX_STDIN_CHARS + 1)])).rejects.toThrow(/over the 150000 agy reads from stdin/);
+    await expect(main(['x'.repeat(MAX_STDIN_BYTES + 1)])).rejects.toThrow(/over the 150000 agy reads from stdin/);
+    // 3-byte characters: 60,000 of them are 180,000 bytes, refused though under 150,000 characters.
+    await expect(main([String.fromCharCode(0x4e2d).repeat(60_000)])).rejects.toThrow(/bytes, over the 150000/);
     const [job] = listJobs(repo);
     expect(job.status).toBe('failed');
     expect(job.conversationId).toBeUndefined();

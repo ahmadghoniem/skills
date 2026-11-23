@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
 import {
-  MAX_STDIN_CHARS,
+  MAX_STDIN_BYTES,
   buildArgs,
   cachedToolVersion,
-  installAgent,
   bashServerEntry,
-  installBashServer,
+  installPlugin,
   modelCacheStale,
   refreshModelCache,
+  resolveBin,
   runHeadless,
   stdinLine,
   taskMessage,
@@ -108,20 +108,20 @@ async function runAndRecord(flags, prompt, jobId, root) {
   const message = isResume(flags)
     ? prompt
     : taskMessage({ workspace: root, isGit, history: isGit ? await shortHistory(root) : undefined, task: prompt });
-  if (message.length > MAX_STDIN_CHARS) {
+  const messageBytes = Buffer.byteLength(message, 'utf8');
+  if (messageBytes > MAX_STDIN_BYTES) {
     throw new Error(
-      `message is ${message.length} chars, over the ${MAX_STDIN_CHARS} agy reads from stdin, so agy was not started: shorten the brief or split the task`,
+      `message is ${messageBytes} bytes, over the ${MAX_STDIN_BYTES} agy reads from stdin, so agy was not started: shorten the brief or split the task`,
     );
   }
 
   // A resumed conversation keeps the agent it started with.
   const agent = isResume(flags) ? undefined : AGENT;
-  if (agent) installAgent(agent);
-  // agy reads its MCP servers from the global config on every start, resume
-  // included, so the bash tool needs no per-run flag. The agent relies on it
-  // for every search and edit, so a run without it stops here.
+  // The agent and its bash tool come from agy's plugin, which agy loads on every start,
+  // resume included. The agent relies on the tool for every search and edit, so a run
+  // without the plugin stops here.
   try {
-    installBashServer();
+    await installPlugin(await resolveBin());
   } catch (err) {
     throw new Error(`bash tool not installed, so agy was not started: ${err instanceof Error ? err.message : String(err)}`);
   }

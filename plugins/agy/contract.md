@@ -27,7 +27,7 @@ lines say why.
 
 | id | Line | What it means |
 | :--- | :--- | :--- |
-| `agy-status` | `⚠ agy status: <status> (write-up present)` | agy's own verdict, verbatim. Not a pass/fail: agy can report `ERROR` on runs that worked and `SUCCESS` on runs that did not. The parenthetical says only whether agy returned a write-up. Check `git diff` yourself for what changed. |
+| `agy-status` | `⚠ agy status: <status> (write-up present)` | agy's own verdict, verbatim. Not a pass/fail: `SUCCESS` can come back on a run that missed the task, and work done before an `ERROR` stays in the tree. The parenthetical says only whether agy returned a write-up. Check `git diff` yourself for what changed. |
 | `exit` | `⚠ exit N` | The process exit code. Independent of the line above; a good report with a stray non-zero exit is still a good report. `3` means the turn ended on a model or agent API error; agy then prints an `AGY_ERROR: {...}` line on stderr. |
 | `stderr` | `⚠ agy wrote to stderr:` | What agy wrote to stderr (last 20 lines), on any run. agy is silent on stderr when nothing went wrong, so this carries startup failures (not signed in, rejected flag, spawn failure), its own timeout notice, background-task notes, network errors and the `AGY_ERROR` line. Read it before the `agy-error` line. |
 | `tool-errors` | `⚠ N tool calls failed during the run — reported, not judged:` | Tools that failed while the run continued. Shows whether verification steps failed during a run reported as `SUCCESS`. Deduped and capped at three. |

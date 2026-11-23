@@ -121,14 +121,17 @@ export function readPapercuts() {
 }
 
 /**
- * A message on one line. Whole, not just its first line: agy often puts the
- * cause on the second ("invalid arguments:\n- missing properties ...").
+ * A message on one line, at most 500 characters. Whole, not just its first line: agy
+ * often puts the cause on the second ("invalid arguments:\n- missing properties ...").
+ * A longer one keeps its start and its end, where a command's output says why it
+ * failed ("[timed out after 1200000 ms; process killed]").
  *
  * @param {unknown} s
  * @returns {string}
  */
-function oneLine(s) {
-  return String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
+export function oneLine(s) {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  return t.length <= 500 ? t : `${t.slice(0, 160)} … ${t.slice(-337)}`;
 }
 
 /**

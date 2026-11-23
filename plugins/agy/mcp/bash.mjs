@@ -7,12 +7,14 @@
 // agent its result when it ends. A `bash` command still running at its timeout
 // is left running as a job, and `bash_bg` with that job returns the rest.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { resolvePaths } from './apply-patch.mjs';
+import { summarizePatch } from './patch-summary.mjs';
 import { BUDGET, readTarget, shorten } from './shorten.mjs';
 
 // Git for Windows' bin/bash.exe is a launcher that sets up the environment below and
@@ -52,7 +54,7 @@ function gitBashEnv(base) {
 }
 // apply-patch.mjs beside this file, a copy of the repo's tools/apply-patch, reached in
 // scripts as the `apply-patch` function.
-const APPLY_PATCH = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), 'apply-patch.mjs').replace(/\\/g, '/');
+const APPLY_PATCH = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), 'apply-patch-partial.mjs').replace(/\\/g, '/');
 // Git Bash's own kill.exe, which can signal an MSYS process group.
 const MSYS_KILL = join(dirname(BASH).replace(/[\\/]usr[\\/]bin$|[\\/]bin$/i, ''), 'usr', 'bin', 'kill.exe');
 // The workspace. agy starts a plugin's MCP server in the plugin's own folder, so
@@ -66,7 +68,6 @@ const ROOTS_WAIT_MS = 3000;
 const OUT_DIR = join(tmpdir(), 'agy-bash');
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 1_200_000;
-const MAX_DIFF_LINES = 400;
 // Full outputs of shortened results, kept for a week so the model can still read
 // them in a resumed conversation. Evals set AGY_BASH_KEEP_DIR to keep them for
 // good, beside their job records.
@@ -245,40 +246,35 @@ function runBash(command, timeoutMs, reqId, progressToken, handoff = false) {
  * @param {string} command
  * @returns {Map<string, string> | null}
  */
+/** A patch path as apply-patch resolves it in Git Bash (/tmp, /c/..., ~/ included). */
+const where = (p) => resolvePaths([p], CWD, BASH_PROC_ENV).get(p);
+
 function snapshotPatchTargets(command) {
   if (!command.includes('apply-patch')) return null;
   let text = command;
   const file = command.match(/--file\s+("[^"]+"|'[^']+'|\S+)/)?.[1].replace(/^["']|["']$/g, '');
-  if (file) try { text += '\n' + readFileSync(resolve(CWD, file.replace(/^~(?=\/)/, homedir())), 'utf8'); } catch { /* not readable yet */ }
+  if (file) try { text += '\n' + readFileSync(where(file), 'utf8'); } catch { /* not readable yet */ }
   const snap = new Map();
   for (const m of text.matchAll(/^\*\*\* Update: (.+?)\s*$/gm)) {
-    const abs = resolve(CWD, m[1].replace(/\\/g, '/'));
+    const abs = where(m[1].replace(/\\/g, '/'));
     if (!snap.has(abs)) try { snap.set(abs, readFileSync(abs, 'utf8')); } catch { /* apply-patch reports it */ }
   }
   return snap.size ? snap : null;
 }
 
 /**
- * The diff of what the call changed in each snapshotted file, so the model sees its edits
- * in context without spending a turn on `git diff`. Only this call's changes appear, not
- * the user's uncommitted work in the same file.
+ * Each patched file's text before and after the call, by the path as the patch wrote it,
+ * for `summarizePatch`'s `+A/-B` counts. No git: the before text is the snapshot.
  * @param {Map<string, string>} snap
- * @param {string} id
+ * @returns {(path: string) => { before?: string, after?: string }}
  */
-function patchDiff(snap, id) {
-  const before = join(OUT_DIR, `${id}.before`);
-  const parts = [];
-  for (const [abs, old] of snap) {
-    writeFileSync(before, old, 'utf8');
-    const r = spawnSync('git', ['diff', '--no-index', '--no-color', '--no-ext-diff', '-U3', '--', before, abs], { encoding: 'utf8', windowsHide: true });
-    const hunks = (r.stdout ?? '').replace(/\r(?=\n)/g, '').split('\n');
-    const at = hunks.findIndex((l) => l.startsWith('@@'));
-    if (at >= 0) parts.push(`--- ${relative(CWD, abs).replace(/\\/g, '/') || abs}`, ...hunks.slice(at).filter((l, k, a) => l || k < a.length - 1));
-  }
-  try { unlinkSync(before); } catch { /* none written */ }
-  if (!parts.length) return '';
-  const cut = parts.length > MAX_DIFF_LINES ? `\n[diff cut at ${MAX_DIFF_LINES} of ${parts.length} lines]` : '';
-  return `\nDiff of the updated files (this call's changes only):\n${parts.slice(0, MAX_DIFF_LINES).join('\n')}${cut}\n`;
+function patchContents(snap) {
+  return (path) => {
+    const abs = where(path.replace(/\\/g, '/'));
+    let after;
+    try { after = readFileSync(abs, 'utf8'); } catch { /* deleted or unreadable */ }
+    return { before: snap.get(abs), after };
+  };
 }
 
 /**
@@ -309,7 +305,7 @@ function rgConfig() {
  * @param {string} command
  */
 function fitResult(text, command) {
-  if (text.length <= BUDGET) return text;
+  if (Buffer.byteLength(text, 'utf8') <= BUDGET) return text;
   const target = readTarget(command);
   if (target) {
     const file = resolve(CWD, target.file).split(sep).join('/');
@@ -406,7 +402,7 @@ async function handle(msg) {
       const t = Number(params.arguments?.timeout_ms) || (bg ? MAX_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
       const snap = snapshotPatchTargets(command);
       let { text, isError } = await runBash(command, Math.min(Math.max(t, 1000), MAX_TIMEOUT_MS), id, params?._meta?.progressToken, !bg);
-      if (snap && !isError && /^ok: \d+ file/m.test(text)) text += patchDiff(snap, `${process.pid}-${++seq}`);
+      if (snap && !isError) text = summarizePatch(text, patchContents(snap));
       return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: fitResult(text, command) || '(no output)' }], isError } });
     }
     default:

@@ -4,6 +4,12 @@
 
 ### Added
 
+- **A native agy plugin.** The `bash-delegate` agent and its bash tool now reach agy as one
+  plugin, `agy`, installed with `agy plugin install` when the installed copy is missing or
+  differs, instead of a copied agent file and an entry patched into the global
+  `mcp_config.json`. The bash server still points at this checkout, so edits to it are
+  live. The tools are now `mcp_agy_shell_bash` and `mcp_agy_shell_bash_bg`. The old global
+  agent copy and `agy` server are removed once the plugin is in.
 - **`bash_bg` and the timeout handoff.** `mcp/bash.mjs` now serves `bash_bg`, which runs a
   command as an agy background task (`background: "always"`); agy sends its output to the
   model when it exits, and a headless run waits for it before exiting. A `bash` command
@@ -21,6 +27,45 @@
 
 ### Changed
 
+- **apply-patch reports every failed block at once**, numbered, instead of stopping at
+  the first; it still writes nothing. Over Gemini 4's patches the per-block failure rate
+  was flat (about 1.9%) and big patches failed mostly by finding their bad blocks one
+  retry at a time: 15 streaks of repeated failures cost 26 extra failed turns. It also
+  accepts three marker slips (a second `=======` just before `>>>>>>> REPLACE`, a bare
+  `>>>>>>>`, a stray `<<<<<<< SEARCH` before a header) and refuses a Create or Append
+  whose text holds a leftover `>>>>>>> REPLACE`, which had silently gone into 3 files.
+  Same file as Claude Code's (`tools/apply-patch`), where the same changes prevent 6 to 7
+  failures in 3,358 calls and the git-conflict case stays refused.
+- **agy's apply-patch is best-effort.** The bash tool's `apply-patch` now runs
+  `mcp/apply-patch-partial.mjs`: the blocks that match are written, the error lists the
+  ones that failed, and it exits 1, so a check chained with `&&` does not run. A kept
+  `--file` patch is rewritten to hold only the failed blocks. A retry then resends only
+  those, not the whole patch: about 178k output tokens of good blocks were resent across
+  the 77 jobs' failed patches. Claude Code keeps the all-or-nothing `tools/apply-patch`,
+  which cannot reach this file: there best-effort would break re-running a kept `--file`
+  patch (17 of 20 big retries) and checks chained with `;`.
+- **`mcp/apply-patch.mjs` is a symlink to `tools/apply-patch/apply-patch.mjs`**, not a
+  copy, so the two cannot drift (`core.symlinks=true` in this repo; a test fails if a
+  checkout turns the link into a text file). The shared file now reads a git conflict in
+  a block as text, resolves `/tmp/...` and `/c/...` paths through Git Bash's `cygpath`,
+  and retries a write a Windows watcher blocks. The bash tool resolves patch paths the
+  same way for its `+A/-B` counts.
+- **The agent is told how to chain a check after a patch**:
+  `apply-patch <<'PATCH' && <check>` on the first line, so the check runs only when the
+  patch applied. It chained 16 times on its own in 354 patches, always with a newline
+  after `PATCH`, which runs the check even when the patch failed.
+- **A patch reports one line per file instead of a diff.** After apply-patch prints ok,
+  the bash tool folds its per-block lines into one line per updated file, with the lines
+  each block landed on and the lines added and removed
+  (`updated  src/a.ts: 2 blocks (lines 7, 32), +6/-0 lines`), the way agy's own
+  `edit_file` reports. The counts come from the file read just before and just after the
+  call (`mcp/patch-summary.mjs`), so no `git diff` runs. The full diff was added on
+  2026-09-30 for Gemini 3.7 Flash, which spent a turn on `git diff` after 17 of 22
+  patching runs. Gemini 4 re-read an edited file mid-work 0 times in 62 `edit_file`
+  edits that came with only a one-line summary. The diff averaged about 4,960 bytes a
+  patch, about 1.15% of all context tokens over 77 jobs, and was itself cut in 43% of
+  patch calls. The per-file line is built by the bash tool, so Claude Code's apply-patch
+  output keeps its per-block lines.
 - **The bash tool starts Git's `usr/bin/bash.exe` directly**, with the environment Git's
   `bin/bash.exe` launcher would set (`MSYSTEM`, `EXEPATH`, `PLINK_PROTOCOL`, `HOME`, and
   `mingw64/bin`, `usr/bin`, `~/bin` at the front of `PATH`). Skipping the launcher cut a
@@ -46,12 +91,27 @@
   both fails with a tool-name conflict), so the agent and the bash tool's cut notes name
   `read_file`.
 - **Rules written for 3.8 Flash are gone:** view files up to 800 lines whole and longer
-  ones 300 lines at a time; never view lines already seen; batch searches with
-  `echo '== <label>'`. Flash ignored the first, and Hydrogen, which followed it, read
-  about 50k tokens of whole files on one task where stock read ranges after `rg`.
+  ones 300 lines at a time; never view lines already seen. Flash ignored the first, and
+  Hydrogen, which followed it, read about 50k tokens of whole files on one task where
+  stock read ranges after `rg`.
+- **The agent batches independent searches again** with `echo '== <label>'`, one bash
+  call for several lookups. Dropped with the Flash rules, it was retested on Hydrogen in a
+  paired benchmark (7 tasks rebuilt from real jobs, 11 pairs over 2 rounds, 2026-11-21):
+  25% fewer turns, 30% fewer cached tokens and 32% fewer safety checks, lower in all 11
+  pairs, and 23% less job time, lower in 10 of 11. Passes were 4 against 4: one task
+  passed only without the rule and one only with it.
+- **The bash tool measures its 9,000 budget in UTF-8 bytes**, as agy does. CJK output
+  under 9,000 characters (24 KB) used to pass whole and then lose its middle to agy's own
+  cut, with agy's note instead of ours. ASCII output is unchanged.
+- **The README describes agy's safety check**: about 1.3 s
+  on every bash call, which no MCP tool can skip, and agy's cut at about 10 KB in bytes.
 
 ### Removed
 
+- **The whole `docs/` directory** (`parallel-calls.md` was its only page). Standalone docs
+  drift; stale claims in them mislead the coding agent more than the absence would. The
+  README carries what belongs in the repo, and the session transcripts keep the
+  measurements.
 - **`--effort` and the plugin's model picking.** The default is `gemini-4-hydrogen-medium`;
   `--model` takes a full id from `agy models`, which carries the effort level, and goes to
   agy as given. agy checks it and names the valid levels or ids. `--effort` is refused

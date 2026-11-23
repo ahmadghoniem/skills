@@ -2,12 +2,14 @@ import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -19,10 +21,11 @@ import { run, spawnDirect } from './run.mjs';
 const MODEL_CACHE_MAX_AGE_DAYS = 7;
 
 /**
- * Longest message sent on stdin. agy cuts a longer one short without an error
- * (a 324,000-char message kept about 191,000), so a longer one is refused.
+ * Longest message sent on stdin, in UTF-8 bytes. agy cuts a longer one short without
+ * an error (a 324,000-char ASCII message kept about 191,000). That probe could not tell
+ * bytes from characters, so the limit counts bytes, which is never less.
  */
-export const MAX_STDIN_CHARS = 150_000;
+export const MAX_STDIN_BYTES = 150_000;
 
 /**
  * Format seconds as a Go duration for `--print-timeout` (`15m`, `1m30s`, `45s`).
@@ -66,49 +69,34 @@ export function stdinLine(text) {
   return `${JSON.stringify({ event: 'user', message: { content: text } })}\n`;
 }
 
-/** Agents earlier versions of the plugin installed, removed on install. */
-const LEGACY_AGENTS = ['agy-delegate', 'agy-chore'];
-
 /**
- * Copy one of the plugin's agy agents (`agy-agents/<name>.md`) into agy's
- * global agents folder when it is missing or differs, and remove the agents
- * earlier versions installed. agy only finds custom agents there, and since
- * 1.3.4 `--agent` with an unknown name fails the run (status ERROR, exit 1),
- * so this runs before every fresh dispatch.
- *
- * @param {string} name
- * @returns {void}
+ * The agy plugin that carries the `bash-delegate` agent and its bash tool. agy names a
+ * plugin's MCP tools `mcp_<plugin>_<server>_<tool>`, so the model sees
+ * `mcp_agy_shell_bash` and `mcp_agy_shell_bash_bg`.
  */
-export function installAgent(name) {
-  const src = fileURLToPath(new URL(`../../agy-agents/${name}.md`, import.meta.url));
-  const dir = join(homedir(), '.gemini', 'config', 'agents');
-  for (const old of LEGACY_AGENTS) rmSync(join(dir, `${old}.md`), { force: true });
-  const dest = join(dir, `${name}.md`);
-  const text = readFileSync(src, 'utf8');
-  if (existsSync(dest) && readFileSync(dest, 'utf8') === text) return;
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(dest, text, 'utf8');
-}
+export const PLUGIN_NAME = 'agy';
+export const BASH_SERVER = 'shell';
 
-/**
- * Server name of the plugin's bash tool in agy's MCP config. agy names an MCP
- * tool `mcp_<server>_<tool>`, so the model sees `mcp_agy_bash`.
- */
-export const BASH_SERVER = 'agy';
-
-/** Earlier names of the same server, moved to `BASH_SERVER` on install. */
-const LEGACY_BASH_SERVERS = ['agybash'];
+/** What earlier versions put in agy's global config, removed once the plugin is in. */
+const LEGACY_AGENTS = ['bash-delegate', 'agy-delegate', 'agy-chore'];
+const LEGACY_BASH_SERVERS = ['agy', 'agybash'];
 
 /** agy's global MCP config, read by every agy session. */
 export function mcpConfigPath() {
   return join(homedir(), '.gemini', 'config', 'mcp_config.json');
 }
 
+/** Where `agy plugin install` puts the plugin. */
+export function pluginDir() {
+  return join(homedir(), '.gemini', 'config', 'plugins', PLUGIN_NAME);
+}
+
 /**
- * The bash server's entry, pointing at this install's `mcp/bash.mjs`.
- * `timeoutSeconds` sits above bash.mjs's 20-min cap so agy never cuts a call
- * short; `eager` lists each tool directly instead of behind `call_mcp_tool`, and
- * `background: "always"` runs every `bash_bg` call as an agy background task.
+ * The bash server's entry, pointing at this checkout's `mcp/bash.mjs`, so an edit to
+ * the bash tool is live without a reinstall. `timeoutSeconds` sits above bash.mjs's
+ * 20-min cap so agy never cuts a call short; `eager` lists each tool directly instead
+ * of behind `call_mcp_tool`, and `background: "always"` runs every `bash_bg` call as
+ * an agy background task.
  *
  * @returns {object}
  */
@@ -123,44 +111,103 @@ export function bashServerEntry() {
 }
 
 /**
- * Add or update the bash server in agy's global MCP config, keeping every
- * other server and any extra keys on the entry (such as `env`), and renaming
- * an entry left under a legacy name. Writes only
- * when something changed. Throws when the file exists but is not valid JSON,
- * rather than overwrite it.
+ * The plugin's files, by path inside the plugin: `plugin.json`, `mcp_config.json`
+ * and every agent in `agy-agents/`.
  *
- * @param {string=} configPath
- * @returns {'added'|'updated'|'unchanged'}
+ * @returns {Record<string, string>}
  */
-export function installBashServer(configPath = mcpConfigPath()) {
-  let config = {};
-  if (existsSync(configPath)) {
-    const raw = readFileSync(configPath, 'utf8');
-    if (raw.trim()) {
-      try {
-        config = JSON.parse(raw);
-      } catch (err) {
-        throw new Error(`${configPath} is not valid JSON, left it unchanged: ${err.message}`);
+export function pluginFiles() {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const files = {
+    'plugin.json': `${JSON.stringify({ name: PLUGIN_NAME, version, description: 'The bash-delegate agent and its bash tool, installed by the agy plugin for Claude Code.' }, null, 2)}\n`,
+    'mcp_config.json': `${JSON.stringify({ mcpServers: { [BASH_SERVER]: bashServerEntry() } }, null, 2)}\n`,
+  };
+  for (const f of readdirSync(join(root, 'agy-agents'))) {
+    if (f.endsWith('.md')) files[`agents/${f}`] = readFileSync(join(root, 'agy-agents', f), 'utf8');
+  }
+  return files;
+}
+
+/**
+ * Install the plugin with `agy plugin install` when the installed copy is missing or
+ * differs from `pluginFiles()`, then remove what earlier versions put in agy's global
+ * config. agy copies a plugin on install, so a changed agent needs this before every
+ * fresh dispatch; since 1.3.4 `--agent` with an unknown name fails the run.
+ *
+ * @param {string} bin
+ * @returns {Promise<'installed'|'updated'|'unchanged'>}
+ */
+export async function installPlugin(bin) {
+  const dest = pluginDir();
+  const files = pluginFiles();
+  const same = Object.entries(files).every(([rel, text]) => {
+    try {
+      return readFileSync(join(dest, rel), 'utf8') === text;
+    } catch {
+      return false;
+    }
+  });
+  let state = 'unchanged';
+  if (!same) {
+    state = existsSync(dest) ? 'updated' : 'installed';
+    const stage = mkdtempSync(join(tmpdir(), 'agy-plugin-'));
+    try {
+      for (const [rel, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(stage, rel)), { recursive: true });
+        writeFileSync(join(stage, rel), text, 'utf8');
       }
+      const res = await run(bin, ['plugin', 'install', stage], { timeoutMs: 60_000 });
+      if (res.exitCode !== 0) {
+        throw new Error(`agy plugin install failed: ${`${res.stderr}${res.stdout}`.trim() || `exit ${res.exitCode}`}`);
+      }
+    } finally {
+      rmSync(stage, { recursive: true, force: true });
     }
   }
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    throw new Error(`${configPath} is not a JSON object, left it unchanged`);
+  removeLegacyInstall();
+  return state;
+}
+
+/**
+ * Remove the agent copies and bash server entries earlier versions wrote into agy's
+ * global config, keeping every other server and key. Throws when the MCP config is
+ * not valid JSON, rather than overwrite it.
+ *
+ * @param {string=} configPath
+ * @returns {string[]} what was removed
+ */
+export function removeLegacyInstall(configPath = mcpConfigPath()) {
+  const removed = [];
+  const agents = join(homedir(), '.gemini', 'config', 'agents');
+  for (const name of LEGACY_AGENTS) {
+    const f = join(agents, `${name}.md`);
+    if (existsSync(f)) {
+      rmSync(f, { force: true });
+      removed.push(`agents/${name}.md`);
+    }
   }
-  const servers =
-    config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
+  if (!existsSync(configPath)) return removed;
+  const raw = readFileSync(configPath, 'utf8');
+  if (!raw.trim()) return removed;
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`${configPath} is not valid JSON, left it unchanged: ${err.message}`);
+  }
+  const servers = config?.mcpServers;
+  if (!servers || typeof servers !== 'object') return removed;
   const legacy = LEGACY_BASH_SERVERS.filter((name) => name in servers);
-  const prev = servers[BASH_SERVER] ?? servers[legacy[0]];
-  const next = { ...(prev && typeof prev === 'object' ? prev : {}), ...bashServerEntry() };
-  if (!legacy.length && prev && JSON.stringify(prev) === JSON.stringify(next)) return 'unchanged';
-  const kept = { ...servers };
-  for (const name of legacy) delete kept[name];
-  config.mcpServers = { ...kept, [BASH_SERVER]: next };
-  mkdirSync(dirname(configPath), { recursive: true });
+  if (!legacy.length) return removed;
+  for (const name of legacy) {
+    delete servers[name];
+    removed.push(`mcp server ${name}`);
+  }
   const tmp = `${configPath}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   renameSync(tmp, configPath);
-  return prev ? 'updated' : 'added';
+  return removed;
 }
 
 /**

@@ -19,8 +19,9 @@ const RELEASES_URL =
 const RELEASE_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The upstream changelog. `agy changelog` lags it: 1.2.11 still printed
- * nothing past 1.2.2, so it is only the fallback.
+ * The upstream changelog, the fallback when `agy changelog` does not list the new
+ * version. `agy changelog` reads this same file and caches it (on 1.5.10 it already
+ * listed 1.5.11-1.5.14), but it lagged before: 1.2.11 printed nothing past 1.2.2.
  */
 const UPSTREAM_CHANGELOG_URL =
   'https://raw.githubusercontent.com/google-antigravity/antigravity-cli/main/CHANGELOG.md';
@@ -147,19 +148,21 @@ async function fetchUpstreamChangelog() {
 }
 
 /**
- * Changelog entries newer than `oldVersion`: upstream first, then
- * `agy changelog`. `source` names where they came from.
+ * Changelog entries newer than `since`: `agy changelog` first. The upstream file is
+ * fetched only when the local one fails or does not list `newVersion` yet, and used
+ * when it does list it (or, failing that, lists more). `source` names where they came from.
  *
- * @param {string} bin
- * @param {string} oldVersion
+ * @param {{ since: string, newVersion?: string, local: () => Promise<string|null>, upstream: () => Promise<string|null> }} opts
  * @returns {Promise<{ entries: ChangelogBlock[], source: string }>}
  */
-async function changesSince(bin, oldVersion) {
-  const upstream = await fetchUpstreamChangelog();
-  const fromUpstream = upstream ? newerChangelogEntries(upstream, oldVersion) : [];
-  if (fromUpstream.length > 0) return { entries: fromUpstream, source: UPSTREAM_CHANGELOG_URL };
-  const local = await run(bin, ['changelog'], { timeoutMs: 10_000 });
-  const fromLocal = local.exitCode === 0 ? newerChangelogEntries(local.stdout, oldVersion) : [];
+export async function changesSince({ since, newVersion, local, upstream }) {
+  const lists = (entries) => (newVersion
+    ? entries.some((e) => compareVersions(e.version, newVersion) >= 0)
+    : entries.length > 0);
+  const fromLocal = newerChangelogEntries((await local()) ?? '', since);
+  if (lists(fromLocal)) return { entries: fromLocal, source: '`agy changelog`' };
+  const fromUpstream = newerChangelogEntries((await upstream()) ?? '', since);
+  if (lists(fromUpstream) || fromUpstream.length > fromLocal.length) return { entries: fromUpstream, source: UPSTREAM_CHANGELOG_URL };
   return { entries: fromLocal, source: '`agy changelog`' };
 }
 
@@ -287,12 +290,20 @@ export async function main(rawArgv) {
   const installed = /\d+\.\d+\.\d+/.exec(newVersion)?.[0];
   if (installed) setReviewedAgyVersion(installed);
 
-  const { entries, source } = await changesSince(bin, since);
+  const { entries, source } = await changesSince({
+    since,
+    newVersion: installed,
+    local: async () => {
+      const r = await run(bin, ['changelog'], { timeoutMs: 10_000 });
+      return r.exitCode === 0 ? r.stdout : null;
+    },
+    upstream: fetchUpstreamChangelog,
+  });
   if (entries.length === 0) {
     // The update itself worked, so this is not a failure: neither changelog
     // lists the new version yet.
     process.stdout.write(
-      `Updated ${since} -> ${newVersion}. Neither ${UPSTREAM_CHANGELOG_URL} nor \`agy changelog\` lists an entry newer than ${since}.\n${papercutSection()}`,
+      `Updated ${since} -> ${newVersion}. Neither \`agy changelog\` nor ${UPSTREAM_CHANGELOG_URL} lists an entry newer than ${since}.\n${papercutSection()}`,
     );
     return 0;
   }

@@ -1,5 +1,5 @@
-// Every test file gets its own home directory, so a dispatch's installAgent and
-// installBashServer write to it and not to the real ~/.gemini/config.
+// Every test file gets its own home directory, so a dispatch's installPlugin writes to
+// it and not to the real ~/.gemini/config.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
