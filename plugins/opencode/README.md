@@ -28,8 +28,9 @@ Windows only. Requires opencode `engines.opencode` or later on `PATH` (`bun add 
 
 ## How opencode is run
 
-`opencode run --format json --auto --model <id> --session <ses_id> -f <brief> -- <message>`
+`opencode run --standalone --format json --auto --model <id> --session <ses_id> -f <brief> -- <message>`
 
+- **`--standalone`** runs the turn in a private server under the run. Without it the turn runs in opencode's background service, and stopping the run leaves the turn and its shell commands going there (found by the lifecycle test: a `ping` survived TaskStop under `opencode serve --service`).
 - **`--model` is always passed.** With none, opencode picks one of its configured models on its own, which may be metered.
 - **`--auto`** approves every permission not explicitly denied; nobody can answer a prompt in a headless run.
 - **`-f <brief>`** attaches the brief, read in full; the message only points at it. `-f` swallows the tokens after it, so `--` comes before the message. An inline task goes through a temp file.

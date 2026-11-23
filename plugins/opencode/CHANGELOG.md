@@ -11,6 +11,8 @@ Rebuilt for opencode 2.x (checked on 2.0.32), in the shape of grok 0.6.0 and agy
   `--session <id>` continues it.
 - **The session id is named before the run** (`ses_…`, which opencode 2.x requires), so a
   run that dies can still be continued.
+- **`--standalone`**: the turn runs in a private server under the run, so TaskStop ends it
+  and its shell commands. In opencode's background service they kept running.
 - **A default model, always passed:** `nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017`. The
   allowlist's `nebius/deepseek-ai/DeepSeek-V4.1-Flash` now answers 403 on this account;
   opencode with no model picks a configured one, which may be metered.

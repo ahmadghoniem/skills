@@ -22,7 +22,7 @@ describe('delegate.mjs', () => {
   it('always passes a model, names the session up front, and attaches the brief', async () => {
     await capture(() => main(['do the thing']));
     const [call] = box.calls();
-    expect(call.args.slice(0, 6)).toEqual(['run', '--format', 'json', '--auto', '--model', DEFAULT_MODEL]);
+    expect(call.args.slice(0, 7)).toEqual(['run', '--standalone', '--format', 'json', '--auto', '--model', DEFAULT_MODEL]);
     expect(call.args[call.args.indexOf('--session') + 1]).toMatch(/^ses_/);
     expect(call.args.slice(-2)).toEqual(['--', SIDECAR_MESSAGE]);
     expect(call.args).not.toContain('--continue');

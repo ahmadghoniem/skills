@@ -59,11 +59,15 @@ export const newSessionId = () => `ses_${randomBytes(13).toString('hex')}`;
  *   it, so `--` must come before the message.
  * - `--continue` is never used: it takes the newest session, which may belong to
  *   another Claude session.
+ * - `--standalone` runs the turn in a private server under this process. Without
+ *   it the turn runs in opencode's background service (`opencode serve
+ *   --service`), so stopping the run (TaskStop) leaves the turn and its shell
+ *   commands running there. Sessions are shared either way.
  *
  * @param {{model: string, sessionId: string, promptFile: string}} o
  */
 export function buildArgs(o) {
-  return ['run', '--format', 'json', '--auto', '--model', o.model, '--session', o.sessionId, '-f', o.promptFile, '--', SIDECAR_MESSAGE];
+  return ['run', '--standalone', '--format', 'json', '--auto', '--model', o.model, '--session', o.sessionId, '-f', o.promptFile, '--', SIDECAR_MESSAGE];
 }
 
 /** The environment opencode runs with: no `CLAUDECODE`, so a `claude` command it runs is not refused as nested. */
