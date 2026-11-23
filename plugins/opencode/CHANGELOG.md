@@ -20,6 +20,7 @@ Rebuilt for opencode 2.x (checked on 2.0.32), in the shape of grok 0.6.0 and agy
   from the npm registry (`@opencode/cli`; `opencode-ai` is the 1.x line).
 - **`CLAUDECODE` is removed** from opencode's environment.
 - Process, release and papercut helpers come from `plugins/_shared`.
+- **A quota error that names a reset time blocks that model until then**: the next dispatch to it is refused before the CLI starts. `quota.json` keeps each model's last quota error for the council's roster; a run that gets through clears it. None of the CLIs reports remaining quota to a headless caller.
 
 ## 0.1.0
 

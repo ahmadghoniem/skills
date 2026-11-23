@@ -4,7 +4,8 @@
 // TaskStop ends it, so the plugin keeps no job records of its own.
 import { installedVersion, runHeadless } from './lib/opencode.mjs';
 import { recordDetected } from './lib/papercuts.mjs';
-import { releasePath } from './lib/paths.mjs';
+import { quotaPath, releasePath } from './lib/paths.mjs';
+import { blockedMessage, noteRun, quotaBlock } from './lib/shared/quota.mjs';
 import { isUnfinished, renderResult, warnings } from './lib/render.mjs';
 import { parseCli, readPromptFile, runAsScript } from './lib/shared/proc.mjs';
 import { latestRelease, noticeOnce } from './lib/shared/release.mjs';
@@ -65,10 +66,17 @@ export async function main(argv) {
     prompt = 'Continue from where you left off.';
   }
 
+  const blocked = quotaBlock(quotaPath(), model);
+  if (blocked) {
+    process.stderr.write(blockedMessage('opencode', model, blocked));
+    return 1;
+  }
+
   const release = latestRelease(releasePath(), fetchLatest).catch(() => null);
   const version = installedVersion();
   const run = await runHeadless({ prompt, promptFile: values['prompt-file'], model, session });
 
+  noteRun(quotaPath(), model, isUnfinished(run) ? run.error ?? `exit ${run.exitCode}` : undefined);
   recordDetected(warnings(run), {
     toolErrors: run.toolErrors,
     toolVersion: (await version) ?? undefined,

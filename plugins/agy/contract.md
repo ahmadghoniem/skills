@@ -20,6 +20,13 @@ whatever agy wrote before it stopped is still in the tree.
 | `agy-error` | `⚠ <agy's error>` | agy's own error text, first line first. On an unknown model, the valid ids are listed instead. |
 | `finished-reason` | `⚠ agy ended the turn early: finished_reason <reason>` | agy's reason for ending the turn early, verbatim: `print_timeout`, `interrupted`, `error`. If the work is missing from the diff, continue the conversation rather than starting over. |
 
+## Quota
+
+A run that failed on a quota error naming a reset time ("Resets in 3h25m") blocks
+that model until then: the next dispatch to it is refused before agy starts,
+with the message and the reset time. Pick another model, or wait. A run that gets
+through clears it. `~/.cad/quota.json` holds each model's last quota error.
+
 ## The update line
 
 When a newer agy is out, one line after the output says so, once per release.

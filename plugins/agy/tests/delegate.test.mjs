@@ -139,6 +139,18 @@ describe('delegate.mjs', () => {
     expect(rows).toEqual([expect.objectContaining({ key: 'tool-errors:view_file', text: 'file does not exist', toolVersion: '1.5.14' })]);
   });
 
+  it('refuses a model whose quota resets later, before starting agy, until a run gets through', async () => {
+    fixture([result({ status: 'ERROR', response: '', error: 'Individual quota reached. Resets in 3h25m10s.' })], { exit: 1 });
+    await capture(() => main(['x']));
+    rmSync(join(home, 'argv.json'));
+    const r = await capture(() => main(['x']));
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('agy refused gemini-4-hydrogen-medium before starting: "Individual quota reached.');
+    expect(() => read('argv.json')).toThrow();
+    fixture([result({ status: 'SUCCESS', conversation_id: CONV, response: 'ok' })]);
+    expect((await capture(() => main(['--model', 'gemini-4-neon-high', 'x']))).code).toBe(0);
+  });
+
   it('refuses bad input before starting agy', async () => {
     expect((await capture(() => main(['--effort', 'high', 'x']))).code).toBe(2);
     expect((await capture(() => main([]))).code).toBe(2);

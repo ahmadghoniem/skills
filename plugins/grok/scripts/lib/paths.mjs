@@ -9,3 +9,4 @@ export function pluginHome() {
 
 export const papercutsPath = () => join(pluginHome(), 'papercuts.jsonl');
 export const releasePath = () => join(pluginHome(), 'grok-release.json');
+export const quotaPath = () => join(pluginHome(), 'quota.json');

@@ -4,7 +4,8 @@
 // ends it, so the plugin keeps no job records of its own.
 import { DEFAULT_EFFORT, EFFORTS, installedVersion, runHeadless } from './lib/grok.mjs';
 import { recordDetected } from './lib/papercuts.mjs';
-import { releasePath } from './lib/paths.mjs';
+import { quotaPath, releasePath } from './lib/paths.mjs';
+import { blockedMessage, noteRun, quotaBlock } from './lib/shared/quota.mjs';
 import { isUnfinished, renderResult, warnings } from './lib/render.mjs';
 import { parseCli, readPromptFile, runAsScript } from './lib/shared/proc.mjs';
 import { latestRelease, noticeOnce } from './lib/shared/release.mjs';
@@ -62,6 +63,13 @@ export async function main(argv) {
     prompt = 'Continue from where you left off.';
   }
 
+  const quotaKey = values.model?.trim() || 'default';
+  const blocked = quotaBlock(quotaPath(), quotaKey);
+  if (blocked) {
+    process.stderr.write(blockedMessage('grok', quotaKey, blocked));
+    return 1;
+  }
+
   // Both run alongside grok; the release check reaches the network at most once a day.
   const release = latestRelease(releasePath(), fetchLatest).catch(() => null);
   const version = installedVersion();
@@ -74,6 +82,7 @@ export async function main(argv) {
     session: values.session?.trim() || undefined,
   });
 
+  noteRun(quotaPath(), quotaKey, isUnfinished(run) ? run.error ?? `exit ${run.exitCode}` : undefined);
   recordDetected(warnings(run), {
     toolVersion: (await version) ?? undefined,
     model: values.model,

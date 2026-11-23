@@ -81,6 +81,7 @@ sandbox enforcement instead of accepting any profile silently.
   prose fired twice on 1.0.70 research runs that wrote, as asked, to `~/tmp-review/` and said
   "nothing in the repo was modified" (papercuts 01a54267, f8e98e86). `claimsFileChanges` is gone;
   job records now keep `writeTargets` instead of `claimedFileChanges`.
+- **A quota error that names a reset time blocks that model until then**: the next dispatch to it is refused before the CLI starts. `quota.json` keeps each model's last quota error for the council's roster; a run that gets through clears it. None of the CLIs reports remaining quota to a headless caller.
 
 ## 0.5.1 — grok 1.0.67
 

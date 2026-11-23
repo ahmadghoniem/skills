@@ -55,3 +55,22 @@ test('parseCli drops a leading -- and refuses unknown flags', () => {
   assert.deepEqual(parseCli(['--', '--model', 'x', 'task'], { model: { type: 'string' } }).positionals, ['task']);
   assert.throws(() => parseCli(['--nope'], { model: { type: 'string' } }));
 });
+
+test('a quota error with a reset time blocks that model until it passes', async () => {
+  const { noteRun, parseResetMs, quotaBlock, readQuota } = await import('./quota.mjs');
+  const dir = tmp();
+  const path = join(dir, 'quota.json');
+  assert.equal(parseResetMs('Individual quota reached. Resets in 3h25m10s.'), (3 * 3600 + 25 * 60 + 10) * 1000);
+  const t0 = Date.parse('2026-11-24T00:00:00Z');
+  noteRun(path, 'm', 'Individual quota reached. Resets in 1h.', t0);
+  assert.ok(quotaBlock(path, 'm', t0 + 1000));
+  assert.equal(quotaBlock(path, 'm', t0 + 3_600_001), null);
+  assert.equal(quotaBlock(path, 'other', t0), null);
+  noteRun(path, 'g', 'API error (status 402 Payment Required): usage balance exhausted', t0);
+  assert.equal(quotaBlock(path, 'g', t0), null, 'no reset time: remembered, not blocking');
+  noteRun(path, 'm', 'Not signed in', t0);
+  assert.ok(readQuota(path).m, 'other errors leave the entry');
+  noteRun(path, 'm', undefined, t0);
+  assert.equal(readQuota(path).m, undefined, 'a run that got through clears it');
+  rmSync(dir, { recursive: true });
+});

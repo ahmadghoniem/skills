@@ -19,6 +19,13 @@ of the work. `delegate.mjs` exits 1 when one of them fires.
 | `exit` | `⚠ exit N` | grok's exit code. A good write-up with a stray non-zero exit is still a good write-up. |
 | `error-detail` | `⚠ error: <reason>` | Why the run stopped, in grok's words, or the end of stderr when grok printed nothing else. "Not signed in", a rejected flag and an exhausted plan show up here. If the work is missing from the diff, continue the session rather than starting over. |
 
+## Quota
+
+A run that failed on a quota error naming a reset time ("Resets in 3h25m") blocks
+that model until then: the next dispatch to it is refused before grok starts,
+with the message and the reset time. Pick another model, or wait. A run that gets
+through clears it. `~/.cgd/quota.json` holds each model's last quota error.
+
 ## The update line
 
 When a newer grok is out, one line after the output says so, once per release.

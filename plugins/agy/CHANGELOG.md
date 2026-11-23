@@ -187,6 +187,7 @@ untouched.
   more than once names, for each hit, the nearest line that tells the hits apart; a
   missing file prints the cwd and the one existing path it probably meant. Synced from
   `tools/apply-patch`.
+- **A quota error that names a reset time blocks that model until then**: the next dispatch to it is refused before the CLI starts. `quota.json` keeps each model's last quota error for the council's roster; a run that gets through clears it. None of the CLIs reports remaining quota to a headless caller.
 
 ## 0.4.1
 

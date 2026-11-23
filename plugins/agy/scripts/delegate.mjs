@@ -18,7 +18,8 @@ import {
 import { repoRoot, shortHistory } from './lib/git.mjs';
 import { recordDetected } from './lib/papercuts.mjs';
 import { summariseEvents } from './lib/parse.mjs';
-import { releasePath } from './lib/paths.mjs';
+import { quotaPath, releasePath } from './lib/paths.mjs';
+import { blockedMessage, noteRun, quotaBlock } from './lib/shared/quota.mjs';
 import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
 import { parseCli, readPromptFile, runAsScript } from './lib/shared/proc.mjs';
 import { latestRelease, noticeOnce } from './lib/shared/release.mjs';
@@ -110,6 +111,13 @@ export async function main(argv) {
     return 1;
   }
 
+  const quotaKey = model ?? 'default';
+  const blocked = quotaBlock(quotaPath(), quotaKey);
+  if (blocked) {
+    process.stderr.write(blockedMessage('agy', quotaKey, blocked));
+    return 1;
+  }
+
   // Both run alongside agy; the release check reaches GitHub at most once a day.
   const release = latestRelease(releasePath(), fetchLatest).catch(() => null);
   const version = installedVersion();
@@ -139,6 +147,7 @@ export async function main(argv) {
     run.validModels = await listModels().then((ms) => ms.map((m) => m.id)).catch(() => undefined);
   }
 
+  noteRun(quotaPath(), quotaKey, isUnfinished(run) ? [run.error, run.stderr].filter(Boolean).join('\n') || `exit ${run.exitCode}` : undefined);
   const warns = anomalies(run);
   recordDetected(warns, {
     toolErrors: summary.toolErrors,
