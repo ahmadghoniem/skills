@@ -1,153 +1,48 @@
 #!/usr/bin/env node
-import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { parseModelList, parseVersion, resolveBin } from './lib/grok.mjs';
-import { run } from './lib/run.mjs';
-import { compareVersions, reviewedGrokVersion } from './update.mjs';
+// Health check: where grok is, whether it is at least the reviewed version, and
+// whether it is signed in. For the model list, run `grok models` directly.
+import { installedVersion, resolveBin } from './lib/grok.mjs';
+import { run, runAsScript } from './lib/shared/proc.mjs';
+import { compareVersions } from './lib/shared/release.mjs';
+import { reviewedGrokVersion } from './update.mjs';
 
 const INSTALL_HINT =
-  'Install the Grok CLI so `grok` is on PATH (or at ~/.grok/bin), or set GROK_BIN to its full path.\n' +
-  'Then run `grok login` and re-run `/grok:setup`.';
+  'Install the Grok CLI so `grok` is on PATH (or at ~/.grok/bin), or set GROK_BIN to its full path. Then run `grok login`.';
 
-/**
- * Whether `grok --version` output is at least `min`, the version the plugin was
- * last reviewed against. Output with no version number passes.
- *
- * @param {string} text
- * @param {string|null} [min]
- * @returns {boolean}
- */
-export function versionOk(text, min = reviewedGrokVersion()) {
-  const v = parseVersion(text);
-  return !v || !min || compareVersions(v, min) >= 0;
-}
-
-/**
- * `grok models` prints "You are logged in with grok.com." when authenticated,
- * and says the account is not authenticated otherwise. That is the health
- * check — `grok doctor` only covers terminal/clipboard/mic.
- *
- * @param {string} text
- * @returns {boolean}
- */
-function isLoggedIn(text) {
-  return /you are logged in/i.test(text);
-}
-
-/**
- * @param {string} text
- * @returns {string}
- */
-function loginDetail(text) {
-  const m = /you are logged in[^\n]*/i.exec(text);
-  if (m?.[0]) return m[0].trim().replace(/\.$/, '');
-  if (/not authenticated/i.test(text)) return 'not authenticated — run `grok login`';
-  return 'authentication state unknown — run `grok login`';
-}
-
-/**
- * @param {string[]} ids
- * @param {string} text
- * @returns {string}
- */
-function formatModels(ids, text) {
-  const defaultMatch = /^\s*Default model:\s+(\S+)/m.exec(text);
-  const defaultId = defaultMatch?.[1];
-  return ids
-    .map((id) => (id === defaultId ? `\`${id}\` (default)` : `\`${id}\``))
-    .join(', ');
-}
-
-/**
- * Print just the model ids, one per line, for programmatic use.
- *
- * @returns {Promise<number>}
- */
-async function printModels() {
-  let bin;
-  try {
-    bin = await resolveBin();
-  } catch (err) {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.stderr.write(INSTALL_HINT + '\n');
-    return 1;
-  }
-  const res = await run(bin, ['models'], { timeoutMs: 10_000 });
-  const text = `${res.stdout}\n${res.stderr}`;
-  if (!isLoggedIn(text)) {
-    process.stderr.write(`${loginDetail(text)}.\n`);
-    return 1;
-  }
-  const ids = parseModelList(text);
-  if (ids.length === 0) {
-    process.stderr.write('Could not parse model list from `grok models`.\n');
-    return 1;
-  }
-  for (const id of ids) process.stdout.write(`${id}\n`);
-  return 0;
-}
-
-/**
- * @returns {Promise<number>}
- */
-async function baseCheck() {
+/** @returns {Promise<number>} */
+export async function main() {
   const lines = ['### /grok:setup\n'];
+  const done = (code) => {
+    process.stdout.write(`${lines.join('\n')}\n`);
+    return code;
+  };
   let bin;
   try {
     bin = await resolveBin();
   } catch (err) {
-    lines.push(`- ✗ ${err instanceof Error ? err.message : String(err)}`);
-    lines.push('');
-    lines.push(INSTALL_HINT);
-    process.stdout.write(lines.join('\n') + '\n');
-    return 1;
+    lines.push(`- ✗ ${err.message}`, '', INSTALL_HINT);
+    return done(1);
   }
   lines.push(`- ✓ grok at \`${bin}\``);
 
-  const ver = await run(bin, ['--version'], { timeoutMs: 5_000 });
-  const versionText = `${ver.stdout}${ver.stderr}`.trim() || '(no output)';
-  if (ver.exitCode !== 0) {
-    lines.push(`- ✗ version: ${versionText}`);
-    process.stdout.write(lines.join('\n') + '\n');
-    return 1;
+  const version = await installedVersion();
+  const min = reviewedGrokVersion();
+  if (!version) {
+    lines.push('- ✗ `grok --version` did not answer');
+    return done(1);
   }
-  if (!versionOk(versionText)) {
-    lines.push(
-      `- ✗ version: ${versionText}; the plugin needs grok ${reviewedGrokVersion()} or newer. Run \`/grok:update\`.`,
-    );
-    process.stdout.write(lines.join('\n') + '\n');
-    return 1;
+  if (min && compareVersions(version, min) < 0) {
+    lines.push(`- ✗ version ${version}; the plugin needs grok ${min} or newer. Run \`/grok:update\`.`);
+    return done(1);
   }
-  lines.push(`- ✓ version: ${versionText}`);
+  lines.push(`- ✓ version ${version}`);
 
+  // `grok models` is the only command that reports sign-in state.
   const models = await run(bin, ['models'], { timeoutMs: 10_000 });
   const text = `${models.stdout}\n${models.stderr}`;
-  const loggedIn = isLoggedIn(text);
-  lines.push(loggedIn ? `- ✓ ${loginDetail(text)}` : `- ✗ ${loginDetail(text)}`);
-  const ids = parseModelList(text);
-  if (ids.length > 0) {
-    lines.push(`- models: ${formatModels(ids, text)}`);
-  } else {
-    lines.push('- ✗ no models reported');
-  }
-  process.stdout.write(lines.join('\n') + '\n');
-  return loggedIn ? 0 : 1;
+  const signedIn = /you are logged in[^\n]*/i.exec(text)?.[0]?.replace(/\.$/, '');
+  lines.push(signedIn ? `- ✓ ${signedIn}` : '- ✗ not signed in: run `grok login`');
+  return done(signedIn ? 0 : 1);
 }
 
-/**
- * @param {string[]} rawArgv
- * @returns {Promise<number>}
- */
-export async function main(rawArgv) {
-  const { flags } = parseCommandArgv(rawArgv, ['print-models']);
-  if (flags['print-models'] || flags['printModels']) return printModels();
-  return baseCheck();
-}
-
-if (invokedAsScript(import.meta.url)) {
-  main(process.argv.slice(2))
-    .then((code) => process.exit(code))
-    .catch((err) => {
-      process.stderr.write(`setup failed: ${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(1);
-    });
-}
+runAsScript(import.meta.url, main);

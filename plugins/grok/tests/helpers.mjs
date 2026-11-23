@@ -1,21 +1,43 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// `new URL(…).pathname` yields `/C:/…` on Windows, which is not a usable filesystem
-// path — `fileURLToPath` is the portable conversion.
-const fixture = (rel) => fileURLToPath(new URL(rel, import.meta.url));
+export const STUB_BIN = fileURLToPath(new URL('./fixtures/grok-stub.mjs', import.meta.url));
 
-export function makeTempHome() {
+/** A temp CGD_HOME and stub log; restores the environment on cleanup. */
+export function sandbox(env = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'cgd-test-'));
+  const log = join(dir, 'stub.jsonl');
+  const saved = { ...process.env };
+  Object.assign(process.env, { CGD_HOME: dir, GROK_BIN: STUB_BIN, GROK_STUB_LOG: log, ...env });
   return {
     dir,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    calls: () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []),
+    papercuts: () => {
+      const p = join(dir, 'papercuts.jsonl');
+      return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+    },
+    cleanup: () => {
+      process.env = saved;
+      rmSync(dir, { recursive: true, force: true });
+    },
   };
 }
 
-export const STUB_BIN = fixture('./fixtures/grok-stub.mjs');
-export const HAPPY_FIXTURE = fixture('./fixtures/grok-events/happy-path.ndjson');
-export const FAILED_COMMAND_FIXTURE = fixture('./fixtures/grok-events/failed-command.ndjson');
-export const RELATIVE_ABSOLUTE_FIXTURE = fixture('./fixtures/grok-events/relative-and-absolute.ndjson');
+/** Capture what `fn` writes to stdout and stderr. */
+export async function capture(fn) {
+  const out = [];
+  const err = [];
+  const o = process.stdout.write;
+  const e = process.stderr.write;
+  process.stdout.write = (s) => (out.push(String(s)), true);
+  process.stderr.write = (s) => (err.push(String(s)), true);
+  try {
+    const code = await fn();
+    return { code, stdout: out.join(''), stderr: err.join('') };
+  } finally {
+    process.stdout.write = o;
+    process.stderr.write = e;
+  }
+}

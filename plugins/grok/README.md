@@ -4,7 +4,7 @@ Delegate coding tasks from Claude Code to the [Grok Build CLI](https://docs.x.ai
 
 Claude writes the brief and reviews the result; grok does the editing in its own session. The plugin never commits.
 
-Sibling of [cursor](../cursor/README.md), which does the same for Cursor CLI, and [agy](../agy/README.md), which does it for the Antigravity CLI. This plugin follows agy's conventions. All three are independent: install any combination.
+Sibling of [agy](../agy/README.md) and [opencode](../opencode/README.md), and a member of the [council](../council/README.md). The plugin keeps only what Claude can't work out on its own: how to start grok, and how to read what grok says when a run goes wrong. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
@@ -13,89 +13,55 @@ claude plugin marketplace add ahmadghoniem/skills
 claude plugin install grok@ahmadghoniem
 ```
 
-Windows only. Requires the grok version in `package.json` `engines.grok` or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
-
-A Claude Code session opened before grok was installed does not see the installer's `PATH` change, so the plugin also checks `%USERPROFILE%\.grok\bin` directly. `GROK_BIN` overrides both.
+Windows only. Requires the grok version in `package.json` `engines.grok` or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+. `GROK_BIN` overrides the lookup.
 
 ## Commands
 
-- **`/grok:delegate <task>`** hands a task to grok. Claude writes a brief to `~/.cgd/briefs/<name>.md` and runs it under a backgrounded Bash call, so you keep working while grok runs and the harness reports when it ends.
-- **`/grok:result [job]`** prints a finished job's write-up, a progress line for a running one, or with `--list` the last 10 jobs (`--all` for every one), running and orphaned jobs included.
-- **`/grok:resume [job|uuid] [follow-up]`** continues a job's grok session. With no id it picks the newest job in this repository that has a session.
-- **`/grok:cancel [job]`** kills a running job and every process it started (`taskkill /T /F`). A job whose processes are already gone is reported as orphaned.
-- **`/grok:setup`** checks the binary, version, login state and available models. It fails on a grok older than `engines.grok`.
-- **`/grok:update`** runs `grok update`, lists the releases since the version the plugin was last reviewed against (`engines.grok`) with their dates, sets `engines.grok` to the new version, and reviews the plugin and the open papercuts against it. A test fails while the installed grok is newer than `engines.grok`.
+- **`/grok:delegate <task>`** hands a task to grok. Claude writes a brief to `~/.cgd/briefs/<name>.md` and runs it in a background Bash call. The output ends with `session: <id>`; `--session <id>` continues that session. TaskStop on the background task stops a run.
+- **`/grok:setup`** checks the binary, the version (it fails on a grok older than `engines.grok`) and sign-in. `grok models` lists the models.
+- **`/grok:update`** runs `grok update`, lists the releases since the version the plugin was last reviewed against, sets `engines.grok` to the new version, and reviews the plugin and the open papercuts against it. A test fails while the installed grok is newer than `engines.grok`.
 - **`/grok:papercut`** records what grok said blocked it (`--text`), or closes papercuts once fixed (`--resolve <key|id> --note`).
 
-Jobs are named from the task's first words plus a 4-character suffix, such as `add-retry-to-fetchuser-a7f3`. Every command that takes a job accepts the full name, a unique prefix, or the suffix alone.
-
-### `/grok:delegate` flags
-
 ```bash
-/grok:delegate "Add retry-on-429 to src/api/client.ts. Verify with: pnpm test api"
-/grok:delegate --effort low --prompt-file C:/Users/me/.cgd/briefs/rename-client.md
+node scripts/delegate.mjs -- --prompt-file C:/Users/me/.cgd/briefs/rename-client.md --effort low
 ```
 
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. |
-| `--model <id>` | Pin a model. Omitted, grok uses the account default that `grok models` reports. |
-| `--effort low\|medium` | Grok's `--reasoning-effort`. Default `medium`. The xAI plan this was built on allows only `low` and `medium`, so anything else is refused. |
-| `--timeout <sec>` | Kill the run after this many seconds. Off by default; a stalled run ends at grok's own 3600s idle timeout and says why. |
-| `--session <uuid>` | Continue that grok session. `/grok:resume` sets it for you. |
+| `--model <id>` | Pin a model. Omitted, grok uses the account default. |
+| `--effort low\|medium` | grok's `--reasoning-effort`. Default `medium`. The xAI plan this runs on allows only `low` and `medium`. |
+| `--session <uuid>` | Continue that grok session. |
 
 ## What the output looks like
 
-A clean run prints grok's write-up and nothing else. Changed files, durations and token counts are left out because `git status` and `git diff` show the real state.
+A clean run prints grok's write-up, then `session: <id>`. A `⚠` line is added for each way a run can be wrong while still looking done: `⚠ stop reason: …` (not `end_turn`), `⚠ exit N`, and `⚠ error: …` (grok's error, or the end of stderr). `contract.md` explains them in the form Claude reads, and `tests/contract.test.mjs` keeps it in step with `WARNING_IDS` in `scripts/lib/render.mjs`. `⚠ error` lines are also appended to `~/.cgd/papercuts.jsonl`, which `/grok:update` reviews.
 
-The plugin adds a `⚠` line for each way a run can be wrong while grok still calls it done. Any of them can fire alone:
-
-| Line | Means |
-| --- | --- |
-| `⚠ stop reason: …` | grok's own stop reason, when it is not `end_turn`. |
-| `⚠ exit N` | The process exit code. It can disagree with the stop reason in either direction. |
-| `⚠ error: …` | Why the run stopped, in grok's words: its `error` event, or the end of stderr on a failing exit. |
-| `⚠ run was killed before finishing` | The watchdog fired; the write-up may be partial. |
-| `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. Reported, never fatal: a `grep` with no match or a deliberately failing test lands here too. |
-| `⚠ grok's write tools targeted files in this repo, but the working tree is unchanged` | grok's write or edit tool aimed at a path inside the repo and `git status` before and after the run shows no change. Writes outside the repo don't count. |
-| `⚠ this run can be resumed where it stopped: /grok:resume <id>` | The run ended early and its session survives. |
-
-At most once a day, a line after the output says when a newer grok is out, how old it is, and how many releases came out since the installed one. The release data comes from the npm registry entry for `@xai-official/grok`, because grok publishes no changelog. `CGD_RELEASE_CHECK=off` turns it off.
-
-`contract.md` holds the same table in the form Claude reads; `/grok:delegate`, `/grok:resume` and `/grok:result` include it at load time. `WARNING_IDS` in `scripts/lib/render.mjs` lists the same ids, and `tests/contract.test.mjs` fails if the two differ.
-
-The `wander`, `error-detail`, `killed` and `failed-commands` warnings are also appended to `~/.cgd/papercuts.jsonl`, and `/grok:update` groups them for review.
+Once per release, a line after the output says a newer grok is out. The release data comes from the npm registry entry for `@xai-official/grok`, because grok publishes no changelog.
 
 ## How grok is run
 
-Every dispatch passes these flags:
+- **`--prompt-file`**: the brief never goes on the command line. An inline task is written to a temp file, deleted afterwards.
+- **`--output-format json`**: grok prints one object at the end with the text, stop reason, session id and spend, or an error object.
+- **`--always-approve`**: a headless run cannot answer an approval prompt and would stall.
+- **`--no-plan` and `--disallowed-tools`**: removes the 11 built-in tools a headless run can't use: image and video generation, `ask_user_question`, plan mode, `send_feedback` and the scheduler.
+- **`--trust`**: loads the repo's `AGENTS.md`, top-level `CLAUDE.md` and `.grok/` config. **`--no-auto-update`**: the binary changes only with `/grok:update`. Both are missing from `grok --help`; the bundled user guide documents them.
+- **`-s <uuid>`** on a new run, or **`--resume <uuid>`**: the session id is fixed before the run starts, so a run that dies can still be continued. `--continue` is never used: it takes the directory's newest session, which may belong to another Claude session.
+- `--sandbox` is never passed: grok has no sandbox enforcement on Windows.
 
-- **`--prompt-file`**: the brief stays out of the process list, is not limited by the argument-length cap, and cannot be read as a flag.
-- **`--always-approve`**: a headless run cannot answer an approval prompt and would stall. The plugin never commits and you read the diff instead.
-- **`--no-plan` and `--disallowed-tools`**: removes plan mode and the 11 built-in tools a headless run cannot use or does not need (image and video generation, `ask_user_question`, plan mode, `send_feedback`, the scheduler). Read, write, search, shell and web tools stay.
-- **`--no-auto-update`**: the binary changes only when you run `/grok:update`.
-- **`-s <uuid>`** on a new run, or **`--resume <uuid>`** on a resume: the session id is fixed before the run starts, so a killed run can still be resumed.
+The environment sets `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED=false`, so your Claude Code and Cursor agents, hooks, MCP servers, rules and skills stay out; the brief carries what grok needs. It also removes `CLAUDECODE`, which every Claude Code session sets: grok ignores it, but a `claude` command grok runs would take itself for a nested session and refuse to start. `GROK_AGENT`, `GROK_CONFIG`, `GROK_CONFIG_PATH` and `GROK_FOLDER_TRUST` are removed too, so an override in your shell cannot swap grok's agent or config or switch trust off.
 
-`--trust` is passed, so grok works in a repo the main session already trusts and loads the repo's `AGENTS.md`, top-level `CLAUDE.md`, and `.grok/` MCP servers, hooks and skills. Claude puts what the task needs in the brief. `--trust` and `--no-auto-update` are missing from `grok --help` but still work; the bundled docs under `~/.grok/docs/user-guide/` describe both.
-
-`--sandbox` is never passed: grok has no sandbox enforcement on Windows. `--continue` is never passed either: it picks the newest session in the directory, which may belong to another Claude session or a grok TUI.
-
-Every run sets `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED=false`, so grok does not load the agents, hooks, MCP servers, rules and skills from your Claude Code and Cursor config. grok is the delegatee here and the brief carries what it needs.
-
-Three sources have no per-run switch and still load: Claude Code plugins under `~/.claude/plugins` (list them under `[plugins] disabled` in `~/.grok/config.toml`), skills in `~/.agents/skills` (`[skills] ignore`), and the `allow`/`deny` rules in `~/.claude/settings.json`. The config settings also apply to interactive grok.
-
-## Other notes
-
-- `windowsHide: true` is set on every spawn. A dispatch from a backgrounded Bash call has no console, so without it Windows opens a terminal window for `grok.exe` that stays for the whole job.
-- `grok --version` checks the binary on every dispatch because it is local and instant. `grok models` also reports login state but needs the network, so only `/grok:setup` calls it.
+Three sources have no per-run switch and still load: Claude Code plugins under `~/.claude/plugins` (`[plugins] disabled` in `~/.grok/config.toml`), skills in `~/.agents/skills` (`[skills] ignore`), and the `allow`/`deny` rules in `~/.claude/settings.json`.
 
 ## Environment
 
 | Variable | Effect |
 | --- | --- |
-| `GROK_BIN` | Full path to the grok binary; skips discovery. |
-| `CGD_HOME` | Where jobs, papercuts and the release cache live. Default `%USERPROFILE%\.cgd`. |
-| `CGD_RELEASE_CHECK` | `off` skips the npm registry check and the update line. |
+| `GROK_BIN` | Full path to the grok binary. |
+| `CGD_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.cgd`. |
+| `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
+
+`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
 
 ## Licence
 

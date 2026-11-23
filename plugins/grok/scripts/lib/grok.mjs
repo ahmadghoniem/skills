@@ -1,48 +1,41 @@
-import { once } from 'node:events';
-import { createWriteStream, existsSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
-import { killTree } from './killtree.mjs';
-import { parseLine } from './parse.mjs';
-import { run, spawnDirect } from './run.mjs';
+import { randomUUID } from 'node:crypto';
+import { parseVersion } from './shared/release.mjs';
+import { run, spawnDirect } from './shared/proc.mjs';
 
-/**
- * The reasoning efforts a dispatch accepts. The xAI plan this was built on
- * allows only `low` and `medium`, so `high` is not offered.
- *
- * @type {readonly string[]}
- */
+/** The xAI plan this runs on allows only `low` and `medium`. */
 export const EFFORTS = Object.freeze(['low', 'medium']);
-
 export const DEFAULT_EFFORT = 'medium';
 
 /**
- * Set on every run. grok is the delegatee: the brief carries what it needs, so
- * the user's global Claude Code and Cursor agents, hooks, MCP servers, rules and
- * skills only add context and side effects. Three sources have no per-run
- * switch and still load: Claude Code plugins (disable them under `[plugins]` in
- * `~/.grok/config.toml`), skills in `~/.agents/skills` (`[skills] ignore`), and
- * the permission rules in `~/.claude/settings.json`.
+ * Set on every run, so the user's Claude Code and Cursor agents, hooks, MCP
+ * servers, rules and skills stay out of a delegated run: the brief carries what
+ * grok needs. Three sources have no per-run switch and still load: Claude Code
+ * plugins (`[plugins]` in `~/.grok/config.toml`), skills in `~/.agents/skills`
+ * (`[skills] ignore`), and the permission rules in `~/.claude/settings.json`.
  */
 export const COMPAT_OFF_ENV = Object.freeze(
   Object.fromEntries(
     ['CLAUDE', 'CURSOR'].flatMap((vendor) =>
-      ['AGENTS', 'HOOKS', 'MCPS', 'RULES', 'SKILLS'].map((kind) => [
-        `GROK_${vendor}_${kind}_ENABLED`,
-        'false',
-      ]),
+      ['AGENTS', 'HOOKS', 'MCPS', 'RULES', 'SKILLS'].map((kind) => [`GROK_${vendor}_${kind}_ENABLED`, 'false']),
     ),
   ),
 );
 
 /**
- * Built-in tools removed from every headless run. Each one either needs a
- * person at the terminal (questions, plan approval, feedback), outlives the
- * run (schedules), or produces media no task asked for. The read, write,
- * search, shell and web tools stay.
- *
- * @type {readonly string[]}
+ * Removed from grok's environment. `CLAUDECODE` is set in every Claude Code
+ * session; grok does not read it, but a `claude` command grok runs would take
+ * itself for a nested session and refuse to start. The `GROK_*` overrides would
+ * swap grok's agent or config, or switch folder trust off, under the flags below.
+ */
+export const REMOVED_ENV = Object.freeze(['CLAUDECODE', 'GROK_AGENT', 'GROK_CONFIG', 'GROK_CONFIG_PATH', 'GROK_FOLDER_TRUST']);
+
+/**
+ * Built-in tools a headless run can't use: media generation nobody asked for,
+ * questions and plan approval nobody can answer, feedback to xAI, and scheduled
+ * jobs that would outlive the run.
  */
 export const DISALLOWED_TOOLS = Object.freeze([
   'image_gen',
@@ -58,371 +51,161 @@ export const DISALLOWED_TOOLS = Object.freeze([
   'scheduler_list',
 ]);
 
-/**
- * The version number in `grok --version` output, e.g. `1.0.92` from
- * `grok 1.0.92 (b06756fd6256)`. Null when there is none.
- *
- * @param {string} text
- * @returns {string|null}
- */
-export function parseVersion(text) {
-  const m = /(\d+\.\d+\.\d+(?:-[\w.]+)?)/.exec(String(text ?? ''));
-  return m ? m[1] : null;
-}
-
-/**
- * Parse `grok models` output into a list of model ids.
- *
- * The command prints an auth line and the account default, then a bulleted list:
- *
- *   You are logged in with grok.com.
- *
- *   Default model: grok-4.6
- *
- *   Available models:
- *     * grok-4.6 (default)
- *     - grok-4.5
- *
- * @param {string} stdout
- * @returns {string[]}
- */
-export function parseModelList(stdout) {
-  /** @type {string[]} */
-  const ids = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const m = /^\s*[*-]\s+(\S+)/.exec(line);
-    if (m?.[1]) ids.push(m[1]);
-  }
-  return ids;
-}
-
 /** @type {string|null} */
 let cachedBin = null;
 
 /**
- * Where the Grok installer puts the CLI, if it is there.
+ * `GROK_BIN`, then PATH, then the installer's folder. The installer adds its
+ * folder to the persistent PATH, which a session started earlier has not picked up.
  *
- * The installer appends its directory to the *persistent* user PATH, which a
- * Claude Code session started beforehand will not have picked up — so a
- * `where grok` miss does not mean grok is absent. Checking this path directly
- * is what makes the plugin work in an already-running session.
- *
- * @returns {string|null}
- */
-export function defaultGrokBin() {
-  const candidate = join(homedir(), '.grok', 'bin', 'grok.exe');
-  return existsSync(candidate) ? candidate : null;
-}
-
-/**
  * @returns {Promise<string>}
  */
 export async function resolveBin() {
   if (cachedBin) return cachedBin;
   const override = process.env.GROK_BIN?.trim();
-  if (override) {
-    cachedBin = override;
-    return cachedBin;
-  }
+  if (override) return (cachedBin = override);
   const res = await run('where', ['grok'], { timeoutMs: 5_000 });
-  const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
-  if (res.exitCode === 0 && hit) {
-    cachedBin = hit.trim();
-    return cachedBin;
+  const hit = res.stdout.split(/\r?\n/).find((l) => l.trim());
+  if (res.exitCode === 0 && hit) return (cachedBin = hit.trim());
+  const installed = join(homedir(), '.grok', 'bin', 'grok.exe');
+  if (existsSync(installed)) return (cachedBin = installed);
+  throw new Error('grok not found on PATH or at %USERPROFILE%\\.grok\\bin. Install the Grok CLI, or set GROK_BIN to its full path.');
+}
+
+/** The installed grok version, or null. */
+export async function installedVersion() {
+  try {
+    const res = await run(await resolveBin(), ['--version'], { timeoutMs: 5_000 });
+    return res.exitCode === 0 ? parseVersion(res.stdout + res.stderr) : null;
+  } catch {
+    return null;
   }
-  // The installer appends its directory to the *persistent* user PATH, so a
-  // Claude Code session started before the install will not see it on PATH.
-  // This is not a rare edge case — it is what happened on the machine this
-  // plugin was developed on.
-  const fallback = defaultGrokBin();
-  if (fallback) {
-    cachedBin = fallback;
-    return cachedBin;
-  }
-  throw new Error(
-    'grok not found on PATH or at %USERPROFILE%\\.grok\\bin. Install the Grok CLI, or set GROK_BIN to its full path.',
-  );
 }
 
 /**
- * @typedef {Object} BuildArgsInput
- * @property {string} promptFile      Path to the file holding the brief.
- * @property {string=} model          Omitted: grok uses the account default.
- * @property {string=} effort         Passed through to `--reasoning-effort`.
- * @property {string=} sessionId        Pre-assigned UUID for a NEW session.
- * @property {string=} resumeSessionId
- */
-
-/**
- * Build grok's argv for a headless dispatch.
+ * grok's argv for one headless run.
  *
- * The brief goes via `--prompt-file`, never argv: it keeps the text out of the
- * host process list, sidesteps the OS argument-length cap, and means a brief
- * that happens to start with `-` cannot be read as a flag.
+ * - `--output-format json`: one object at the end with the text, stop reason,
+ *   session id and spend, or `{type: "error", message}`.
+ * - `--always-approve`: nobody can answer an approval prompt. The guard is that
+ *   nothing is committed and Claude reads the diff.
+ * - `--trust` and `--no-auto-update` are hidden flags (missing from `--help`,
+ *   documented in the bundled user guide). `--trust` loads the repo's
+ *   `AGENTS.md`, `CLAUDE.md` and `.grok/` config.
+ * - `-s <uuid>` names a new session before it starts, so a run that dies still
+ *   leaves a session to resume. A resume passes `--resume <uuid>` instead.
+ *   `--continue` is never used: it picks the directory's newest session, which
+ *   may belong to another Claude session.
+ * - `--sandbox` is never passed: grok has no sandbox enforcement on Windows.
  *
- * `--always-approve` is unconditional. A headless run has no way to answer an
- * approval prompt, so without it grok simply stalls. The guard against a bad
- * edit is not a permission dialog nobody can see — it is that this plugin never
- * commits, and a human reads the diff.
- *
- * `--sandbox` is never passed: grok has no sandbox enforcement on Windows. Given
- * a profile, it warns that the profile is not in effect and runs without one.
- *
- * `-s <uuid>` names the session BEFORE the run starts, on fresh dispatches only.
- * Without it the id arrives only on the terminal `end` event, so a killed,
- * crashed, or truncated run would be unresumable — the one case where you most
- * want to resume. A run killed mid-stream with no `end` event still leaves
- * `~/.grok/sessions/<cwd>/<uuid>` on disk, `-r <uuid>` resumes it with full prior
- * context, and `--resume <uuid>` keeps the same session id.
- *
- * `-s` is illegal on a resume (it declares a NEW conversation).
- *
- * `--no-plan` and `--disallowed-tools` remove what a headless run cannot use;
- * see `DISALLOWED_TOOLS`. Every listed tool drops out of the run's
- * `available_commands`, and none draws the stderr warning grok prints for a
- * name that matches no tool. `--no-plan` alone leaves the plan tools offered.
- *
- * `--trust` is passed: the delegate runs in a workspace Claude already trusts.
- * It loads the repo's `AGENTS.md` and top-level `CLAUDE.md`, and its `.grok/`
- * MCP servers, hooks and skills. `COMPAT_OFF_ENV` keeps the Claude and Cursor
- * sources off, in `~` and in the repo's `.claude/` and `.cursor/` folders.
- *
- * `--trust` and `--no-auto-update` are hidden flags: `grok --help` lists
- * neither, and both are in effect. The bundled docs name `--trust` as the
- * headless folder-trust grant (`22-permissions-and-safety.md`) and
- * `--no-auto-update` as the per-session update switch (`14-headless-mode.md`).
- * A `--help` diff that calls them removed is wrong.
- *
- * `--continue` is deliberately absent. It means "the most recent session for this
- * directory", which grok resolves by looking at the directory rather than at who
- * dispatched — so two Claude sessions in one repo, or a `grok` TUI opened on the
- * side, silently attach to each other's conversation and answer confidently from
- * the wrong context. Every resume names its session outright; the caller resolves
- * which one before getting here.
- *
- * @param {BuildArgsInput} opts
+ * @param {{promptFile: string, model?: string, effort?: string, sessionId?: string, resume?: boolean}} o
  * @returns {string[]}
  */
-export function buildArgs(opts) {
+export function buildArgs(o) {
   const args = [
-    '--prompt-file',
-    opts.promptFile,
-    '--output-format',
-    'streaming-json',
-    '--always-approve',
-    '--trust',
-    '--no-auto-update',
-    '--no-plan',
-    '--disallowed-tools',
-    DISALLOWED_TOOLS.join(','),
+    '--prompt-file', o.promptFile,
+    '--output-format', 'json',
+    '--always-approve', '--trust', '--no-auto-update', '--no-plan',
+    '--disallowed-tools', DISALLOWED_TOOLS.join(','),
   ];
-  // Without `-m` grok applies the account default `grok models` prints, so a
-  // new xAI model takes effect without a plugin change.
-  if (opts.model) args.push('-m', opts.model);
-  if (opts.effort) args.push('--reasoning-effort', opts.effort);
-  if (opts.resumeSessionId) args.push('--resume', opts.resumeSessionId);
-  else if (opts.sessionId) args.push('-s', opts.sessionId);
+  if (o.model) args.push('-m', o.model);
+  if (o.effort) args.push('--reasoning-effort', o.effort);
+  if (o.sessionId) args.push(o.resume ? '--resume' : '-s', o.sessionId);
   return args;
 }
 
-/**
- * @typedef {Object} DelegateOpts
- * @property {string} prompt
- * @property {string=} model
- * @property {string=} effort
- * @property {string=} sessionId
- * @property {string=} resumeSessionId
- * @property {string=} cwd
- * @property {number=} timeoutSec
- * @property {string} logPath
- * @property {(ev: Record<string, unknown>) => void=} onEvent
- * @property {(pid: number) => void=} onSpawn  Grok child's pid, as soon as it exists.
- */
-
-/**
- * @typedef {Object} DelegateResult
- * @property {number} exitCode
- * @property {Record<string, unknown>[]} events
- * @property {boolean} killed
- * @property {string[]} stderrTail  Last few stderr lines, plus any spawn error.
- */
-
-/**
- * Escalate to SIGKILL when the child has not actually exited.
- *
- * Node sets `child.killed` when a signal is *sent*, not when the process
- * exits, so gating on `!child.killed` after `child.kill('SIGTERM')` makes
- * the escalation dead. The production predicate is exit/signal codes.
- *
- * @param {import('node:child_process').ChildProcess} child
- */
-export function escalateSigkill(child) {
-  if (child.exitCode === null && child.signalCode === null) {
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      // noop
-    }
-  }
+/** The environment grok runs with. */
+export function childEnv(base = process.env) {
+  const env = { ...base, ...COMPAT_OFF_ENV };
+  for (const name of REMOVED_ENV) delete env[name];
+  return env;
 }
 
 /**
- * @param {DelegateOpts} opts
- * @returns {Promise<DelegateResult>}
+ * grok's closing JSON object, or null. It is normally the whole of stdout; a
+ * line-by-line fallback covers anything printed before it.
+ *
+ * @param {string} stdout
+ * @returns {Record<string, unknown>|null}
  */
-export async function runHeadless(opts) {
-  const bin = await resolveBin();
-  // Kept next to the run's NDJSON log rather than in a temp dir that gets swept:
-  // when a run goes wrong the first question is always "what exactly did we ask?"
-  const promptFile = `${opts.logPath}.prompt.txt`;
-  writeFileSync(promptFile, opts.prompt, 'utf8');
-
-  const args = buildArgs({
-    promptFile,
-    model: opts.model,
-    effort: opts.effort,
-    sessionId: opts.sessionId,
-    resumeSessionId: opts.resumeSessionId,
-  });
-  const child = spawnDirect(bin, args, {
-    cwd: opts.cwd ?? process.cwd(),
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...COMPAT_OFF_ENV },
-    // Mandatory on Windows. A dispatch launched from a backgrounded Bash call
-    // has no console of its own, so without this the OS hands this child a brand
-    // new one — on Win11 a Windows Terminal window titled with the CLI's exe
-    // path, which opens on dispatch and sits there for the whole life of the
-    // job. This is the spawn that was actually producing it.
-    windowsHide: true,
-    // Deliberately NOT detached: this child stays inside libuv's job object so
-    // `taskkill /T` can walk the tree.
-  });
-  if (!child.stdout || !child.stderr) {
-    throw new Error('grok spawn failed: stdout/stderr not attached');
-  }
-  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
-    opts.onSpawn(child.pid);
-  }
-
-  const logStream = createWriteStream(opts.logPath, { flags: 'a' });
-  // A failed log write (ENOSPC/EACCES/missing dir) must not crash the process
-  // and orphan a running grok — degrade to in-memory only.
-  let logBroken = false;
-  logStream.on('error', () => {
-    logBroken = true;
-  });
-  const logSafe = (s) => {
-    if (logBroken) return;
+export function parseResult(stdout) {
+  const tryParse = (s) => {
     try {
-      logStream.write(s);
+      const v = JSON.parse(s);
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
     } catch {
-      logBroken = true;
+      return null;
     }
   };
-
-  /** @type {Record<string, unknown>[]} */
-  const events = [];
-  // Grok explains a refused dispatch on stderr and nothing else — a bad session
-  // id answers with `no session id or title matched "…"`, which used to reach
-  // the log file and never the screen. Kept to a tail because stderr also
-  // carries progress chatter on a healthy run, and only the end of it is ever
-  // the reason a run stopped.
-  /** @type {string[]} */
-  const stderrTail = [];
-  const STDERR_TAIL_MAX = 20;
-  const keepStderr = (line) => {
-    const text = line.trim();
-    if (!text) return;
-    stderrTail.push(text);
-    if (stderrTail.length > STDERR_TAIL_MAX) stderrTail.shift();
-  };
-  let killed = false;
-
-  const stdoutLines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  const stderrLines = createInterface({ input: child.stderr, crlfDelay: Infinity });
-  // Attach before waiting on the child so a close that races with our
-  // await still resolves. Cheap insurance on top of child `'close'`
-  // (which already fires after stdio ends).
-  const stdoutDrained = once(stdoutLines, 'close');
-  const stderrDrained = once(stderrLines, 'close');
-  stdoutLines.on('line', (line) => {
-    logSafe(line + '\n');
-    const ev = parseLine(line);
-    if (!ev) return;
-    events.push(ev);
-    if (opts.onEvent) opts.onEvent(ev);
-  });
-
-  stderrLines.on('line', (line) => {
-    logSafe(`# stderr: ${line}\n`);
-    keepStderr(line);
-  });
-
-  let timeoutHandle;
-  const onTimeout = () => {
-    killed = true;
-    if (typeof child.pid === 'number') {
-      void killTree(child.pid, { graceMs: 5_000 });
-    }
-    setTimeout(() => escalateSigkill(child), 5_000);
-  };
-  if (typeof opts.timeoutSec === 'number' && opts.timeoutSec > 0) {
-    timeoutHandle = setTimeout(onTimeout, opts.timeoutSec * 1_000);
+  const whole = tryParse(stdout.trim());
+  if (whole) return whole;
+  const lines = stdout.split(/\r?\n/).filter((l) => l.trim());
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const v = tryParse(lines[i]);
+    if (v) return v;
   }
-
-  const exitCode = await new Promise((resolve) => {
-    let settled = false;
-    const done = (code) => {
-      if (settled) return;
-      settled = true;
-      resolve(code);
-    };
-    // Without an 'error' handler a spawn failure (missing/non-executable binary)
-    // emits an uncaught exception that kills the process.
-    child.on('error', (err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      logSafe(`# spawn error: ${message}\n`);
-      // A spawn failure produces no stdout, no stderr and no events, so this
-      // is the only place the reason exists. It joins the same tail rather
-      // than getting a channel of its own.
-      keepStderr(`spawn error: ${message}`);
-      done(127);
-    });
-    child.on('close', (code) => {
-      done(typeof code === 'number' ? code : 1);
-    });
-  });
-
-  if (timeoutHandle) clearTimeout(timeoutHandle);
-  await Promise.all([stdoutDrained, stderrDrained]);
-  await new Promise((resolve) => {
-    try {
-      logStream.end(() => resolve());
-    } catch {
-      resolve();
-    }
-  });
-  return { exitCode, events, killed, stderrTail };
+  return null;
 }
 
 /**
- * Cheap health probe: is the binary present and does it answer `--version`?
+ * grok's error text, with a provider message that grok wrapped in JSON
+ * (`API error (status 402 …): {"message": …}`) brought onto the first line.
  *
- * Deliberately not an auth check. `grok models` does report auth state (it
- * prints "You are logged in with grok.com.", exit 0) and
- * `/grok:setup` uses it for exactly that, but it is a network round-trip.
- * Liveness and login are separate questions and this probe answers the cheap one.
- *
- * @returns {Promise<{ok: boolean, detail: string}>}
+ * @param {string} message
  */
-export async function versionInfo() {
+export function readableError(message) {
+  const start = message.indexOf('{');
+  if (start < 0) return message;
   try {
-    const bin = await resolveBin();
-    const res = await run(bin, ['--version'], { timeoutMs: 5_000 });
-    const text = `${res.stdout}${res.stderr}`.trim();
-    return { ok: res.exitCode === 0, detail: text || '(no output)' };
-  } catch (err) {
-    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    const inner = JSON.parse(message.slice(start));
+    if (typeof inner?.message === 'string' && inner.message.trim()) {
+      return `${message.slice(0, start).trim()} ${inner.message.trim()}`.trim();
+    }
+  } catch {
+    // not JSON after all
   }
+  return message;
 }
 
+/**
+ * @typedef {Object} RunResult
+ * @property {number} exitCode
+ * @property {string} sessionId
+ * @property {string} text
+ * @property {string=} stopReason
+ * @property {string=} error
+ * @property {number=} turns
+ */
+
+/**
+ * Run grok once and wait for it. A brief passed inline goes through a temp file,
+ * so no brief ever reaches the command line.
+ *
+ * @param {{prompt?: string, promptFile?: string, model?: string, effort?: string, session?: string, cwd?: string}} o
+ * @returns {Promise<RunResult>}
+ */
+export async function runHeadless(o) {
+  const bin = await resolveBin();
+  const tempFile = o.promptFile ? null : join(tmpdir(), `grok-brief-${randomUUID()}.md`);
+  if (tempFile) writeFileSync(tempFile, o.prompt ?? '', 'utf8');
+  const sessionId = o.session ?? randomUUID();
+  const args = buildArgs({ promptFile: o.promptFile ?? tempFile, model: o.model, effort: o.effort, sessionId, resume: Boolean(o.session) });
+  try {
+    const res = await run(bin, args, { cwd: o.cwd ?? process.cwd(), env: childEnv() });
+    const out = parseResult(res.stdout) ?? {};
+    const stderr = res.stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let error = out.type === 'error' || out.error ? String(out.message ?? out.error ?? '') : '';
+    // No JSON at all (a crash, a refused flag): the end of stderr says why.
+    if (!error && res.exitCode !== 0 && !out.text) error = stderr.slice(-5).join('\n');
+    return {
+      exitCode: res.exitCode,
+      sessionId: typeof out.sessionId === 'string' ? out.sessionId : sessionId,
+      text: typeof out.text === 'string' ? out.text : '',
+      stopReason: typeof out.stopReason === 'string' ? out.stopReason : undefined,
+      error: error ? readableError(error.trim()) : undefined,
+      turns: typeof out.num_turns === 'number' ? out.num_turns : undefined,
+    };
+  } finally {
+    if (tempFile) rmSync(tempFile, { force: true });
+  }
+}

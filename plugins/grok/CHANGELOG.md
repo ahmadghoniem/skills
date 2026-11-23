@@ -1,6 +1,41 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — the trim
+
+Claude Code's background tasks already report when a run ends, keep its whole output and
+stop it with its process tree (TaskStop). Everything the plugin did that repeated them is
+gone, and so is what Claude does better itself.
+
+### Removed
+
+- **The job store, `/grok:result`, `/grok:cancel` and `/grok:resume`.** They came from
+  cursor-plugin-cc, which ran jobs detached with `--background`; that was removed in 0.5.0.
+  A run now ends with `session: <id>`, and `--session <id>` continues it. `grok sessions
+  list` and `grok export <id>` read past sessions. Job names, `--list`, the progress line and
+  the orphan check go with the store.
+- **`--timeout` and the watchdog.** A stalled grok ends its own run; TaskStop covers the rest.
+- **The `wander` check and the git snapshots**, and **`⚠ failed-commands`** with its
+  papercut rows: Claude reads `git diff` and runs the brief's check itself, and every
+  failed-command cut so far was an intended exit.
+- **The streaming event parser.** grok runs with `--output-format json` and the plugin
+  reads one object (text, stop reason, session id, error).
+- **`args.mjs`**, the splitter for arguments typed as one string. Every script now reads its
+  flags with Node's `parseArgs`; Claude builds the command line.
+- **The model list in `/grok:setup` and `--print-models`.** `grok models` prints it.
+
+### Changed
+
+- **The "newer grok" line prints once per release**, not after every run.
+- **`CLAUDECODE`, `GROK_AGENT`, `GROK_CONFIG`, `GROK_CONFIG_PATH` and `GROK_FOLDER_TRUST`
+  are removed from grok's environment.** grok does not read `CLAUDECODE`, but a `claude`
+  command run inside grok took itself for a nested session and refused to start.
+- **`/grok:papercut` takes `--session` and `--model`** instead of `--job`, and Claude runs it
+  with the flags rather than passing `$ARGUMENTS` as one string.
+- **Process, release and papercut helpers come from `plugins/_shared`**, copied into
+  `scripts/lib/shared/` by `tools/sync-shared.mjs`. `CGD_RELEASE_CHECK` is now
+  `DELEGATE_RELEASE_CHECK`.
+
+### Checked against grok 1.0.92
 
 Checked against grok 1.0.92. Every flag `buildArgs` passes is accepted; `--trust` and
 `--no-auto-update` are hidden from `grok --help` and documented in the bundled docs. The

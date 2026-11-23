@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task to the Grok Build CLI.
-argument-hint: '[--prompt-file <path>] [--model <id>] [--effort low|medium] [--timeout <sec>] [--session <uuid>] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <id>] [--effort low|medium] [--session <uuid>] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -11,11 +11,6 @@ allowed-tools: Bash(node:*), Bash(cat:*), Write
 Use grok for well-specified, high-volume work that would otherwise consume
 context better spent on judgement. Tokens land in grok's context, so send the
 task and let grok inspect files rather than pre-reading the tree and pasting it in.
-
-## The job name
-
-This command prints one (``grok `add-retry-to-fetchuser-a7f3` ``). `/grok:result`,
-`/grok:resume` and `/grok:cancel` take it.
 
 ## Writing the brief
 
@@ -59,7 +54,7 @@ One dispatch per coherent slice. Run at most three grok jobs at once.
 
 Omit `--model`. grok then uses the account default that `grok models` reports, so a new
 xAI model applies without a plugin change. Pass a model only when the user names one,
-and never invent an id; `/grok:setup` lists the ones the account has.
+and never invent an id; `grok models` lists the ones the account has.
 
 `--effort` defaults to `medium`. Pass `--effort low` for mechanical work such as renames,
 moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
@@ -70,23 +65,20 @@ moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
    a brief longer than one line on the command line.
 2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
 
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cgd/briefs/<short-name>.md" [--effort low] [--timeout <sec>]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cgd/briefs/<short-name>.md" [--effort low]
 
    A one-line task can go inline instead: `-- --effort low "Rename X to Y in src/a.mjs"`.
-   When `$ARGUMENTS` is still one unsplit string, pass it as `-- --arg-string "$ARGUMENTS"`
-   so the plugin splits it and keeps its newlines.
-3. Stop. The task notification arrives when grok finishes. Do not read the job log, the
-   task output file or `~/.cgd/jobs` while it runs, and do not loop on `/grok:result`. If
-   the user asks how it is going, run `/grok:result <job>` once.
+3. Stop. The task notification arrives when grok finishes, with the whole output. To stop
+   a run early, use TaskStop on its background task; that ends grok's process tree too.
 
 | Flag | Effect |
 | --- | --- |
-| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
-| `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
+| `--prompt-file <path>` | Read the brief from this file. Not combined with an inline task. |
 | `--model <id>` | Pin a model from `grok models`. Omit unless the user chose one. |
 | `--effort <level>` | `low` or `medium`, passed to grok's `--reasoning-effort`. Defaults to `medium`. |
-| `--timeout <sec>` | Kill the run after this many seconds. Off by default: a stalled run ends at grok's own 3600s idle timeout and says why. |
-| `--session <uuid>` | Continue that grok session. `/grok:resume` sets it from a job id; a fresh dispatch is the default. |
+| `--session <uuid>` | Continue that grok session, with the id from a run's last line. A follow-up goes in the prompt; with none, grok is told to continue where it left off. |
+
+To see past grok sessions, `grok sessions list`; to read one, `grok export <id>`.
 
 ## Reading the output
 
@@ -94,7 +86,7 @@ moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
 
 If grok's write-up says something blocked it (a missing tool, a refused command, an
 instruction it could not follow), record it with
-`/grok:papercut --text "<grok's words>" --job <id>`.
+`/grok:papercut --text "<grok's words>" --session <id>`.
 
 After a job that changed code, read `git diff` for the files the brief named and run the
 verification command the brief gave. Do not run the repository's whole test suite over a

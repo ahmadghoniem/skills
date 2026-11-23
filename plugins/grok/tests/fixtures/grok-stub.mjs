@@ -1,71 +1,36 @@
 #!/usr/bin/env node
-// Test stub for `grok`. Never talks to the network. Two modes:
-//   - `models` / `--version`: canned CLI output (from a real install).
-//   - otherwise: replay a fixture NDJSON stream chosen by GROK_STUB_FIXTURE.
-import { readFileSync } from 'node:fs';
+// Stands in for grok in the tests; never touches the network. GROK_STUB_LOG
+// receives the argv and the CLAUDECODE / GROK_CLAUDE_HOOKS_ENABLED it saw.
+// GROK_STUB_MODE picks the answer: ok (default), error, crash, max_tokens.
+import { appendFileSync, readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-
-if (process.env.GROK_STUB_FAIL === '1') {
-  process.stderr.write('stub: forced failure\n');
+if (args.includes('--version')) {
+  process.stdout.write('grok 1.0.92 (b06756fd6256)\n');
+  process.exit(0);
+}
+if (args[0] === 'models') {
+  process.stdout.write('You are logged in with grok.com.\n\nDefault model: grok-4.7\n');
+  process.exit(0);
+}
+if (process.env.GROK_STUB_LOG) {
+  const brief = readFileSync(args[args.indexOf('--prompt-file') + 1], 'utf8');
+  appendFileSync(
+    process.env.GROK_STUB_LOG,
+    `${JSON.stringify({ args, brief, CLAUDECODE: process.env.CLAUDECODE ?? null, hooks: process.env.GROK_CLAUDE_HOOKS_ENABLED ?? null })}\n`,
+  );
+}
+const s = args.indexOf('-s') >= 0 ? args[args.indexOf('-s') + 1] : args[args.indexOf('--resume') + 1];
+const mode = process.env.GROK_STUB_MODE ?? 'ok';
+if (mode === 'crash') {
+  process.stderr.write('warning: something noisy\nError: unexpected argument --bogus\n');
+  process.exit(2);
+}
+if (mode === 'error') {
+  process.stdout.write(
+    JSON.stringify({ type: 'error', message: 'Internal error: API error (status 402 Payment Required): {"message":"Grok Build usage balance exhausted"}' }),
+  );
   process.exit(1);
 }
-
-if (args[0] === 'models') {
-  process.stdout.write(
-    [
-      'You are logged in with grok.com.',
-      '',
-      'Default model: grok-4.7',
-      '',
-      'Available models:',
-      '  * grok-4.7 (default)',
-      '  - grok-4.6',
-      '',
-    ].join('\n'),
-  );
-  process.exit(0);
-}
-
-if (args.includes('--version')) {
-  process.stdout.write('grok 1.0.52 (0920c8169e27) [stable]\n');
-  process.exit(0);
-}
-
-// A run that never emits `end` and never exits, so the caller's watchdog is
-// what ends it. Set only for the run itself — `models` and `--version` are
-// answered above. This is the only way to reach the killed-run render path.
-if (process.env.GROK_STUB_HANG === '1') {
-  // One opening event first, as a real run sends, so the session counts as
-  // started and the killed run is offered a resume.
-  process.stdout.write('{"type":"text","data":"Starting."}\n');
-  // The interval is what holds the process open. Without it Node drains the
-  // loop with the await still pending and exits 13 ("never settled"), which
-  // looks like a crash rather than a hang.
-  setInterval(() => {}, 1_000);
-  await new Promise(() => {});
-}
-
-const fixture = process.env.GROK_STUB_FIXTURE;
-if (!fixture) {
-  process.stderr.write('stub: GROK_STUB_FIXTURE not set\n');
-  process.exit(2);
-}
-
-let content;
-try {
-  content = readFileSync(fixture, 'utf8');
-} catch (err) {
-  process.stderr.write(`stub: failed to read fixture ${fixture}: ${err.message}\n`);
-  process.exit(2);
-}
-
-// grok reports the session it was given (`-s` for a new one, `--resume` for an
-// existing one) in its `end` event, so the stub does the same.
-const flag = args.findIndex((a) => a === '-s' || a === '--resume');
-const session = flag === -1 ? undefined : args[flag + 1];
-for (const line of content.split('\n').filter((l) => l.length > 0)) {
-  const out = session ? line.replace(/"sessionId":"[^"]*"/, `"sessionId":"${session}"`) : line;
-  process.stdout.write(out + '\n');
-}
-process.exit(0);
+const stopReason = mode === 'max_tokens' ? 'max_tokens' : 'end_turn';
+process.stdout.write(JSON.stringify({ text: 'Done: renamed X to Y.\n', stopReason, sessionId: s, num_turns: 3 }, null, 2));
