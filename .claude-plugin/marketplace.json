@@ -34,7 +34,7 @@
     },
     {
       "name": "grok",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "source": "./plugins/grok",
       "description": "Delegate coding tasks from Claude Code to the Grok Build CLI.",
       "category": "engineering",
@@ -53,6 +53,17 @@
       "keywords": [
         "agy",
         "antigravity",
+        "agent-delegation"
+      ],
+      "strict": false
+    },
+    {
+      "name": "opencode",
+      "source": "./plugins/opencode",
+      "description": "Delegate coding tasks from Claude Code to the opencode CLI.",
+      "category": "engineering",
+      "keywords": [
+        "opencode",
         "agent-delegation"
       ],
       "strict": false

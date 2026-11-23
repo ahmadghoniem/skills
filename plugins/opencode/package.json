@@ -1,0 +1,39 @@
+{
+  "name": "claude-opencode-delegate",
+  "version": "0.1.0",
+  "description": "Use the opencode CLI from Claude Code to delegate coding tasks.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmadghoniem/skills.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "opencode",
+    "agent-delegation"
+  ],
+  "engines": {
+    "node": ">=18.18",
+    "opencode": ">=1.18.0"
+  },
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "vitest run --config evals/vitest.config.mjs",
+    "eval:live": "set OPENCODE_EVAL_LIVE=1&& vitest run --config evals/vitest.config.mjs",
+    "eval:triage": "node evals/triage.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}

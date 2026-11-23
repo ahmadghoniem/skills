@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Four standalone skills ship as the `kit` plugin. Three delegation plugins (`cursor`, `grok`, `agy`) ship alongside them, each keeping its own commands, scripts and test suite.
+Five standalone skills ship as the `kit` plugin. Four delegation plugins (`cursor`, `grok`, `agy`, `opencode`) ship alongside them, each keeping its own commands, scripts and test suite.
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -34,7 +34,7 @@ Installing still copies the plugin into `~/.claude/plugins/cache/`, so an edit i
 
 ```
 claude plugin marketplace update ahmadghoniem
-claude plugin update kit    # and cursor, grok, agy
+claude plugin update kit    # and cursor, grok, agy, opencode
 ```
 
 ## Skills
@@ -60,13 +60,14 @@ Reachable by name, and the agent fires them when a task fits.
 
 ## Delegation plugins
 
-Same shape in all three: `/<name>:delegate` hands a task to an external CLI, `/<name>:result` prints what came back, `/<name>:resume` continues it, `/<name>:cancel` kills it, `/<name>:setup` health-checks the CLI.
+Same shape in all four: `/<name>:delegate` hands a task to an external CLI, `/<name>:result` prints what came back, `/<name>:resume` continues it, `/<name>:cancel` kills it, `/<name>:setup` health-checks the CLI.
 
 | Plugin | CLI | Platform |
 | --- | --- | --- |
 | [cursor](./plugins/cursor/README.md) | `cursor-agent` (Composer) | Windows, Linux |
 | [grok](./plugins/grok/README.md) | `grok` (Grok Build) | Windows |
 | [agy](./plugins/agy/README.md) | `agy` (Antigravity) | Windows |
+| [opencode](./plugins/opencode/README.md) | `opencode` | Windows |
 
 Each plugin keeps its own `CHANGELOG.md` and version number.
 

@@ -1,6 +1,6 @@
 # Repo conventions
 
-This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising four plugins.
+This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising five plugins.
 
 ## Layout
 
@@ -10,11 +10,13 @@ Claude Code auto-discovers `skills/<name>/SKILL.md`, so `.claude-plugin/plugin.j
 
 Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`cursor:output-contract`), so those may repeat.
 
+`tools/<name>/` holds standalone scripts that are neither skill nor plugin. `tools/apply-patch/` is reached through a junction at `~/.claude/scripts/apply-patch`, so edits are live; its tests use `node:test` and need no install.
+
 ## Plugins
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises all four plugins (the skills bundle plus the three delegates). After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises all five plugins (the skills bundle plus the four delegates). After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -38,7 +40,7 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # cursor + grok + agy
+npm test              # cursor + grok + agy + opencode
 npm run test:agy      # or one at a time
 ```
 
@@ -54,7 +56,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@
+claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@, opencode@
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
@@ -65,7 +67,8 @@ So each cached version directory is replaced by a **Windows directory junction**
 ~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
 ~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0  ->  <repo>/plugins/cursor
 ~/.claude/plugins/cache/ahmadghoniem/grok/0.5.0     ->  <repo>/plugins/grok
-~/.claude/plugins/cache/ahmadghoniem/agy/0.1.0      ->  <repo>/plugins/agy
+~/.claude/plugins/cache/ahmadghoniem/agy/0.2.0      ->  <repo>/plugins/agy
+~/.claude/plugins/cache/ahmadghoniem/opencode/0.1.0 ->  <repo>/plugins/opencode
 ```
 
 Made with `New-Item -ItemType Junction -Path <cache dir> -Target <repo dir>` after deleting the copied directory. Now an edit here is live in the next session, with no update step.
