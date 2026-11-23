@@ -1,95 +1,56 @@
 # opencode
 
-Hand a task from Claude Code to the [opencode](https://opencode.ai) CLI, then read
-what came back.
+Delegate coding tasks from Claude Code to the [opencode](https://opencode.ai) CLI, then review the diff and land it yourself. opencode reaches the models the other delegates don't: DeepSeek, Kimi, GLM and Qwen through your own provider keys.
 
-Same shape as the `cursor`, `grok` and `agy` plugins in this repo: Claude writes the
-brief and keeps the judgement, opencode does the typing in its own context, and the
-diff comes back here for review.
+Sibling of [grok](../grok/README.md) and [agy](../agy/README.md), and a member of the [council](../council/README.md). The plugin keeps only what Claude can't work out on its own: how to start opencode headless, and how to read its failures. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
-```
-/plugin install opencode@ahmadghoniem
-/opencode:setup
+```bash
+claude plugin marketplace add ahmadghoniem/skills
+claude plugin install opencode@ahmadghoniem
 ```
 
-Needs `opencode` on `PATH` (`npm i -g opencode-ai`, `bun add -g opencode-ai`, or the
-installer at opencode.ai) with at least one authenticated provider
-(`opencode auth login`, or a provider configured in `~/.config/opencode/opencode.json`).
-`OPENCODE_BIN` overrides the lookup.
+Windows only. Requires opencode `engines.opencode` or later on `PATH` (`bun add -g @opencode/cli`), at least one provider key (`opencode auth list`), and Node 18.18+. `OPENCODE_BIN` overrides the lookup.
 
 ## Commands
 
-| Command | What it does |
+- **`/opencode:delegate <task>`** hands a task to opencode in a background Bash call. The output ends with `session: <id>`; `--session <id>` continues it. TaskStop on the background task stops a run.
+- **`/opencode:setup`** checks the binary and the version. `opencode models` lists the models.
+- **`/opencode:update`** runs `opencode upgrade`, lists the releases since the version the plugin was last reviewed against, sets `engines.opencode`, and prints the open papercuts.
+- **`/opencode:papercut`** records what opencode said blocked it, or closes papercuts once fixed.
+
+| Flag | Effect |
 | --- | --- |
-| `/opencode:delegate` | Dispatch a brief. Prints a job name. |
-| `/opencode:result` | Print a finished job's output, or `--list` the tracked jobs. |
-| `/opencode:resume` | Continue a session, or `--fork` it. |
-| `/opencode:cancel` | Kill a running job and its child processes. |
-| `/opencode:models` | The live model list, and the allowlist that governs spending. |
-| `/opencode:setup` | Health-check the CLI, its providers, and the allowlist. |
-| `/opencode:update` | Upgrade opencode and report what changed. |
+| `--prompt-file <path>` | Read the brief from a file. |
+| `--model <provider/model>` | Default `nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017`. |
+| `--session <ses_id>` | Continue that session. |
 
-## The allowlist
+## How opencode is run
 
-`opencode run` with no `--model` **does not fail**. On 1.18.31 it picks one of the
-configured models by itself, and with a hundred-odd models on tap — most of them
-metered — that silently spends money the user did not agree to.
+`opencode run --format json --auto --model <id> --session <ses_id> -f <brief> -- <message>`
 
-So this plugin will not dispatch without a model drawn from an explicit allowlist:
+- **`--model` is always passed.** With none, opencode picks one of its configured models on its own, which may be metered.
+- **`--auto`** approves every permission not explicitly denied; nobody can answer a prompt in a headless run.
+- **`-f <brief>`** attaches the brief, read in full; the message only points at it. `-f` swallows the tokens after it, so `--` comes before the message. An inline task goes through a temp file.
+- **`--session ses_…`** names the session before the run starts, so a run that dies can still be continued. opencode creates a session it does not know and refuses ids that do not start with `ses`. `--continue` is never used: it takes the newest session, which may belong to another Claude session.
+- **`--format json`** prints one event per line. The write-up is the `text` parts; an `error` event (`provider.quota`, `provider.auth`, `provider.no-route`) says why a run failed. A tool part whose state is `error` could not run at all; a command that exits non-zero still reports `completed`.
+- `CLAUDECODE` is removed from opencode's environment, so a `claude` command it runs is not refused as a nested session.
 
-```
-/opencode:models                                              # see what exists
-/opencode:models --allow nebius/deepseek-ai/DeepSeek-V4.1-Flash
-/opencode:models --default nebius/deepseek-ai/DeepSeek-V4.1-Flash
-```
+## Output and papercuts
 
-The first model ever allowed becomes the default. The list lives in
-`~/.cod/config.json`, machine-wide rather than per repository: which models you may
-spend on is a property of your accounts, not of the checkout you are standing in.
+A clean run prints the write-up, then `session: <id>`. `⚠ exit N` and `⚠ error: …` are added when a run fails; `contract.md` explains them to Claude, and `tests/contract.test.mjs` keeps it in step with `WARNING_IDS`. Errors and tools that could not run (one row per tool) go to `~/.cod/papercuts.jsonl`, which `/opencode:update` reviews. Once per release, a line after the output says a newer opencode is out (from the npm registry entry for `@opencode/cli`).
 
-An empty allowlist is a hard stop, not a warning. That is the point of it.
+## Environment
 
-## Permissions
+| Variable | Effect |
+| --- | --- |
+| `OPENCODE_BIN` | Full path to the opencode binary. |
+| `COD_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.cod`. |
+| `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
 
-Every run passes `--auto`, opencode's own approve-everything switch — the counterpart
-of `--dangerously-skip-permissions`. A headless run has nobody to answer a permission
-prompt, and `OPENCODE_PERMISSION` with `"ask"` would block until the watchdog killed
-it. Treat every dispatch as able to edit files and run commands.
+`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
 
-## What it does not do
+## Licence
 
-No self-healing. No friction log, no `kaizen` pass, no hooks, no long-lived
-`opencode serve` broker to babysit. A run is one `opencode run --format json` child
-process with a watchdog on it; when it dies, it dies, and the ⚠ lines say why.
-
-## Reading the output
-
-A clean run prints opencode's write-up plus one stats line with the real cost and
-token counts. Anything that could have gone wrong shows up as a `⚠` line.
-
-One trap worth knowing: opencode marks a tool `completed` whenever the tool itself
-ran, **including when the command it ran exited non-zero**. A failing test is a
-completed `bash` call with the failure in its output, so it raises no ⚠ line. Run the
-verification yourself. [`skills/output-contract/contract.md`](./skills/output-contract/contract.md)
-is the full contract.
-
-## Layout
-
-```
-commands/                the seven slash commands
-scripts/delegate.mjs     dispatch, job record, render
-scripts/lib/opencode.mjs argv, binary resolution, model cache, headless spawn
-scripts/lib/config.mjs   the allowlist gate
-scripts/lib/parse.mjs    the --format json event stream
-scripts/lib/render.mjs   the ⚠ registry
-tests/                   vitest, run with `npm test`
-```
-
-## Tests
-
-```
-npm install
-npm test
-```
+MIT.

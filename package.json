@@ -18,11 +18,14 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "test": "npm run test:cursor && npm run test:grok && npm run test:agy",
+    "test": "npm run test:shared && npm run test:cursor && npm run test:grok && npm run test:agy && npm run test:opencode && npm run test:apply-patch",
+    "test:shared": "node tools/sync-shared.mjs --check && node --test plugins/_shared/shared.test.mjs",
     "test:cursor": "npm --prefix plugins/cursor test",
     "test:grok": "npm --prefix plugins/grok test",
     "test:agy": "npm --prefix plugins/agy test",
-    "install:all": "npm --prefix plugins/cursor ci && npm --prefix plugins/grok ci && npm --prefix plugins/agy ci",
+    "test:opencode": "npm --prefix plugins/opencode test",
+    "test:apply-patch": "node --test tools/apply-patch/apply-patch.test.mjs tools/apply-patch/bash-guard.test.mjs",
+    "install:all": "npm --prefix plugins/cursor ci && npm --prefix plugins/grok ci && npm --prefix plugins/agy ci && npm --prefix plugins/opencode ci",
     "validate": "claude plugin validate . --strict",
     "eval:agy": "npm --prefix plugins/agy run eval",
     "eval:agy:live": "npm --prefix plugins/agy run eval:live"

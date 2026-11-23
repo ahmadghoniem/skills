@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the opencode CLI.
-argument-hint: '[--prompt-file <path>] [--model <id>] [--variant <level>] [--timeout <sec>] [--dir <path>] [--session <id>] [--continue] [--fork] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <provider/model>] [--session <ses_id>] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -9,57 +9,41 @@ allowed-tools: Bash(node:*), Bash(cat:*), Write
 ## What opencode is for
 
 Use opencode for well-specified, high-volume work that would otherwise consume
-context better spent on judgement. Tokens land in opencode's context, so send the
-task and let opencode inspect files rather than pre-reading the tree and pasting it in.
-
-## The job name
-
-This command prints one (`add-retry-to-fetchuser-a7f3`). `/opencode:result` takes it.
+context better spent on judgement, and to reach models the other delegates don't
+have (DeepSeek, Kimi, GLM, Qwen through the user's providers). Tokens land in
+opencode's context, so send the task and let opencode inspect files rather than
+pre-reading the tree and pasting it in.
 
 ## Writing the brief
 
-opencode has no conversation context. Everything the task depends on goes in the brief.
-Write for a fast executor working from a contract, not a collaborator you can correct
-mid-run. Do not pre-read the repo to write it: name the files and let opencode read them.
+opencode starts with none of your context. It reads the repo's `AGENTS.md`. It does not
+see this conversation, `~/.claude/CLAUDE.md` or `~/.claude/rules/`; whatever of that the
+result depends on goes in the brief.
 
-Every brief has these sections, in this order:
+Write for a fast executor working from a contract, not a collaborator you can correct
+mid-run. Every brief has these sections, in this order:
 
 1. **Goal**: one or two sentences. What is the outcome, and what is it a step of.
-2. **Repo context**: one or two lines. Stack, and which convention file to follow
-   (`AGENTS.md`, `CLAUDE.md`) if the repo has one.
+2. **Repo context**: the stack, and what the paragraph above calls for.
 3. **Acceptance criteria**: one to five concrete, checkable bullets.
-4. **Files to touch**: an explicit list. opencode must not wander outside it unless the
-   task cannot predict the list.
-5. **How to verify**: the exact command that proves the task is done. Without it opencode
-   declares "done" on unverified work.
+4. **Files to touch**: every file you already know the task needs, as paths, plus the
+   files that show the pattern to follow. Do not read the tree to complete the list.
+5. **How to verify**: the exact command that proves the task is done.
 
 Then a short **Guardrails** block: do not commit; do not delete files outside the list; do
 not rename public APIs unless asked; do not touch lockfiles unless the task is about
 dependencies; if a pre-existing test already fails, report it, do not fix it.
 
-Point at files rather than pasting them. A spec that already lives in the repo is a path
-in the brief, not a copy.
+Do not ask for a list of changed files; you read the diff. Ask for what the diff cannot
+show: what opencode was unsure about or skipped, problems it noticed but did not fix, the
+result of each check.
 
-One dispatch per coherent slice. Run at most three opencode jobs at once.
+## Model
 
-## The model
-
-`opencode run` with no `--model` **does not fail** — it picks one of the configured
-models itself, and that model may be metered. So this plugin will not dispatch without a
-model drawn from an explicit allowlist, and `--model` must name something on it.
-
-Omit `--model` and the default from the allowlist is used. Pass one only when the user
-names it. Never invent an id.
-
-Allowed right now:
-
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/models.mjs" -- --allowed`
-
-If that says nothing is allowed, stop and run `/opencode:models` — do not pick one
-yourself, and do not work around the gate.
-
-`--variant` is opencode's reasoning-effort knob (`minimal`, `low`, `medium`, `high`,
-`max`, depending on the provider). Models that do not define variants ignore it.
+Omit `--model`: the plugin uses `nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017`. The plugin
+always passes a model, because opencode with none picks one of its configured models on
+its own, which may be metered. Pass `--model` only when the user names one; `opencode
+models` lists the ids (`provider/model`, `#variant` for an effort level). Never invent one.
 
 ## Run it
 
@@ -67,42 +51,21 @@ yourself, and do not work around the gate.
    a brief longer than one line on the command line.
 2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
 
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cod/briefs/<short-name>.md" [--model <id>] [--timeout <sec>]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cod/briefs/<short-name>.md" [--model <id>]
 
    A one-line task can go inline instead: `-- "Rename X to Y in src/a.mjs"`.
-3. Stop. The task notification arrives when opencode finishes. Do not read the job log,
-   the task output file or `~/.cod/jobs` while it runs, and do not loop on
-   `/opencode:result`. If the user asks how it is going, run `/opencode:result <job>` once.
+3. Stop. The task notification arrives when opencode finishes, with the whole output. To
+   stop a run early, use TaskStop on its background task; that ends opencode's process tree too.
 
 | Flag | Effect |
 | --- | --- |
-| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
-| `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. The file is attached to the run with opencode's `-f`, so nothing long ever travels through argv. |
-| `--model <id>` | Pin an allowed `provider/model`. Omit to use the allowlist's default. |
-| `--variant <level>` | Provider-specific reasoning effort. Ignored by models that define no variants. |
-| `--timeout <sec>` | The watchdog. Default 3600 (60m). `opencode run` has no timeout of its own, so this is the only clock. |
-| `--dir <path>` | Run against this directory instead of the repository root. The job record still lives with this repo. |
-| `--session <id>` | Resume a specific opencode session (`ses_…`). Fresh dispatch is the default. |
-| `--continue` | Resume opencode's most recent session. Machine-wide, so it may belong to another repository. Only when you pass it yourself; the plugin never falls back to it. |
-| `--fork` | With `--session` or `--continue`, branch the session rather than continuing it. |
-
-The plugin always passes `--auto`, opencode's approve-everything switch. There is nobody
-to answer a permission prompt in a headless run, and the alternative blocks until the
-watchdog kills it. Treat every dispatch as able to edit files and run commands.
+| `--prompt-file <path>` | Read the brief from this file. Not combined with an inline task. |
+| `--model <id>` | A `provider/model` id from `opencode models`. |
+| `--session <ses_id>` | Continue that session, with the id from a run's last line. A follow-up goes in the prompt. |
 
 ## Reading the output
 
-!`cat "${CLAUDE_PLUGIN_ROOT}/skills/output-contract/contract.md"`
+!`cat "${CLAUDE_PLUGIN_ROOT}/contract.md"`
 
-A non-zero exit from `delegate.mjs` means the run did not finish, not that opencode's work
-is wrong. Read the ⚠ lines.
-
-After a job that changed code, find out for yourself what changed and whether it works,
-then run the verification command the brief gave. `git diff` on the files the brief named
-is the usual route; reading the changed files is as good, and on a job whose output is not
-a code change it is the only route. Pick whichever answers the question. Do not run the
-repository's whole test suite over a slice. **Run the verification yourself**: opencode
-reports a shell command that exited non-zero as a completed tool call, so a failing test
-does not raise a ⚠ line and its report of success is not evidence. Find out what changed
-before acting on a `/opencode:resume` line: resume only if the work is missing, and prefer
-resume to a new dispatch.
+After a run that changed code, read `git diff` for the files the brief named and run the
+verification command the brief gave.

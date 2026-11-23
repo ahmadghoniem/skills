@@ -1,6 +1,6 @@
 {
   "name": "claude-opencode-delegate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Use the opencode CLI from Claude Code to delegate coding tasks.",
   "type": "module",
   "license": "MIT",
@@ -21,17 +21,14 @@
   ],
   "engines": {
     "node": ">=18.18",
-    "opencode": ">=1.18.0"
+    "opencode": ">=2.0.32"
   },
   "os": [
     "win32"
   ],
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest",
-    "eval": "vitest run --config evals/vitest.config.mjs",
-    "eval:live": "set OPENCODE_EVAL_LIVE=1&& vitest run --config evals/vitest.config.mjs",
-    "eval:triage": "node evals/triage.mjs"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "vitest": "^2.1.8"
