@@ -1,12 +1,7 @@
-// NDJSON parser for `grok --output-format streaming-json`.
+// NDJSON parser for `grok --output-format streaming-json`: flat `{type, …}`
+// objects, documented in grok's bundled `14-headless-mode.md`.
 //
-// A note on where this shape came from: `grok --help` describes streaming-json
-// as "NDJSON of the agent native ACP session updates", which would imply
-// `{method:'session/update', params:{…}}` envelopes. Real runs emit nothing of
-// the sort — they emit flat `{type, …}` objects. This parser is written against
-// what grok 1.0.5 actually produced on a captured run, not against the docs.
-//
-// Event types observed:
+// Event types read:
 //   available_commands  — startup inventory of tools and slash commands
 //   thought             — reasoning delta, `.data` is a string fragment
 //   text                — assistant message delta, `.data` is a string fragment
@@ -100,31 +95,6 @@ export function normalisePaths(paths, root) {
  */
 export const MAX_SUMMARY_CHARS = 256_000;
 
-const CLAIM_VERB = /\b(created|wrote|modified|updated)\b/i;
-
-/** A `file://` link, a local markdown link, `the file`, or a `name.ext` token. */
-const FILE_REFERENCE = [/file:\/\//i, /\]\([^)\s]+\)/, /\bthe file\b/i, /\w\.[a-z][a-z0-9]{0,7}\b/i];
-
-/**
- * True when grok's write-up claims it created or modified files.
- *
- * Used only to catch the case where the write-up says work landed and the
- * working tree disagrees. A false positive costs a warning line on a run that
- * was fine, and the output contract is quiet by default, so one line must hold
- * both a create/write verb and a file reference, with web URLs removed first.
- * Matching across the whole write-up fired on research answers that mentioned
- * a `file://` page, or said "updated 16 Oct" beside an `ai.google.dev` link.
- *
- * @param {string} response
- * @returns {boolean}
- */
-export function claimsFileChanges(response) {
-  return String(response ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\bhttps?:\/\/\S*/gi, ''))
-    .some((line) => CLAIM_VERB.test(line) && FILE_REFERENCE.some((re) => re.test(line)));
-}
-
 /**
  * grok can wrap the provider's error as pretty-printed JSON after a prefix:
  * `Internal error: {\n  "message": "API error (status 402 …)", … }`. The first
@@ -175,8 +145,8 @@ function capSummary(text) {
  * @property {string|undefined} errorDetail
  * @property {boolean} success
  * @property {number} toolCalls
- * @property {string[]} writeTargets
- * @property {boolean} claimedFileChanges
+ * @property {string[]} writeTargets  Paths grok's write and edit tools targeted:
+ *   repo-relative under `root`, absolute (or `../`) outside it.
  */
 
 /**
@@ -295,8 +265,7 @@ export function summariseEvents(events, root) {
   return {
     summary: capSummary(summary || '(no final message captured)'),
     toolCalls,
-    writeTargets: dedupePaths(writeTargets),
-    claimedFileChanges: claimsFileChanges(summary),
+    writeTargets: normalisePaths(writeTargets, root),
     commands,
     failedCommands: commands.filter((c) => typeof c.exitCode === 'number' && c.exitCode !== 0),
     sessionId,

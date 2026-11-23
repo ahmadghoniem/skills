@@ -161,10 +161,10 @@ describe('warnings', () => {
     ]);
   });
 
-  // Backported from agy. Gated on both halves: a write-up that claims changes,
-  // and a tree that shows none.
-  it('raises wander when the write-up claims changes the tree does not show', () => {
-    const view = { ...clean, summary: 'created src/a.mjs', gitRepo: true, gitFiles: [], claimedFileChanges: true };
+  // Gated on both halves: a write tool aimed inside the repo, and a tree that
+  // shows no change.
+  it('raises wander when an in-repo write left the tree unchanged', () => {
+    const view = { ...clean, gitRepo: true, gitFiles: [], writeTargets: ['src/a.mjs'] };
     expect(warnings(view).map((w) => w.id)).toEqual(['wander']);
   });
 
@@ -173,7 +173,20 @@ describe('warnings', () => {
       ...clean,
       gitRepo: true,
       gitFiles: [{ status: 'M', path: 'src/a.mjs' }],
-      claimedFileChanges: true,
+      writeTargets: ['src/a.mjs'],
+    };
+    expect(warnings(view)).toEqual([]);
+  });
+
+  // Both 1.0.70 false alarms: the brief asked for files outside the repo, and
+  // the write-up said "nothing in the repo was modified".
+  it('stays quiet when every write landed outside the repo', () => {
+    const view = {
+      ...clean,
+      summary: 'Nothing in the repo was modified. The note is in ~/tmp-review/note.md.',
+      gitRepo: true,
+      gitFiles: [],
+      writeTargets: ['C:\\Users\\me\\tmp-review\\note.md', '/tmp/x.md', '../sibling/y.md'],
     };
     expect(warnings(view)).toEqual([]);
   });
@@ -181,6 +194,6 @@ describe('warnings', () => {
   // Outside a repo there is no tree to compare against, so silence is the
   // honest answer rather than a false alarm.
   it('stays quiet outside a git repo', () => {
-    expect(warnings({ ...clean, gitRepo: false, gitFiles: [], claimedFileChanges: true })).toEqual([]);
+    expect(warnings({ ...clean, gitRepo: false, gitFiles: [], writeTargets: ['src/a.mjs'] })).toEqual([]);
   });
 });

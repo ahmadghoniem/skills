@@ -26,8 +26,7 @@ export const WARNING_IDS = Object.freeze([
 ]);
 
 export const WANDER_WARNING =
-  'grok reported file changes but the working tree is unchanged — the writes\n' +
-  '  did not land where you are looking.';
+  "grok's write tools targeted files in this repo, but the working tree is unchanged.";
 
 /**
  * @typedef {import('./jobs.mjs').JobRecord} JobRecord
@@ -123,11 +122,16 @@ export function warnings(job) {
     });
   }
 
-  // The write-up says files were written and two `git status` readings, taken
-  // either side of the run, disagree. Outside a git repo there is nothing to
-  // compare against, so it is not checked.
+  // grok's write or edit tool targeted a path inside the repo, yet two
+  // `git status` readings taken either side of the run show no change. Writes
+  // outside the repo don't count: briefs often ask for them. This reads tool
+  // calls, not the write-up: matching words in prose fired on "nothing was
+  // modified" and on quoted text. Outside a git repo it is not checked.
+  const inRepoWrites = (job.writeTargets ?? []).filter(
+    (p) => !/^([a-zA-Z]:[\\/]|[\\/])/.test(p) && !/^\.\.([\\/]|$)/.test(p),
+  );
   const noGitChanges = job.gitRepo !== false && (job.gitFiles?.length ?? 0) === 0;
-  if (noGitChanges && job.claimedFileChanges) {
+  if (noGitChanges && inRepoWrites.length > 0) {
     out.push({ id: 'wander', line: WANDER_WARNING });
   }
 

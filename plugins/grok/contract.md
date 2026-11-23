@@ -33,7 +33,7 @@ lines say why.
 | `killed` | `⚠ run was killed before finishing (timeout or watchdog)` | The `--timeout` elapsed and the plugin killed the process tree. The write-up, if any, is partial. |
 | `failed-commands` | `⚠ N commands exited non-zero — reported, not judged; grok may have meant them:` | Terminal commands that returned non-zero, each with its exit code and up to ten lines of output. This does **not** mean the job failed: a `grep` that matches nothing, a deliberately red test and a `command -v` probe all land here. It also catches a failed verification step under a clean stop reason. Report it and move on. |
 | `resume` | `⚠ this run can be resumed where it stopped: /grok:resume <id>` | The run ended before grok finished (the timeout, a dropped connection, a quota error) and grok had started the session. Resuming keeps what grok already read and changed; a fresh dispatch starts from zero. grok may have finished the work before the error, so check the diff first: resume only if the work is missing, and prefer it to a new dispatch. |
-| `wander` | `⚠ grok reported file changes but the working tree is unchanged` | The write-up says files were created or modified, and two `git status` readings taken either side of the run show no change. Read it as "the claim and the repo do not match". Only checked inside a git repo. |
+| `wander` | `⚠ grok's write tools targeted files in this repo, but the working tree is unchanged` | grok's write or edit tool targeted a path inside the repo, and two `git status` readings taken either side of the run show no change. Writes outside the repo don't count. Only checked inside a git repo. |
 
 ## The update line
 

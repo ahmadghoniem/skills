@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  claimsFileChanges,
   dedupePaths,
   MAX_SUMMARY_CHARS,
   normalisePaths,
@@ -109,23 +108,17 @@ describe('summariseEvents', () => {
   });
 });
 
-describe('claimsFileChanges', () => {
-  it.each([
-    'Created src/a.mjs with the retry helper.',
-    'I updated the file and ran the tests.',
-    'Wrote [notes](docs/notes) for the next step.',
-    'Modified [greet](file:///C:/repo/greet) to export the helper.',
-  ])('reads %j as a claim', (text) => {
-    expect(claimsFileChanges(text)).toBe(true);
-  });
-
-  // Both from research runs on grok 1.0.52 that changed nothing and said so.
-  it.each([
-    'Six of them open `file://` playgrounds.\nNone of them start the CLI.',
-    "Google's [pricing](https://ai.google.dev/gemini-api/docs/pricing) (updated 16 Oct 2026): $0.75 per million tokens.",
-    'The plan was updated.\nSee README.md for the rest.',
-  ])('does not read %j as a claim', (text) => {
-    expect(claimsFileChanges(text)).toBe(false);
+describe('writeTargets', () => {
+  // From a 1.0.70 research run whose brief asked for a note outside the repo.
+  it('makes paths under the root relative and leaves the rest absolute', () => {
+    const s = summariseEvents(
+      [
+        { type: 'tool_call', toolCallId: 'a', rawInput: { file_path: 'C:\\repo\\src\\a.mjs' } },
+        { type: 'tool_call', toolCallId: 'b', rawInput: { file_path: 'C:\\notes\\out.md' } },
+      ],
+      'C:/repo',
+    );
+    expect(s.writeTargets).toEqual(['src/a.mjs', 'C:\\notes\\out.md']);
   });
 });
 

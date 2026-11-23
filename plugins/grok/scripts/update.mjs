@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Updates the grok CLI and reports what changed: records the version before
-// `grok update`, runs it, then lists the releases in between with their dates,
-// followed by the open papercuts to review against the new version.
+// `grok update`, runs it, then lists the releases since the version the plugin
+// was last reviewed against, with their dates, followed by the open papercuts
+// to review against the new version.
 //
 // grok publishes no changelog. The npm registry entry for `@xai-official/grok`
 // is the one public record of its releases, so the version list and dates come
 // from there.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
 import { parseVersion, resolveBin } from './lib/grok.mjs';
 import { formatOpenPapercuts } from './lib/papercuts.mjs';
@@ -23,6 +25,27 @@ const RELEASE_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const UPDATE_TIMEOUT_MS = 15 * 60_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const PACKAGE_JSON = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+
+/**
+ * The grok version this plugin was last reviewed against: `engines.grok` in
+ * package.json. `/grok:setup` refuses an older grok, and `/grok:update` sets it
+ * to the version it installs, after listing the releases since the last one.
+ *
+ * @returns {string|null}
+ */
+export function reviewedGrokVersion() {
+  const range = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8')).engines?.grok ?? '';
+  return /\d+\.\d+\.\d+/.exec(range)?.[0] ?? null;
+}
+
+/** @param {string} version */
+function setReviewedGrokVersion(version) {
+  const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'));
+  pkg.engines = { ...pkg.engines, grok: `>=${version}` };
+  writeFileSync(PACKAGE_JSON, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+}
 
 /**
  * @typedef {Object} Release
@@ -234,23 +257,31 @@ export async function main(rawArgv) {
     return 1;
   }
 
-  if (compareVersions(after.version, before.version) === 0) {
+  // The review covers every release since the last reviewed one, which is older
+  // than `before` when grok was updated some other way.
+  const reviewed = reviewedGrokVersion();
+  const since =
+    reviewed && compareVersions(reviewed, before.version) < 0 ? reviewed : before.version;
+  if (compareVersions(after.version, since) === 0) {
     process.stdout.write(`grok is already up to date at ${before.version}.\n${papercutSection()}`);
     return 0;
   }
+  setReviewedGrokVersion(after.version);
 
   const release = await latestRelease({ force: true });
-  const between = release ? releasesSince(release.times, before.version, after.version) : [];
+  const between = release ? releasesSince(release.times, since, after.version) : [];
 
   const lines = [
     `### /grok:update\n`,
     `- old version: ${before.version}`,
+    ...(since !== before.version ? [`- last reviewed version: ${since}`] : []),
     `- new version: ${after.version}`,
+    `- package.json \`engines.grok\` set to \`>=${after.version}\``,
     `- grok publishes no changelog; release dates are from ${REGISTRY_URL}`,
     '',
   ];
   if (between.length > 0) {
-    lines.push(`${plural(between.length, 'release')} since ${before.version}:`);
+    lines.push(`${plural(between.length, 'release')} since ${since}:`);
     for (const r of between) lines.push(`  ${r.version}  ${r.date}`);
   } else {
     lines.push('The npm registry could not be read, so the releases in between are not listed.');

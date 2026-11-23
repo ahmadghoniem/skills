@@ -13,7 +13,7 @@ claude plugin marketplace add ahmadghoniem/skills
 claude plugin install grok@ahmadghoniem
 ```
 
-Windows only. Requires grok 1.0.67 or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
+Windows only. Requires the grok version in `package.json` `engines.grok` or later on `PATH` (or at `%USERPROFILE%\.grok\bin\grok.exe`), signed in with `grok login`, and Node 18.18+.
 
 A Claude Code session opened before grok was installed does not see the installer's `PATH` change, so the plugin also checks `%USERPROFILE%\.grok\bin` directly. `GROK_BIN` overrides both.
 
@@ -23,8 +23,8 @@ A Claude Code session opened before grok was installed does not see the installe
 - **`/grok:result [job]`** prints a finished job's write-up, a progress line for a running one, or with `--list` the last 10 jobs (`--all` for every one), running and orphaned jobs included.
 - **`/grok:resume [job|uuid] [follow-up]`** continues a job's grok session. With no id it picks the newest job in this repository that has a session.
 - **`/grok:cancel [job]`** kills a running job and every process it started (`taskkill /T /F`). A job whose processes are already gone is reported as orphaned.
-- **`/grok:setup`** checks the binary, version, login state and available models.
-- **`/grok:update`** runs `grok update`, lists the releases since the old version with their dates, and reviews the open papercuts against the new version.
+- **`/grok:setup`** checks the binary, version, login state and available models. It fails on a grok older than `engines.grok`.
+- **`/grok:update`** runs `grok update`, lists the releases since the version the plugin was last reviewed against (`engines.grok`) with their dates, sets `engines.grok` to the new version, and reviews the plugin and the open papercuts against it. A test fails while the installed grok is newer than `engines.grok`.
 - **`/grok:papercut`** records what grok said blocked it (`--text`), or closes papercuts once fixed (`--resolve <key|id> --note`).
 
 Jobs are named from the task's first words plus a 4-character suffix, such as `add-retry-to-fetchuser-a7f3`. Every command that takes a job accepts the full name, a unique prefix, or the suffix alone.
@@ -57,7 +57,7 @@ The plugin adds a `⚠` line for each way a run can be wrong while grok still ca
 | `⚠ error: …` | Why the run stopped, in grok's words: its `error` event, or the end of stderr on a failing exit. |
 | `⚠ run was killed before finishing` | The watchdog fired; the write-up may be partial. |
 | `⚠ N commands exited non-zero` | Terminal commands that failed, with up to ten lines of output each. Reported, never fatal: a `grep` with no match or a deliberately failing test lands here too. |
-| `⚠ grok reported file changes but the working tree is unchanged` | The write-up claims edits and `git status` before and after the run shows none. |
+| `⚠ grok's write tools targeted files in this repo, but the working tree is unchanged` | grok's write or edit tool aimed at a path inside the repo and `git status` before and after the run shows no change. Writes outside the repo don't count. |
 | `⚠ this run can be resumed where it stopped: /grok:resume <id>` | The run ended early and its session survives. |
 
 At most once a day, a line after the output says when a newer grok is out, how old it is, and how many releases came out since the installed one. The release data comes from the npm registry entry for `@xai-official/grok`, because grok publishes no changelog. `CGD_RELEASE_CHECK=off` turns it off.
@@ -76,13 +76,13 @@ Every dispatch passes these flags:
 - **`--no-auto-update`**: the binary changes only when you run `/grok:update`.
 - **`-s <uuid>`** on a new run, or **`--resume <uuid>`** on a resume: the session id is fixed before the run starts, so a killed run can still be resumed.
 
-`--trust` is passed, so grok works in a repo the main session already trusts and loads the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks and skills. Claude puts what the task needs in the brief.
+`--trust` is passed, so grok works in a repo the main session already trusts and loads the repo's `AGENTS.md`, top-level `CLAUDE.md`, and `.grok/` MCP servers, hooks and skills. Claude puts what the task needs in the brief. `--trust` and `--no-auto-update` are missing from `grok --help` but still work; the bundled docs under `~/.grok/docs/user-guide/` describe both.
 
-`--sandbox` is never passed: grok accepts an unknown profile name without an error and runs anyway, so it offers no guarantee. `--continue` is never passed either: it picks the newest session in the directory, which may belong to another Claude session or a grok TUI.
+`--sandbox` is never passed: grok has no sandbox enforcement on Windows. `--continue` is never passed either: it picks the newest session in the directory, which may belong to another Claude session or a grok TUI.
 
-Every run sets `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED=false`, so grok does not load the agents, hooks, MCP servers, rules and skills from your Claude Code and Cursor config. grok is the delegatee here and the brief carries what it needs. Checked on 1.0.52: about 3,500 fewer input tokens per request.
+Every run sets `GROK_{CLAUDE,CURSOR}_{AGENTS,HOOKS,MCPS,RULES,SKILLS}_ENABLED=false`, so grok does not load the agents, hooks, MCP servers, rules and skills from your Claude Code and Cursor config. grok is the delegatee here and the brief carries what it needs.
 
-Claude Code plugins under `~/.claude/plugins` have no per-run switch. To skip them, list them under `[plugins] disabled` in `~/.grok/config.toml`; that also applies to interactive grok. It saved about 1,100 more tokens per request here.
+Three sources have no per-run switch and still load: Claude Code plugins under `~/.claude/plugins` (list them under `[plugins] disabled` in `~/.grok/config.toml`), skills in `~/.agents/skills` (`[skills] ignore`), and the `allow`/`deny` rules in `~/.claude/settings.json`. The config settings also apply to interactive grok.
 
 ## Other notes
 

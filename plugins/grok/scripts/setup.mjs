@@ -1,11 +1,25 @@
 #!/usr/bin/env node
 import { invokedAsScript, parseCommandArgv } from './lib/args.mjs';
-import { parseModelList, resolveBin } from './lib/grok.mjs';
+import { parseModelList, parseVersion, resolveBin } from './lib/grok.mjs';
 import { run } from './lib/run.mjs';
+import { compareVersions, reviewedGrokVersion } from './update.mjs';
 
 const INSTALL_HINT =
   'Install the Grok CLI so `grok` is on PATH (or at ~/.grok/bin), or set GROK_BIN to its full path.\n' +
   'Then run `grok login` and re-run `/grok:setup`.';
+
+/**
+ * Whether `grok --version` output is at least `min`, the version the plugin was
+ * last reviewed against. Output with no version number passes.
+ *
+ * @param {string} text
+ * @param {string|null} [min]
+ * @returns {boolean}
+ */
+export function versionOk(text, min = reviewedGrokVersion()) {
+  const v = parseVersion(text);
+  return !v || !min || compareVersions(v, min) >= 0;
+}
 
 /**
  * `grok models` prints "You are logged in with grok.com." when authenticated,
@@ -93,6 +107,13 @@ async function baseCheck() {
   const versionText = `${ver.stdout}${ver.stderr}`.trim() || '(no output)';
   if (ver.exitCode !== 0) {
     lines.push(`- ✗ version: ${versionText}`);
+    process.stdout.write(lines.join('\n') + '\n');
+    return 1;
+  }
+  if (!versionOk(versionText)) {
+    lines.push(
+      `- ✗ version: ${versionText}; the plugin needs grok ${reviewedGrokVersion()} or newer. Run \`/grok:update\`.`,
+    );
     process.stdout.write(lines.join('\n') + '\n');
     return 1;
   }

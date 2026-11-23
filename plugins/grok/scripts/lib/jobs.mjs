@@ -40,7 +40,7 @@ import { jobName } from './slug.mjs';
  * @property {number=} toolCalls
  * @property {boolean=} gitRepo
  * @property {{status: string, path: string}[]=} gitFiles
- * @property {boolean=} claimedFileChanges
+ * @property {string[]=} writeTargets
  */
 
 /**

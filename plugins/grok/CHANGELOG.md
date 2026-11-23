@@ -2,11 +2,50 @@
 
 ## Unreleased
 
+Checked against grok 1.0.92. Every flag `buildArgs` passes is accepted; `--trust` and
+`--no-auto-update` are hidden from `grok --help` and documented in the bundled docs. The
+eleven `DISALLOWED_TOOLS` names all still match a tool, all eleven are offered by default,
+and `--no-plan` alone leaves the plan tools offered. New: grok reads the permission rules in
+`~/.claude/settings.json` and the skills in `~/.agents/skills` regardless of
+`COMPAT_OFF_ENV`; neither has a per-run switch. `--sandbox` now warns that Windows has no
+sandbox enforcement instead of accepting any profile silently.
+
+### Added
+
+- **The plugin records the grok version it was reviewed against** as `engines.grok` in
+  package.json, as agy does. `/grok:setup` fails on an older grok. `/grok:update` lists the
+  releases since that version, not since the installed one, and then sets it to the
+  version it installed. `tests/grok-version.test.mjs` fails while the installed grok is
+  newer, so a grok updated some other way is caught.
+
+### Changed
+
+- **`/grok:update` makes the clear fixes itself** and brings only trade-offs to the user,
+  as `/agy:update` does: it corrects flags, tool names and caveats the release made wrong,
+  removes version history from comments and docs, closes papercut clusters the release
+  fixed, and runs the tests. It reads what changed from a `--help` diff against
+  `grok.exe.old` and from the bundled docs, since grok publishes no changelog.
+- **Comments and the README describe only the required grok version.** "Verified on
+  1.0.5", "On 1.0.52" and "Checked on 1.0.70" notes are gone from the code.
+
+### Removed
+
+- **`docs/unverified.md`.** Its one open item said "Do not act"; its settled note repeated
+  the `buildArgs` docstring.
+
 ### Changed
 
 - **`--trust` is passed again.** It was dropped in 0.5.0. Delegated runs work in folders the
   main session already trusts, so the repo's `AGENTS.md`, `CLAUDE.md`, MCP servers, hooks and
   skills now load too. The home-level Claude and Cursor config stays off (`COMPAT_OFF_ENV`).
+
+### Fixed
+
+- **`wander` reads grok's write tool calls, not its write-up.** It fires only when a write or
+  edit tool targeted a path inside the repo and `git status` shows no change. Matching words in
+  prose fired twice on 1.0.70 research runs that wrote, as asked, to `~/tmp-review/` and said
+  "nothing in the repo was modified" (papercuts 01a54267, f8e98e86). `claimsFileChanges` is gone;
+  job records now keep `writeTargets` instead of `claimedFileChanges`.
 
 ## 0.5.1 — grok 1.0.67
 

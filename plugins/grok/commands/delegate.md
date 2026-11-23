@@ -19,11 +19,12 @@ This command prints one (``grok `add-retry-to-fetchuser-a7f3` ``). `/grok:result
 
 ## Writing the brief
 
-grok starts with none of your context. It does not see:
+grok starts with none of your context. It reads the repo's `AGENTS.md`, top-level
+`CLAUDE.md` and `.grok/` config. It does not see:
 
 - this conversation
-- the repo's `AGENTS.md` and `CLAUDE.md`, or `~/.claude/CLAUDE.md` and `~/.claude/rules/`
-- any skill, hook, MCP server or plugin, yours or the repo's
+- `~/.claude/CLAUDE.md`, `~/.claude/rules/`, or the repo's `.claude/` rules and skills
+- any Claude Code or Cursor skill, hook, MCP server or plugin
 
 Whatever of that the result depends on goes in the brief.
 

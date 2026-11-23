@@ -167,7 +167,7 @@ async function runAndRecord(flags, prompt, jobId, root, toolVersion) {
     ...(summary.sessionId ? { grokSessionId: summary.sessionId } : {}),
     gitRepo: inRepo,
     gitFiles: snapshotFiles(gitFiles),
-    claimedFileChanges: summary.claimedFileChanges,
+    writeTargets: summary.writeTargets.length ? summary.writeTargets : undefined,
   });
 
   // Sole write site for detected papercuts. `/grok:result` re-renders the

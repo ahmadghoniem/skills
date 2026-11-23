@@ -20,8 +20,10 @@ export const DEFAULT_EFFORT = 'medium';
 /**
  * Set on every run. grok is the delegatee: the brief carries what it needs, so
  * the user's global Claude Code and Cursor agents, hooks, MCP servers, rules and
- * skills only add context and side effects. Claude Code plugins have no per-run
- * switch; they are disabled in `~/.grok/config.toml` instead.
+ * skills only add context and side effects. Three sources have no per-run
+ * switch and still load: Claude Code plugins (disable them under `[plugins]` in
+ * `~/.grok/config.toml`), skills in `~/.agents/skills` (`[skills] ignore`), and
+ * the permission rules in `~/.claude/settings.json`.
  */
 export const COMPAT_OFF_ENV = Object.freeze(
   Object.fromEntries(
@@ -57,8 +59,8 @@ export const DISALLOWED_TOOLS = Object.freeze([
 ]);
 
 /**
- * The version number in `grok --version` output, e.g. `1.0.52` from
- * `grok 1.0.52 (abc1234 2026-10-01) [stable]`. Null when there is none.
+ * The version number in `grok --version` output, e.g. `1.0.92` from
+ * `grok 1.0.92 (b06756fd6256)`. Null when there is none.
  *
  * @param {string} text
  * @returns {string|null}
@@ -163,29 +165,33 @@ export async function resolveBin() {
  * edit is not a permission dialog nobody can see — it is that this plugin never
  * commits, and a human reads the diff.
  *
- * `--sandbox` is deliberately never passed. Grok accepts an unknown profile name
- * silently and runs anyway (verified: `--sandbox __invalid__` produced no error),
- * so it reads like a guarantee while providing none.
+ * `--sandbox` is never passed: grok has no sandbox enforcement on Windows. Given
+ * a profile, it warns that the profile is not in effect and runs without one.
  *
  * `-s <uuid>` names the session BEFORE the run starts, on fresh dispatches only.
  * Without it the id arrives only on the terminal `end` event, so a killed,
- * crashed, or truncated run was permanently unresumable — the one case where you
- * most want to resume. Verified on grok 1.0.5: a run killed mid-stream with no
- * `end` event still leaves `~/.grok/sessions/<cwd>/<uuid>` on disk, and
- * `-r <uuid>` resumes it with full prior context. On 1.0.52 `--resume <uuid>`
- * keeps the same session id.
+ * crashed, or truncated run would be unresumable — the one case where you most
+ * want to resume. A run killed mid-stream with no `end` event still leaves
+ * `~/.grok/sessions/<cwd>/<uuid>` on disk, `-r <uuid>` resumes it with full prior
+ * context, and `--resume <uuid>` keeps the same session id.
  *
  * `-s` is illegal on a resume (it declares a NEW conversation).
  *
  * `--no-plan` and `--disallowed-tools` remove what a headless run cannot use;
- * see `DISALLOWED_TOOLS`. Checked on 1.0.67: every listed tool drops out of
- * the run's `available_commands`, and none draws the stderr warning grok
- * prints for a name that matches no tool.
+ * see `DISALLOWED_TOOLS`. Every listed tool drops out of the run's
+ * `available_commands`, and none draws the stderr warning grok prints for a
+ * name that matches no tool. `--no-plan` alone leaves the plan tools offered.
  *
  * `--trust` is passed: the delegate runs in a workspace Claude already trusts.
- * It also loads the repo's `AGENTS.md`/`CLAUDE.md`, MCP servers, hooks and
- * skills. The home-level Claude and Cursor config is switched off separately;
- * see `COMPAT_OFF_ENV`.
+ * It loads the repo's `AGENTS.md` and top-level `CLAUDE.md`, and its `.grok/`
+ * MCP servers, hooks and skills. `COMPAT_OFF_ENV` keeps the Claude and Cursor
+ * sources off, in `~` and in the repo's `.claude/` and `.cursor/` folders.
+ *
+ * `--trust` and `--no-auto-update` are hidden flags: `grok --help` lists
+ * neither, and both are in effect. The bundled docs name `--trust` as the
+ * headless folder-trust grant (`22-permissions-and-safety.md`) and
+ * `--no-auto-update` as the per-session update switch (`14-headless-mode.md`).
+ * A `--help` diff that calls them removed is wrong.
  *
  * `--continue` is deliberately absent. It means "the most recent session for this
  * directory", which grok resolves by looking at the directory rather than at who
@@ -403,7 +409,7 @@ export async function runHeadless(opts) {
  * Cheap health probe: is the binary present and does it answer `--version`?
  *
  * Deliberately not an auth check. `grok models` does report auth state (it
- * prints "You are logged in with grok.com." — verified on 1.0.5, exit 0) and
+ * prints "You are logged in with grok.com.", exit 0) and
  * `/grok:setup` uses it for exactly that, but it is a network round-trip.
  * Liveness and login are separate questions and this probe answers the cheap one.
  *
