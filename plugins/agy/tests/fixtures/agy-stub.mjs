@@ -15,6 +15,14 @@ if (argvDump) {
   }
 }
 
+if (process.env.AGY_STUB_ENV) {
+  writeFileSync(
+    process.env.AGY_STUB_ENV,
+    JSON.stringify({ CLAUDECODE: process.env.CLAUDECODE ?? null, AGY_CLI_DISABLE_AUTO_UPDATE: process.env.AGY_CLI_DISABLE_AUTO_UPDATE ?? null }),
+    'utf8',
+  );
+}
+
 const stdinDump = process.env.AGY_STUB_STDIN;
 if (stdinDump && args.includes('--input-format')) {
   try {
@@ -59,7 +67,7 @@ if (args[0] === 'plugin' && args[1] === 'install') {
 }
 
 if (args.includes('--version')) {
-  process.stdout.write('1.1.19\n');
+  process.stdout.write('1.5.14\n');
   process.exit(0);
 }
 

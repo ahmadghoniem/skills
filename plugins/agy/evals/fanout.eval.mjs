@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readTranscript } from '../scripts/lib/brain.mjs';
+import { readTranscript } from './lib/brain.mjs';
 import { LIVE, makeRepo, openResults, pool, readJobs, runScript, warnLines } from './lib/harness.mjs';
 
 const REPS = 3;

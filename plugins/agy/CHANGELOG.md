@@ -1,6 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+### Trimmed
+
+Claude Code's background tasks already report when a run ends, keep its whole output and
+stop it with its process tree (TaskStop). Everything the plugin did that repeated them is
+gone, and so is what Claude does better itself. The harness (`mcp/`, `agy-agents/`) is
+untouched.
+
+- **Removed the job store, `/agy:result`, `/agy:cancel` and `/agy:resume`**, with job names,
+  `--list`, the orphan check and the progress line. A run now ends with
+  `conversation: <id>`, and `--conversation <id>` continues it. `--continue` is gone: it
+  takes the newest conversation, which may belong to another Claude session. The brain
+  transcript reader moved to `evals/lib/`, where `fanout.eval.mjs` still uses it.
+- **Removed the model cache, `--print-models` and the model table in `/agy:delegate`.**
+  `agy models` answers in about a second; the plugin runs it only when agy rejects a model,
+  to list the valid ids. Papercuts read `agy --version` directly.
+- **Removed `--timeout`.** Nothing passed it; TaskStop stops a run.
+- **Removed the `⚠ tool calls failed` and `⚠ compaction` lines.** Claude runs the brief's
+  check and reads the diff itself. Failed tool calls are still logged as papercuts, one row
+  per tool: they are how bash-tool bugs show up.
+- **`⚠ agy wrote to stderr` shows only on a run that did not finish.** On a run that
+  worked, stderr held background notes.
+- **The "newer agy" line prints once per release**, not after every run.
+- **`CLAUDECODE` is removed from agy's environment and `AGY_CLI_DISABLE_AUTO_UPDATE=true` is
+  set**, so a `claude` command agy runs does not refuse to start as a nested session, and
+  agy cannot update itself mid-run.
+- **`args.mjs` is gone.** Every script reads its flags with Node's `parseArgs`; Claude builds
+  the command line. `/agy:papercut` takes `--session` instead of `--job`.
+- **Process, release and papercut helpers come from `plugins/_shared`**, copied into
+  `scripts/lib/shared/` by `tools/sync-shared.mjs`. `CAD_RELEASE_CHECK` is now
+  `DELEGATE_RELEASE_CHECK`.
 
 ### Added
 

@@ -68,8 +68,9 @@ export function closes(fix, cut) {
  *
  * @param {Record<string, unknown>[]} all
  * @param {string} tool  the CLI name, for the version column
+ * @param {(text: string) => string} [shorten]  drops boilerplate a CLI wraps its messages in
  */
-export function formatOpenPapercuts(all, tool) {
+export function formatOpenPapercuts(all, tool, shorten = (t) => t) {
   const fixes = all.filter((c) => c.resolves);
   const open = all.filter((c) => !c.resolves && !fixes.some((f) => closes(f, c)));
   if (open.length === 0) return '';
@@ -90,7 +91,7 @@ export function formatOpenPapercuts(all, tool) {
     out.push(`## ${key} — ${cuts.length}×, ${span}${versions.length ? `, ${tool} ${versions.join(' ')}` : ''}`);
     const byText = new Map();
     for (const c of cuts) {
-      const t = String(c.text ?? '').trim();
+      const t = shorten(String(c.text ?? '').trim());
       if (!byText.has(t)) byText.set(t, []);
       byText.get(t).push(c);
     }

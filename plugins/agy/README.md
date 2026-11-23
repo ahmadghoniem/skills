@@ -6,7 +6,7 @@ Claude plans and reviews; agy writes code in its own session. The plugin never c
 
 agy handles high-volume tasks: code sweeps, refactors, bulk file reading, research, and scoped implementations. Tokens land in agy's context instead of yours.
 
-Third in the series after [cursor](../cursor/README.md) (`cursor-agent`) and [grok](../grok/README.md) (`grok`). Each plugin is independent.
+Sibling of [grok](../grok/README.md) and [opencode](../opencode/README.md), and a member of the [council](../council/README.md). The plugin keeps what Claude can't work out on its own (how to start agy, the bash tool agy works through, how to read agy's failures); Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
@@ -21,12 +21,9 @@ If Claude Code was opened before installing agy, `PATH` may lack the binary; the
 
 ## Commands
 
-- **`/agy:delegate <task>`** — run a task via agy. Claude runs it under a backgrounded Bash call and announces completion without polling.
-- **`/agy:result [job-id]`** — print a finished job's record, or `--list` the tracked jobs.
-- **`/agy:cancel [job-id]`** — terminate a running job and its child processes (`taskkill /T /F`). A job whose processes are already gone reads as `orphaned`, and nothing is killed.
-- **`/agy:resume [job-id|conversation-uuid] [follow-up]`** — continue the latest agy conversation for this repo, or a named one.
-- **`/agy:setup`** — health-check the CLI: resolved binary, version, a model cache refresh, and the bash tool's entry in agy's MCP config. Also a writer of the model cache and the recorded `agy --version`, alongside `/agy:delegate`'s own weekly, cache-miss, and rejected-model refreshes.
-- **`/agy:update`** — run `agy update`, print the changelog entries newer than the old version and the open papercuts, for Claude to review against the plugin. `/agy:delegate` checks GitHub for a new agy release once a day, alongside the run, and ends its output with a notice when one is out.
+- **`/agy:delegate <task>`** — run a task via agy in a background Bash call. The output ends with `conversation: <id>`; `--conversation <id>` continues it. TaskStop on the background task stops a run.
+- **`/agy:setup`** — health-check the CLI: resolved binary, version (it fails on an agy older than `engines.agy`), and the agy plugin that carries the agent and its bash tool. `agy models` lists the models.
+- **`/agy:update`** — run `agy update`, print the changelog entries since the version the plugin was last reviewed against and the open papercuts, for Claude to review against the plugin. Once per release, a run's output ends with a line saying a newer agy is out.
 - **`/agy:papercut`** — record one friction point by hand, or close one with `--resolve`.
 
 ### The agy agent
@@ -107,8 +104,8 @@ What was measured (agy 1.5.8 to 1.5.10, Gemini 4), so it need not be measured ag
 - **Cost.** 1,737 checks in 81 job logs from 2026-11-14 to 11-21: median 1.31 s, mean
   1.40 s, 2,440 s of 43,508 s of job time (5.6%). 6 went on to a larger model
   (`severe_internal_risks_agy`), median 5.6 s. Each check is a
-  `Monitor sir_flash_lite FINISHED ... duration=` line in the job's `.agy.log` under
-  `~/.cad/jobs`; a skipped call logs `reason="allowed_tool"` instead.
+  `Monitor sir_flash_lite FINISHED ... duration=` line in agy's own log
+  (`~/.gemini/antigravity-cli/log/`); a skipped call logs `reason="allowed_tool"` instead.
 - **One check per tool call, however much the call runs.** A 12-block patch followed by
   `npm test` in one bash call costs one check, the same as `ls`. On 2026-11-14 the same
   task (5 files changed, all 197 tests passing in both runs) took the stock agent 14
@@ -127,58 +124,28 @@ What was measured (agy 1.5.8 to 1.5.10, Gemini 4), so it need not be measured ag
 ### `/agy:delegate`
 
 ```bash
-/agy:delegate "Add retry-on-429 to src/api/client.ts. Verify with: pnpm test api"
-/agy:delegate "Replace every getUser( call with fetchUser( across src/. Verify with: pnpm typecheck"
-/agy:delegate --model gemini-4-hydrogen-high --timeout 1800 "the hard one"
+node scripts/delegate.mjs -- --prompt-file C:/Users/me/.cad/briefs/add-retry.md
+node scripts/delegate.mjs -- --model gemini-4-hydrogen-high "the hard one"
 ```
-
-The plugin uses `gemini-4-hydrogen-medium` unless `--model` names another id from `agy models`. A long brief goes in a file: Claude writes it to `~/.cad/briefs/` and passes `--prompt-file`.
 
 | Flag | Effect |
 | --- | --- |
-| `--prompt-file <path>` | Read the brief from a file instead of the command line. Not combined with an inline task. |
-| `--model <id>` | A full id from `agy models`, such as `gemini-4-hydrogen-high`; the id carries the effort level. agy checks it, and an unknown id lists the valid ones. |
-| `--timeout <sec>` | Sets agy's print-timeout. No limit by default; `/agy:cancel` stops a run. |
+| `--prompt-file <path>` | Read the brief from a file. Not combined with an inline task. |
+| `--model <id>` | A full id from `agy models`, such as `gemini-4-hydrogen-high`; the id carries the effort level. On an unknown id, the valid ones are listed. Default `gemini-4-hydrogen-medium`. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
-| `--conversation <uuid>` | Resume a specific conversation. |
-| `--continue` | Resume agy's most recent conversation in this workspace. The plugin never falls back to it. |
-
-Job names look like `add-retry-to-fetchuser-a7f3` and resolve by full name, unique prefix, or the 4-char suffix alone.
-
-### `/agy:result`
-
-Prints agy's report. `--list` shows the last 10 tracked jobs (`--all` for every one), including running ones — so it doubles as the way to recover a job id.
+| `--conversation <uuid>` | Continue that conversation. `--continue` is never used: it takes the newest conversation, which may belong to another Claude session. |
 
 ## What the output looks like
 
-On a clean run, the output is agy's report alone. Status tables, file lists, durations, and token counts are omitted because repository state is directly inspectable via `git status` and `git diff`.
-
-The warnings below fire on runs agy reports as finished:
-
-| Line | Means |
-| --- | --- |
-| `⚠ agy status: ERROR` | agy's own verdict, not a pass/fail: work done before the error stays in the tree, so read the diff. |
-| `⚠ exit 1` | The process exit code. Independent of the above — they disagree in both directions. `3` means the turn ended on a model or agent API error. |
-| `⚠ agy wrote to stderr:` | The last 20 lines agy wrote to stderr, on any run. agy is silent there when nothing went wrong, so this carries startup failures, its timeout notice, network errors and the `AGY_ERROR` line. |
-| `⚠ N tool calls failed during the run` | Tools that failed while the run continued, such as a failed verification step under a `SUCCESS` status. Deduped and capped at three. |
-| `⚠ agy compacted its context N times` | agy summarised the conversation mid-run. Work after a compaction is where it most often drifts from the brief. |
-| `⚠ <error text>` | The error agy reported, first line first. A long tail is truncated with a count; on an unknown model, the valid ids are listed instead. |
-| `⚠ agy hit its print timeout after 15m0s` | agy stopped itself at its own limit and returned partial output. Read from the result's `finished_reason` or agy's stderr notice. |
-| `⚠ agy ended the turn early: finished_reason interrupted` | agy's own reason for ending the turn early, verbatim: `interrupted` or `error`. |
-| `⚠ this run can be resumed where it stopped` | The run ended before agy finished and kept its conversation. |
-
-`delegate.mjs` exits 1 when the run did not finish. That is a fact about the run, not a verdict on the work.
-
-`plugins/agy/contract.md` documents this table for the orchestrator, included in `/agy:delegate`, `/agy:result` and `/agy:resume`. `WARNING_IDS` in `scripts/lib/render.mjs` mirrors this table, verified by `tests/contract.test.mjs`.
+A clean run prints agy's report, then `conversation: <id>`. A `⚠` line is added for each way a run can be wrong while agy calls it finished: `agy status` (not `SUCCESS`), `exit N`, agy's stderr (only on a run that did not finish), agy's error, and `finished_reason` (`print_timeout`, `interrupted`, `error`). `contract.md` explains them in the form Claude reads, and `tests/contract.test.mjs` keeps it in step with `WARNING_IDS` in `scripts/lib/render.mjs`. `delegate.mjs` exits 1 when the run did not finish.
 
 ## The friction log
 
-Every run ending in an actionable `⚠` warning appends a row to
-`~/.cad/papercuts.jsonl` (or `CAD_HOME`). Each row has a `key` naming its group
-(the warning id, or `tool-errors:<tool>` with one row per failing tool) and a
-`text` holding the failure itself. `agy-status`, `exit`, `compaction`,
-`finished-reason` and `resume` are excluded: they describe the run rather than
-friction, and most fire on runs that worked.
+Each run appends rows to `~/.cad/papercuts.jsonl` (or `CAD_HOME`) for agy's error, its
+stderr on a run that did not finish, and every failed tool call, one row per tool
+(`tool-errors:<tool>`). Failed tool calls are no longer printed, but they are logged:
+they are how bugs in the bash tool show up. Each row has a `key` naming its group and a
+`text` holding the failure itself.
 
 One additional source is recorded manually via `/agy:papercut`: `narrated`
 quotes agy's report when blocked.
@@ -192,15 +159,12 @@ Rows are append-only and never edited or deduplicated. Resolving via
 cut under that key recorded before it, so a later cut under the same key shows as
 a recurrence. `--resolve <id>` closes one cut.
 
-Each row copies necessary evidence rather than linking to the job record, so it
-can be judged on its own even if the job directory is cleared by hand.
-
 ## Design notes
 
 - **The message goes on stdin.** A fresh job's message is one line saying whether the workspace is a git repository (and, for a single commit or a shallow clone, that there is no history to search), then the brief, sent as one `--input-format stream-json` line; `delegate.mjs` then closes stdin, and agy exits when the turn ends. A resume sends only the follow-up. `--disable-slash-commands` stops a message that starts with `/usage` or similar from running a command. agy keeps the message in its brain transcript. agy cuts a stdin message short without an error (a 324,000-char message kept about 191,000), so a message over 150,000 chars fails the job before agy starts. The longest of 494 recorded jobs was 15,466 chars.
 - **Permission bypass is always on.** Without it the first shell command kills the run outright, so an opt-out would break runs rather than make them safer. Planning remains the orchestrator's responsibility.
-- **Model.** The default is `gemini-4-hydrogen-medium`. On two replayed design-playground jobs with agy's stock agent (2 runs each, November 2026), it matched 3.8 flash medium's results in about a quarter of the time and a sixth of the input tokens. The plugin passes `--model` to agy as given; agy checks it, and the cached `agy models` list is printed when it rejects one.
-- **Non-blocking execution without detached workers.** The job runs in the foreground of its process under a backgrounded Bash call, allowing the harness to report exit events directly without polling.
+- **Model.** The default is `gemini-4-hydrogen-medium`. On two replayed design-playground jobs with agy's stock agent (2 runs each, November 2026), it matched 3.8 flash medium's results in about a quarter of the time and a sixth of the input tokens. The plugin passes `--model` to agy as given; agy checks it, and a live `agy models` list is printed when it rejects one.
+- **Environment.** `CLAUDECODE` is removed, so a `claude` command agy runs does not take itself for a nested Claude Code session and refuse to start. `AGY_CLI_DISABLE_AUTO_UPDATE=true` keeps agy from updating itself mid-run, behind the version check and `/agy:update`.
 - **agy.exe is a native Go binary.** Spawned directly, no shell. Each job has its own stdin pipe, so several jobs can run at once.
 - **The plugin never commits.** You read the diff.
 
@@ -209,7 +173,10 @@ can be judged on its own even if the job directory is cleared by hand.
 | Variable | Effect |
 | --- | --- |
 | `AGY_BIN` | Full path to the agy binary; skips discovery. |
-| `CAD_HOME` | Job registry location. Default `%USERPROFILE%\.cad`. |
+| `CAD_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.cad`. |
+| `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
+
+`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
 
 ## Licence
 

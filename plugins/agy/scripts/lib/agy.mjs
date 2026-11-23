@@ -14,11 +14,8 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { parseLine } from './parse.mjs';
-import { modelCachePath } from './paths.mjs';
-import { run, spawnDirect } from './run.mjs';
-
-/** Max age, in days, before the weekly model-cache refresh trigger fires. */
-const MODEL_CACHE_MAX_AGE_DAYS = 7;
+import { run, spawnDirect } from './shared/proc.mjs';
+import { parseVersion } from './shared/release.mjs';
 
 /**
  * Longest message sent on stdin, in UTF-8 bytes. agy cuts a longer one short without
@@ -26,21 +23,6 @@ const MODEL_CACHE_MAX_AGE_DAYS = 7;
  * bytes from characters, so the limit counts bytes, which is never less.
  */
 export const MAX_STDIN_BYTES = 150_000;
-
-/**
- * Format seconds as a Go duration for `--print-timeout` (`15m`, `1m30s`, `45s`).
- *
- * @param {number} seconds
- * @returns {string}
- */
-export function formatPrintTimeout(seconds) {
-  const n = Math.max(1, Math.round(Number(seconds) || 1));
-  const m = Math.floor(n / 60);
-  const s = n % 60;
-  if (m > 0 && s === 0) return `${m}m`;
-  if (m > 0) return `${m}m${s}s`;
-  return `${s}s`;
-}
 
 /**
  * The first message of a fresh job: the OS and workspace, whether the workspace is
@@ -211,56 +193,45 @@ export function removeLegacyInstall(configPath = mcpConfigPath()) {
 }
 
 /**
- * @typedef {Object} BuildArgsInput
- * @property {string=} addDir              Absolute workspace path. Mandatory on fresh.
- * @property {number=} printTimeoutSec
- * @property {string=} logFile
- * @property {string=} model
- * @property {string=} agent               Custom agent name; fresh dispatch only
- *                                         (a resumed conversation keeps its agent).
- * @property {boolean=} sandbox
- * @property {string=} conversationId      Resume a specific conversation.
- * @property {boolean=} continueLatest     Resume agy's most recent conversation
- *                                         in this workspace.
- */
-
-/**
  * Build agy's argv.
  *
- * Fresh dispatch passes the workspace as `--add-dir`. Resume omits `--add-dir` and specifies `--conversation <uuid>` or `--continue`.
+ * A fresh run passes the workspace as `--add-dir`: without it agy works in its own
+ * scratch folder and still reports `SUCCESS`. A resume passes `--conversation <id>`
+ * instead and keeps the conversation's agent. `--continue` is never used: it takes
+ * the newest conversation, which may belong to another Claude session.
  *
  * The message goes on stdin (`--input-format stream-json`), which `runHeadless`
  * closes after one line; agy exits once that turn ends. `--disable-slash-commands`
  * stops a message that starts with `/usage` or similar from running a command.
  *
- * @param {BuildArgsInput} opts
+ * @param {{addDir?: string, model?: string, agent?: string, sandbox?: boolean, conversationId?: string}} opts
  * @returns {string[]}
  */
 export function buildArgs(opts) {
-  const isResume = Boolean(opts.conversationId || opts.continueLatest);
+  const isResume = Boolean(opts.conversationId);
   if (!isResume && !opts.addDir) {
     throw new Error('--add-dir <absolute-path> is required for a fresh dispatch');
   }
-
-  /** @type {string[]} */
   const args = ['--output-format', 'stream-json', '--input-format', 'stream-json', '--disable-slash-commands'];
-  if (!isResume) {
-    args.push('--add-dir', opts.addDir);
-  }
-  // No --timeout means no limit: agy's own default (0) waits for the turn to end.
-  if (opts.printTimeoutSec > 0) {
-    args.push('--print-timeout', formatPrintTimeout(opts.printTimeoutSec));
-  }
-  if (opts.logFile) args.push('--log-file', opts.logFile);
+  if (!isResume) args.push('--add-dir', opts.addDir);
   if (opts.model) args.push('--model', opts.model);
   if (opts.agent && !isResume) args.push('--agent', opts.agent);
   args.push('--dangerously-skip-permissions');
   if (opts.sandbox) args.push('--sandbox');
-  if (isResume) {
-    if (opts.conversationId) args.push('--conversation', opts.conversationId);
-    else args.push('--continue');
-  }
+  if (isResume) args.push('--conversation', opts.conversationId);
   return args;
+}
+
+/**
+ * The environment agy runs with. `CLAUDECODE` is removed so a `claude` command
+ * agy runs does not take itself for a nested Claude Code session and refuse to
+ * start. `AGY_CLI_DISABLE_AUTO_UPDATE` keeps agy from updating itself mid-run,
+ * behind the version check and `/agy:update`.
+ */
+export function childEnv(base = process.env) {
+  const env = { ...base, AGY_CLI_DISABLE_AUTO_UPDATE: 'true' };
+  delete env.CLAUDECODE;
+  return env;
 }
 
 /**
@@ -302,9 +273,8 @@ export function resetBinCache() {
 }
 
 /**
- * Resolve the agy binary path. Precedence: `AGY_BIN`, the path stored in the
- * model cache (if it still exists on disk), PATH, then the default installer
- * location, `%LOCALAPPDATA%\agy\bin\agy.exe`.
+ * Resolve the agy binary path. Precedence: `AGY_BIN`, PATH, then the default
+ * installer location, `%LOCALAPPDATA%\agy\bin\agy.exe`.
  *
  * @returns {Promise<string>}
  */
@@ -313,11 +283,6 @@ export async function resolveBin() {
   const override = process.env.AGY_BIN?.trim();
   if (override) {
     cachedBin = override;
-    return cachedBin;
-  }
-  const stored = readModelCacheRaw()?.bin;
-  if (typeof stored === 'string' && stored && existsSync(stored)) {
-    cachedBin = stored;
     return cachedBin;
   }
   const res = await run('where', ['agy'], { timeoutMs: 5_000 });
@@ -336,12 +301,19 @@ export async function resolveBin() {
   );
 }
 
+/** The installed agy version, or null. */
+export async function installedVersion() {
+  try {
+    const res = await run(await resolveBin(), ['--version'], { timeoutMs: 5_000 });
+    return res.exitCode === 0 ? parseVersion(res.stdout + res.stderr) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Live model list from `agy models`.
- *
- * Makes a network request, 4 to 16 s measured. Throws rather than return a
- * partial list from a killed or failed fetch, which would be written over a
- * good cache.
+ * Live model list from `agy models`, read only when agy rejects a model. Throws
+ * when it fails or lists nothing.
  *
  * @returns {Promise<ModelInfo[]>}
  */
@@ -356,114 +328,10 @@ export async function listModels() {
 }
 
 /**
- * Parsed model cache, or null on any read/parse failure.
- *
- * @returns {Record<string, unknown>|null}
- */
-function readModelCacheRaw() {
-  try {
-    return JSON.parse(readFileSync(modelCachePath(), 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * `agy --version` string saved by the last writer — `/agy:setup`, or the
- * weekly or rejected-model refresh in `delegate.mjs`. Null
- * when the cache predates this field or nothing has written it yet.
- *
- * @returns {string|null}
- */
-export function cachedToolVersion() {
-  const parsed = readModelCacheRaw();
-  return typeof parsed?.toolVersion === 'string' ? parsed.toolVersion : null;
-}
-
-/**
- * Read the cached model list. Returns null when no cache file exists.
- *
- * A read here never auto-expires or refetches: `delegate.mjs` is responsible
- * for refreshing the cache (weekly, on a cache miss, and after agy rejects a
- * model — see `refreshModelCache`); this function only serves what is there.
- *
- * @returns {ModelInfo[]|null}
- */
-export function cachedModels() {
-  const parsed = readModelCacheRaw();
-  if (!Array.isArray(parsed?.models)) return null;
-  return parsed.models;
-}
-
-/**
- * True when the cache has no `fetchedAt`, or it is older than `maxAgeDays`.
- * Drives the weekly refresh trigger in `delegate.mjs`.
- *
- * @param {number} [maxAgeDays]
- * @returns {boolean}
- */
-export function modelCacheStale(maxAgeDays = MODEL_CACHE_MAX_AGE_DAYS) {
-  const parsed = readModelCacheRaw();
-  const fetchedAt = typeof parsed?.fetchedAt === 'string' ? Date.parse(parsed.fetchedAt) : NaN;
-  if (!Number.isFinite(fetchedAt)) return true;
-  return Date.now() - fetchedAt > maxAgeDays * 24 * 60 * 60 * 1000;
-}
-
-/**
- * Overwrite the model cache. Written by `/agy:setup` and by
- * `refreshModelCache`'s weekly and rejected-model triggers.
- *
- * @param {ModelInfo[]} models
- * @param {string|null} [toolVersion] raw `agy --version` output
- * @param {string|null} [bin] resolved agy binary path, so the next
- *   `resolveBin()` can skip `where` while it still exists on disk
- * @returns {void}
- */
-export function writeModelCache(models, toolVersion, bin) {
-  try {
-    const path = modelCachePath();
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(
-      path,
-      `${JSON.stringify({ fetchedAt: new Date().toISOString(), toolVersion: toolVersion ?? null, bin: bin ?? null, models }, null, 2)}\n`,
-      'utf8',
-    );
-  } catch {
-    // Non-fatal: the cache only feeds the model list and the version stamp.
-  }
-}
-
-/**
- * Refresh the model cache in-process: fetch the live model list and
- * `agy --version`, then overwrite `models.json`. This also stamps
- * `toolVersion`, so `cachedToolVersion()` stays current without a separate
- * `agy --version` call anywhere else.
- *
- * `delegate.mjs` calls this weekly after a run and right after agy rejects a
- * model, always awaited in the same process, never detached.
- * Throws on failure; callers that must not fail the run wrap it in
- * try/catch.
- *
- * @returns {Promise<ModelInfo[]>}
- */
-export async function refreshModelCache() {
-  const bin = await resolveBin();
-  const [models, ver] = await Promise.all([
-    listModels(),
-    run(bin, ['--version'], { timeoutMs: 5_000 }),
-  ]);
-  const versionText = `${ver.stdout}${ver.stderr}`.trim() || null;
-  writeModelCache(models, versionText, bin);
-  return models;
-}
-
-/**
  * @typedef {Object} DelegateOpts
  * @property {string[]} args
  * @property {string=} cwd
  * @property {string=} input               Written to stdin, which is then closed.
- * @property {(ev: Record<string, unknown>) => void=} onEvent
- * @property {(pid: number) => void=} onSpawn
  */
 
 /**
@@ -489,7 +357,7 @@ export async function runHeadless(opts) {
   const child = spawnDirect(bin, opts.args, {
     cwd: opts.cwd ?? process.cwd(),
     stdio: [opts.input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-    env: process.env,
+    env: childEnv(),
     windowsHide: true,
   });
   if (!child.stdout || !child.stderr) {
@@ -500,9 +368,6 @@ export async function runHeadless(opts) {
     // its own exit code and stderr report that, not this EPIPE.
     child.stdin.on('error', () => {});
     child.stdin.end(opts.input, 'utf8');
-  }
-  if (typeof child.pid === 'number' && child.pid > 0 && opts.onSpawn) {
-    opts.onSpawn(child.pid);
   }
 
   /** @type {Record<string, unknown>[]} */
@@ -522,7 +387,6 @@ export async function runHeadless(opts) {
     const ev = parseLine(line);
     if (!ev) return;
     events.push(ev);
-    if (opts.onEvent) opts.onEvent(ev);
   });
   stderrLines.on('line', (line) => {
     if (line.trim().length === 0) return;

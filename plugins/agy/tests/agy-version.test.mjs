@@ -4,7 +4,8 @@
 // way fails here until `/agy:update` runs. Skipped where agy is not installed.
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { compareVersions, reviewedAgyVersion } from '../scripts/update.mjs';
+import { compareVersions } from '../scripts/lib/shared/release.mjs';
+import { reviewedAgyVersion } from '../scripts/update.mjs';
 
 function installedAgy() {
   try {

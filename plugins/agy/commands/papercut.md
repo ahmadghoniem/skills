@@ -1,22 +1,19 @@
 ---
 description: Record one friction point in the agy papercut log, or close one once it is fixed.
-argument-hint: '--source narrated --text "..." [--job <id>] | --resolve <key|id> --note "..."'
+argument-hint: '--text "..." [--session <id>] | --resolve <key|id> --note "..."'
 allowed-tools: Bash(node:*)
 ---
 
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- --arg-string "$ARGUMENTS"`
+Run it with the Bash tool, building the flags from what the user asked (`$ARGUMENTS`):
 
-The plugin automatically logs warnings it detects at the end of a run. Use this
-command for one more source:
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- --text "<agy's words>" [--quote "<exact line>"] [--fix "<what would have prevented it>"] [--session <conversation id>] [--model <id>]
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/papercut.mjs" -- --resolve <key|id> --note "<what changed>"
 
-**`--source narrated`** — what agy said blocked it. Take it from agy's closing
-report and quote it in `--text`; do not paraphrase it into a diagnosis.
-
-Record observations without diagnosing causes; `/agy:update` reviews the
-clusters against each new agy release.
-
-Pass `--job <id>` and the run's model and conversation are filled in
-from the record instead of being retyped.
+The plugin logs agy's errors, its stderr on failed runs and its failed tool calls on
+its own. Use this command to record what agy said blocked it: take it from agy's closing
+report and quote it in `--text`; do not paraphrase it into a diagnosis. These cuts are
+filed under the `narrated` key, and `/agy:update` reviews the clusters against each new
+agy release.
 
 Once the user has applied a fix, close the cuts it addresses with
 `--resolve <key> --note "what changed"`, which closes every cut under that key

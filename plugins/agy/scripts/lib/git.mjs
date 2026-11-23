@@ -1,4 +1,4 @@
-import { run } from './run.mjs';
+import { run } from './shared/proc.mjs';
 
 /**
  * @param {string} [cwd]

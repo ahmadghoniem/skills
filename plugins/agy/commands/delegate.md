@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to the Antigravity CLI (agy).
-argument-hint: '[--prompt-file <path>] [--model <id>] [--timeout <sec>] [--sandbox] [--conversation <uuid>] [--continue] <task...>'
+argument-hint: '[--prompt-file <path>] [--model <id>] [--sandbox] [--conversation <uuid>] <task...>'
 allowed-tools: Bash(node:*), Bash(cat:*), Write
 ---
 
@@ -11,10 +11,6 @@ allowed-tools: Bash(node:*), Bash(cat:*), Write
 Use agy for well-specified, high-volume work that would otherwise consume
 context better spent on judgement. Tokens land in agy's context, so send the
 task and let agy inspect files rather than pre-reading the tree and pasting it in.
-
-## The job name
-
-This command prints one (`add-retry-to-fetchuser-a7f3`). `/agy:result` takes it.
 
 ## Writing the brief
 
@@ -59,15 +55,15 @@ Send one only when you have other work to do while it runs: it takes minutes. Go
 are long reads you would otherwise do yourself, such as a log, transcript or data file to
 summarise, or a sweep across the repo (call sites, unused code, duplicated logic). Do not
 send a lookup you can answer with a few searches, a file you are about to edit, or a
-number you will have to verify anyway. Ask follow-ups with `/agy:resume`.
+number you will have to verify anyway. Ask follow-ups with `--conversation <id>`.
 
 ## Model
 
 Omit `--model`: the plugin uses `gemini-4-hydrogen-medium`. Pass `--model` with a full id
-from the list below when the user names a model, or for work that needs more reasoning
+when the user names a model, or for work that needs more reasoning
 (`gemini-4-hydrogen-high` or `-xhigh`, which take longer). The id carries the effort level.
-
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" -- --print-models`
+When the user is unsure what is available or a model is out of quota, run `agy models`
+(about a second) and pick from what it lists; never invent an id.
 
 ## Run it
 
@@ -75,22 +71,21 @@ from the list below when the user names a model, or for work that needs more rea
    a brief longer than one line on the command line.
 2. Dispatch with the Bash tool, `run_in_background: true`, forward slashes in the path:
 
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cad/briefs/<short-name>.md" [--model <id>] [--timeout <sec>]
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/delegate.mjs" -- --prompt-file "C:/Users/<you>/.cad/briefs/<short-name>.md" [--model <id>]
 
    A one-line task can go inline instead: `-- "Rename X to Y in src/a.mjs"`.
-3. Stop. The task notification arrives when agy finishes. Do not read the job log, the
-   task output file or `~/.cad/jobs` while it runs, and do not loop on `/agy:result`. If
-   the user asks how it is going, run `/agy:result <job>` once.
+3. Stop. The task notification arrives when agy finishes, with the whole output. To stop
+   a run early, use TaskStop on its background task; that ends agy's process tree too.
 
 | Flag | Effect |
 | --- | --- |
-| `--arg-string <blob>` | Treat `<blob>` as one unsplit argument string and split it here. Omit when argv is already tokenised. |
-| `--prompt-file <path>` | Read the brief from this file instead of the command line. Not combined with an inline task. |
-| `--model <id>` | A full id from the list above. Defaults to `gemini-4-hydrogen-medium`. |
-| `--timeout <sec>` | Sets agy's `--print-timeout`. Omitted by default: the run goes until agy finishes. `/agy:cancel` stops it. |
+| `--prompt-file <path>` | Read the brief from this file. Not combined with an inline task. |
+| `--model <id>` | A full model id. Defaults to `gemini-4-hydrogen-medium`. |
 | `--sandbox` | Restricts agy's own terminal commands only. |
-| `--conversation <uuid>` | Resume a specific conversation. Fresh dispatch is the default. |
-| `--continue` | Resume agy's most recent conversation in this workspace. Only when you pass it yourself; the plugin never falls back to it. |
+| `--conversation <uuid>` | Continue that conversation, with the id from a run's last line. A follow-up goes in the prompt. |
+
+agy keeps each conversation's record in
+`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`.
 
 ## Reading the output
 

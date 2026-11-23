@@ -1,258 +1,80 @@
-// Presentation shared by the foreground dispatch and `/agy:result`, so the
-// write-up you see when a job finishes and the one you fetch later cannot drift.
-//
-// Default output is agy's own report. Status and exit code are separate facts
-// that can raise individual warning lines rather than being collapsed into a
-// single pass/fail verdict.
+// What a run prints: agy's report, a ⚠ line for each way the run can be wrong
+// while still looking done, and the conversation id last. Status and exit code
+// are separate facts that can each raise a line; nothing is folded into a verdict.
 
-import { cachedModels } from './agy.mjs'; // no cycle: agy.mjs does not import render.mjs
-
-/** Beyond this many distinct tool failures the list stops being readable. */
-const TOOL_ERROR_LIMIT = 3;
-
-/** How many continuation lines of agy's `error` survive before truncation. */
+/** Continuation lines of agy's `error` kept before truncation. */
 const ERROR_TAIL_LIMIT = 4;
 
-/**
- * agy's tool errors are frequently multi-line (a permission refusal repeats the
- * whole command). The first line carries the fact; the rest is restatement.
- *
- * @param {unknown} message
- * @returns {string}
- */
-function firstLine(message) {
-  return String(message ?? '').split('\n')[0].trim();
-}
+/** Every ⚠ id, in print order. `contract.md` at the plugin root explains each; a test keeps them in step. */
+export const WARNING_IDS = Object.freeze(['agy-status', 'exit', 'stderr', 'agy-error', 'finished-reason']);
 
 /**
- * @typedef {Object} ResultView
- * @property {string} id
- * @property {string|undefined} [status]
- * @property {string|null|undefined} agyStatus
- * @property {number|null|undefined} exitCode
- * @property {string|null|undefined} error
- * @property {number|undefined} durationSeconds
- * @property {string|undefined} conversationId
- * @property {string|undefined} summary
- * @property {boolean} [timedOut]
- * @property {string} [timedOutAfter]
+ * @typedef {Object} RunView
+ * @property {string|null} [agyStatus]
+ * @property {number} exitCode
+ * @property {string|null} [error]
+ * @property {string} [response]
+ * @property {string} [conversationId]
  * @property {string} [finishedReason]
- * @property {number} [compactions]
- * @property {string[]} [stderrTail]
- * @property {{tool: string, message: string}[]} [toolErrors]
+ * @property {string[]} [stderr]
+ * @property {string[]} [validModels]  agy's model ids, listed when it rejected the model
  */
 
 /**
- * Every warning kind this module can emit, in the order they are printed.
- *
- * Machine-readable list of warning ids in print order, documented in
- * `contract.md` at the plugin root and verified by `tests/contract.test.mjs`.
- *
- * @type {readonly string[]}
+ * Whether the run ended before agy finished; `delegate.mjs` exits 1 on these.
+ * agy exits 3 when a turn ends on a model or agent API error, even after a partial reply.
  */
-export const WARNING_IDS = Object.freeze([
-  "agy-status",
-  "exit",
-  "stderr",
-  "tool-errors",
-  "compaction",
-  "agy-error",
-  "timeout",
-  "finished-reason",
-  "resume",
-]);
-
-/**
- * Report whether a write-up exists, to disambiguate non-SUCCESS statuses
- * without judging the run.
- *
- * @param {ResultView} job
- * @returns {string}
- */
-function statusContext(job) {
-  const hasReport = job.summary != null && String(job.summary).trim() !== '';
-  return hasReport ? ' (write-up present)' : ' (no write-up)';
+export function isUnfinished(run) {
+  return run.exitCode !== 0 || Boolean(run.finishedReason) || String(run.agyStatus ?? '').toUpperCase() === 'ERROR';
 }
 
 /**
- * @typedef {Object} Anomaly
- * @property {string} id       one of `WARNING_IDS`
- * @property {string} line     the ⚠ line, without its marker
- * @property {string[]} [detail] indented continuation lines
+ * @param {RunView} run
+ * @returns {{id: string, line: string, detail?: string[]}[]}
  */
-
-/**
- * agy exits 3 when a turn ends on a model or agent API error, even
- * after streaming part of a response, and prints an `AGY_ERROR: {...}` line.
- */
-const AGY_API_ERROR_EXIT = 3;
-
-/**
- * Whether the run ended before agy finished: the plugin's own record says so
- * (`failed`, `cancelled`, `orphaned`), agy hit its own print timeout, agy gave
- * a `finished_reason`, agy's own status says `ERROR`, or agy exited on an API
- * error. One definition shared by the resume offer and the exit code.
- *
- * @param {ResultView} job
- * @returns {boolean}
- */
-export function isUnfinished(job) {
-  return (
-    job.status === 'failed' ||
-    job.status === 'cancelled' ||
-    job.status === 'orphaned' ||
-    Boolean(job.timedOut) ||
-    Boolean(job.finishedReason) ||
-    String(job.agyStatus ?? '').toUpperCase() === 'ERROR' ||
-    job.exitCode === AGY_API_ERROR_EXIT
-  );
-}
-
-/**
- * The anomalies for a finished job, in the order they are printed. Exported for
- * the tests and for the papercut writer, which files the same detections the
- * renderer prints.
- *
- * @param {ResultView} job
- * @returns {Anomaly[]}
- */
-export function anomalies(job) {
-  /** @type {Anomaly[]} */
+export function anomalies(run) {
   const out = [];
-
-  const status = job.agyStatus == null ? '' : String(job.agyStatus);
+  const status = run.agyStatus == null ? '' : String(run.agyStatus);
   if (status && status.toUpperCase() !== 'SUCCESS') {
-    out.push({ id: 'agy-status', line: `agy status: ${status}${statusContext(job)}` });
+    const hasReport = Boolean(String(run.response ?? '').trim());
+    out.push({ id: 'agy-status', line: `agy status: ${status} (${hasReport ? 'write-up present' : 'no write-up'})` });
+  }
+  if (run.exitCode !== 0) out.push({ id: 'exit', line: `exit ${run.exitCode}` });
+
+  // On a run that worked, stderr holds background notes; on one that did not, it
+  // is often the only record of why (not signed in, a rejected flag, AGY_ERROR).
+  const stderr = run.stderr ?? [];
+  if (stderr.length && isUnfinished(run)) out.push({ id: 'stderr', line: 'agy wrote to stderr:', detail: [...stderr] });
+
+  if (run.error) {
+    const lines = String(run.error).split('\n');
+    let detail = lines.slice(1, 1 + ERROR_TAIL_LIMIT);
+    if (lines.length - 1 > ERROR_TAIL_LIMIT) detail.push(`… ${lines.length - 1 - ERROR_TAIL_LIMIT} more lines`);
+    // agy names display labels, which `--model` does not accept; list the ids.
+    if (run.validModels?.length) detail = ['Valid ids:', ...run.validModels.map((id) => `  ${id}`)];
+    out.push({ id: 'agy-error', line: lines[0], detail });
   }
 
-  if (typeof job.exitCode === 'number' && job.exitCode !== 0) {
-    out.push({ id: 'exit', line: `exit ${job.exitCode}` });
-  }
-
-  // agy is silent on stderr when nothing went wrong, so any output there is
-  // worth showing: initialisation failures, its own timeout notice,
-  // background-task notes, and network errors on a run that did return a
-  // status.
-  const stderrTail = Array.isArray(job.stderrTail) ? job.stderrTail : [];
-  if (stderrTail.length > 0) {
-    out.push({
-      id: 'stderr',
-      line: 'agy wrote to stderr:',
-      detail: [...stderrTail],
-    });
-  }
-
-  // Tools that failed during the run, deduped across repeated attempts.
-  // Highlights failed verification commands that might otherwise be masked
-  // by SUCCESS.
-  const toolErrors = Array.isArray(job.toolErrors) ? job.toolErrors : [];
-  if (toolErrors.length > 0) {
-    const seen = new Set();
-    const unique = [];
-    for (const e of toolErrors) {
-      const key = `${e?.tool}\0${e?.message}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(e);
-    }
-    const shown = unique.slice(0, TOOL_ERROR_LIMIT);
-    const noun = unique.length === 1 ? 'tool call' : 'tool calls';
-    const detail = shown.map((e) => `${e.tool}: ${firstLine(e.message)}`);
-    if (unique.length > shown.length) {
-      detail.push(`… and ${unique.length - shown.length} more`);
-    }
-    out.push({
-      id: 'tool-errors',
-      line: `${unique.length} ${noun} failed during the run — reported, not judged:`,
-      detail,
-    });
-  }
-
-  // Information about the run, not friction, so it is not filed as a
-  // papercut. It matters because work after a compaction is where agy is
-  // most likely to redo something or drift from the brief.
-  const compactions = typeof job.compactions === 'number' ? job.compactions : 0;
-  if (compactions > 0) {
-    out.push({
-      id: 'compaction',
-      line: `agy compacted its context ${compactions} time${compactions === 1 ? '' : 's'} during this run; check the diff against the brief`,
-    });
-  }
-
-  if (job.error != null && String(job.error).length > 0) {
-    const errText = String(job.error);
-    const errLines = errText.split('\n');
-    let detail;
-    if (/invalid model selection/i.test(errText) && /not recognized/i.test(errText)) {
-      // agy's own message names display labels ("Gemini 3.8 Flash (High)"),
-      // which cannot be passed back to `--model`; the cache is the source of
-      // truth for ids that can. An effort mismatch is not about the id,
-      // and agy's message already names the levels the model has.
-      const models = cachedModels() ?? [];
-      detail = ['Valid ids:', ...models.map((m) => `  ${m.id}`)];
-    } else {
-      // Error messages can be long; display the first line and truncate details.
-      const extras = errLines.slice(1);
-      detail = extras.slice(0, ERROR_TAIL_LIMIT);
-      if (extras.length > ERROR_TAIL_LIMIT) {
-        detail.push(`… ${extras.length - ERROR_TAIL_LIMIT} more lines (full text in the job log)`);
-      }
-    }
-    out.push({ id: 'agy-error', line: errLines[0], detail });
-  }
-
-  if (job.timedOut) {
-    out.push({
-      id: 'timeout',
-      line: `agy hit its print timeout after ${job.timedOutAfter ?? 'its limit'}; the output is partial`,
-    });
-  }
-
-  // agy's own reason for ending the turn early, verbatim. `print_timeout` is
-  // the `timeout` line above; any other value (`interrupted`, `error`, or one a
-  // later agy adds) is shown here.
-  if (job.finishedReason && job.finishedReason !== 'print_timeout') {
-    out.push({
-      id: 'finished-reason',
-      line: `agy ended the turn early: finished_reason ${job.finishedReason}`,
-    });
-  }
-
-  // Offer resume whenever the run ended before agy finished and kept a
-  // conversation to continue, whatever stopped it (agy's own timeout, a
-  // dropped connection, a quota error).
-  if (isUnfinished(job) && job.conversationId) {
-    out.push({
-      id: 'resume',
-      line: `this run can be resumed where it stopped: /agy:resume ${job.id}`,
-    });
-  }
-
+  // agy's own reason for ending the turn early, verbatim: `print_timeout`,
+  // `interrupted`, `error`, or one a later agy adds.
+  if (run.finishedReason) out.push({ id: 'finished-reason', line: `agy ended the turn early: finished_reason ${run.finishedReason}` });
   return out;
 }
 
-/**
- * agy's report, plus a warning line per way the run may have gone wrong.
- * A clean run renders as the report alone.
- *
- * @param {ResultView} job
- * @returns {string}
- */
-export function renderResult(job) {
-  const report = (job.summary == null ? '' : String(job.summary)).replace(/\s+$/, '');
-  const warnings = anomalies(job);
-
+/** @param {RunView} run */
+export function renderResult(run) {
+  const warns = anomalies(run);
   const lines = [];
-  if (report.length > 0) lines.push(report);
-  else if (warnings.length === 0) lines.push('(agy returned no report)');
-
-  if (warnings.length > 0) {
-    if (lines.length > 0) lines.push('');
-    for (const w of warnings) {
+  const report = String(run.response ?? '').replace(/\s+$/, '');
+  if (report) lines.push(report);
+  else if (!warns.length) lines.push('(agy returned no report)');
+  if (warns.length) {
+    if (lines.length) lines.push('');
+    for (const w of warns) {
       lines.push(`⚠ ${w.line}`);
       for (const d of w.detail ?? []) lines.push(`  ${d}`);
     }
   }
-
+  if (run.conversationId) lines.push('', `conversation: ${run.conversationId}`);
   return `${lines.join('\n')}\n`;
 }

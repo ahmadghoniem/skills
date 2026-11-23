@@ -6,6 +6,6 @@ export default defineConfig({
     include: ['tests/**/*.test.mjs'],
     setupFiles: ['tests/setup-home.mjs'],
     testTimeout: 15_000,
-    env: { CAD_RELEASE_CHECK: 'off' },
+    env: { DELEGATE_RELEASE_CHECK: 'off' },
   },
 });
