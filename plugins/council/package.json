@@ -1,0 +1,14 @@
+{
+  "name": "claude-council",
+  "version": "0.1.0",
+  "description": "Run a council of delegate CLIs (grok, agy, opencode) from Claude Code.",
+  "type": "module",
+  "license": "MIT",
+  "author": { "name": "Ahmed Ghoniem", "url": "https://github.com/ahmadghoniem" },
+  "homepage": "https://github.com/ahmadghoniem/skills",
+  "repository": { "type": "git", "url": "https://github.com/ahmadghoniem/skills.git" },
+  "engines": { "node": ">=18.18" },
+  "os": ["win32"],
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "vitest": "^2.1.8" }
+}

@@ -67,6 +67,21 @@
         "agent-delegation"
       ],
       "strict": false
+    },
+    {
+      "name": "council",
+      "source": "./plugins/council",
+      "description": "Convene grok, agy and opencode as a review council chaired by Claude.",
+      "category": "engineering",
+      "keywords": [
+        "council",
+        "review",
+        "multi-agent",
+        "grok",
+        "agy",
+        "opencode"
+      ],
+      "strict": false
     }
   ]
 }

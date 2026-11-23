@@ -6,8 +6,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 
+// Only a print run is recorded: `--version`, `models` and `plugin install` run
+// alongside it and would overwrite the dump.
+const printRun = args.includes('--output-format');
 const argvDump = process.env.AGY_STUB_ARGV;
-if (argvDump) {
+if (argvDump && printRun) {
   try {
     writeFileSync(argvDump, JSON.stringify(args), 'utf8');
   } catch {
@@ -15,7 +18,7 @@ if (argvDump) {
   }
 }
 
-if (process.env.AGY_STUB_ENV) {
+if (process.env.AGY_STUB_ENV && printRun) {
   writeFileSync(
     process.env.AGY_STUB_ENV,
     JSON.stringify({ CLAUDECODE: process.env.CLAUDECODE ?? null, AGY_CLI_DISABLE_AUTO_UPDATE: process.env.AGY_CLI_DISABLE_AUTO_UPDATE ?? null }),

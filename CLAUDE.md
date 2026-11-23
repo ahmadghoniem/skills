@@ -1,6 +1,6 @@
 # Repo conventions
 
-This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising five plugins.
+This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising six plugins.
 
 ## Layout
 
@@ -16,7 +16,7 @@ Every skill under `skills/` is loaded unnamespaced, so those names must be globa
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises all five plugins (the skills bundle plus the four delegates). After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises all six plugins (the skills bundle, the four delegates and the council). `plugins/_shared/` is copied into grok, agy, opencode and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -40,7 +40,7 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # cursor + grok + agy + opencode
+npm test              # shared + cursor + grok + agy + opencode + council
 npm run test:agy      # or one at a time
 ```
 
@@ -56,7 +56,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@, opencode@
+claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@, opencode@, council@
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.

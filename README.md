@@ -60,7 +60,7 @@ Reachable by name, and the agent fires them when a task fits.
 
 ## Delegation plugins
 
-Same shape in all four: `/<name>:delegate` hands a task to an external CLI, `/<name>:result` prints what came back, `/<name>:resume` continues it, `/<name>:cancel` kills it, `/<name>:setup` health-checks the CLI.
+`/<name>:delegate` hands a task to an external CLI and `/<name>:setup` health-checks it. grok, agy and opencode run in a background Bash call and end with a session id that continues the work; Claude Code reports when they finish and TaskStop stops them. cursor still keeps its own `/cursor:result`, `:resume` and `:cancel`.
 
 | Plugin | CLI | Platform |
 | --- | --- | --- |
@@ -68,6 +68,9 @@ Same shape in all four: `/<name>:delegate` hands a task to an external CLI, `/<n
 | [grok](./plugins/grok/README.md) | `grok` (Grok Build) | Windows |
 | [agy](./plugins/agy/README.md) | `agy` (Antigravity) | Windows |
 | [opencode](./plugins/opencode/README.md) | `opencode` | Windows |
+| [council](./plugins/council/README.md) | grok, agy and opencode as a review council | Windows |
+
+`plugins/_shared/` holds the helpers grok, agy, opencode and council share; `node tools/sync-shared.mjs` copies them into each plugin.
 
 Each plugin keeps its own `CHANGELOG.md` and version number.
 
