@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Five standalone skills ship as the `kit` plugin. Four delegation plugins (`cursor`, `grok`, `agy`, `opencode`) ship alongside them, each keeping its own commands, scripts and test suite.
+Five standalone skills ship as the `kit` plugin. Three delegation plugins (`grok`, `agy`, `opencode`) and the `council` that convenes them ship alongside, each keeping its own commands, scripts and test suite.
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -19,9 +19,9 @@ Add the marketplace once, then install what you want:
 The delegation plugins are separate installs, because each needs its own CLI on `PATH`:
 
 ```
-/plugin install cursor@ahmadghoniem   # then /cursor:setup
 /plugin install grok@ahmadghoniem     # then /grok:setup
 /plugin install agy@ahmadghoniem      # then /agy:setup
+/plugin install opencode@ahmadghoniem # then /opencode:setup
 ```
 
 To run from a checkout instead, point the marketplace at the directory:
@@ -34,7 +34,7 @@ Installing still copies the plugin into `~/.claude/plugins/cache/`, so an edit i
 
 ```
 claude plugin marketplace update ahmadghoniem
-claude plugin update kit    # and cursor, grok, agy, opencode
+claude plugin update kit    # and grok, agy, opencode, council
 ```
 
 ## Skills
@@ -60,11 +60,10 @@ Reachable by name, and the agent fires them when a task fits.
 
 ## Delegation plugins
 
-`/<name>:delegate` hands a task to an external CLI and `/<name>:setup` health-checks it. grok, agy and opencode run in a background Bash call and end with a session id that continues the work; Claude Code reports when they finish and TaskStop stops them. cursor still keeps its own `/cursor:result`, `:resume` and `:cancel`.
+`/<name>:delegate` hands a task to an external CLI and `/<name>:setup` health-checks it. grok, agy and opencode run in a background Bash call and end with a session id that continues the work; Claude Code reports when they finish and TaskStop stops them.
 
 | Plugin | CLI | Platform |
 | --- | --- | --- |
-| [cursor](./plugins/cursor/README.md) | `cursor-agent` (Composer) | Windows, Linux |
 | [grok](./plugins/grok/README.md) | `grok` (Grok Build) | Windows |
 | [agy](./plugins/agy/README.md) | `agy` (Antigravity) | Windows |
 | [opencode](./plugins/opencode/README.md) | `opencode` | Windows |
@@ -86,4 +85,4 @@ Conventions live in [AGENTS.md](./AGENTS.md).
 
 ## License
 
-MIT, one licence for the whole repo. See [LICENSE](./LICENSE). `plugins/cursor/NOTICE` carries third-party attribution, which the licence does not replace.
+MIT, one licence for the whole repo. See [LICENSE](./LICENSE).

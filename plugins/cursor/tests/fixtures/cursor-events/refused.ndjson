@@ -1,2 +1,0 @@
-{"type":"system","subtype":"init","apiKeySource":"login","cwd":"C:\\repo","session_id":"fcd37ec5-0457-416b-aff8-1b88edfb2ded","model":"Grok 4.7 256K High Fast","permissionMode":"default"}
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Reply with just OK"}]},"session_id":"fcd37ec5-0457-416b-aff8-1b88edfb2ded"}

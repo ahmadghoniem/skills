@@ -1,6 +1,6 @@
 # Repo conventions
 
-This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising six plugins.
+This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising five plugins.
 
 ## Layout
 
@@ -8,7 +8,7 @@ Skills live flat, one directory each, at `skills/<name>/SKILL.md`. No bucket fol
 
 Claude Code auto-discovers `skills/<name>/SKILL.md`, so `.claude-plugin/plugin.json` carries **no** `skills` array. Do not add one, and do not nest a skill a level deeper, or it stops being found.
 
-Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`cursor:output-contract`), so those may repeat.
+Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`grok:delegate`), so those may repeat.
 
 `tools/<name>/` holds standalone scripts that are neither skill nor plugin. `tools/apply-patch/` is reached through a junction at `~/.claude/scripts/apply-patch`, so edits are live; its tests use `node:test` and need no install.
 
@@ -40,13 +40,11 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # shared + cursor + grok + agy + opencode + council
+npm test              # shared + grok + agy + opencode + council + apply-patch
 npm run test:agy      # or one at a time
 ```
 
 Do not add npm `workspaces` to the root `package.json`. It makes `npm ci` inside a plugin directory fail outright; the `--prefix` scripts exist for that reason.
-
-`prettier --check` fails on five files in `plugins/cursor`, and has since before this repo existed. That is known and deliberately left alone.
 
 The skills have no test suite. `skills/tailwind/evals/` holds a trigger eval, run by hand.
 
@@ -56,7 +54,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install kit@ahmadghoniem   # and cursor@, grok@, agy@, opencode@, council@
+claude plugin install kit@ahmadghoniem   # and grok@, agy@, opencode@, council@
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
@@ -65,7 +63,6 @@ So each cached version directory is replaced by a **Windows directory junction**
 
 ```
 ~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
-~/.claude/plugins/cache/ahmadghoniem/cursor/0.12.0  ->  <repo>/plugins/cursor
 ~/.claude/plugins/cache/ahmadghoniem/grok/0.5.0     ->  <repo>/plugins/grok
 ~/.claude/plugins/cache/ahmadghoniem/agy/0.3.0      ->  <repo>/plugins/agy
 ~/.claude/plugins/cache/ahmadghoniem/opencode/0.1.0 ->  <repo>/plugins/opencode
