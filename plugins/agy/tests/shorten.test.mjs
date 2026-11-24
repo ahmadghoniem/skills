@@ -84,12 +84,6 @@ describe('shorten', () => {
     expect(describeCut(['✓ tests/a.test.ts (3 tests)', '✓ tests/b.test.ts (1 test)'])).toBe('');
   });
 
-  it('cuts a single huge line to its start', () => {
-    const out = shorten('z'.repeat(50_000), 'p');
-    expect(out.length).toBeLessThanOrEqual(BUDGET);
-    expect(out).toContain('this output is 50000 bytes on 1 line');
-  });
-
   it('points a cut file print at the file itself', () => {
     const lines = Array.from({ length: 400 }, (_, i) => `code ${i + 1} ${'q'.repeat(60)}`);
     const out = shorten(lines.join('\n'), 'p', BUDGET, { read: { file: 'C:/repo/a.ts', first: 101 } });

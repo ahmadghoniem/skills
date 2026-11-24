@@ -1,204 +1,92 @@
 import { describe, expect, it } from 'vitest';
-import {
-  collapseArguments,
-  collapseCommandArgv,
-  parseArgv,
-  parseCommandArgv,
-  parseTimeout,
-  splitArgString,
-} from '../scripts/lib/args.mjs';
+import { collapseCommandArgv, parseCommandArgv, parseTimeout, splitArgString } from '../scripts/lib/args.mjs';
+
+const parse = (argv, booleans) => parseCommandArgv(argv, booleans);
 
 describe('splitArgString', () => {
-  it('splits on whitespace', () => {
-    expect(splitArgString('--model composer-2 hello world')).toEqual([
-      '--model',
-      'composer-2',
-      'hello',
-      'world',
-    ]);
+  it('splits on spaces, tabs and newlines', () => {
+    expect(splitArgString('--model composer-2 hello\tworld\nnow')).toEqual(['--model', 'composer-2', 'hello', 'world', 'now']);
   });
 
-  it('preserves double-quoted spans', () => {
-    expect(splitArgString('--model composer-2 "write a haiku about git"')).toEqual([
-      '--model',
-      'composer-2',
-      'write a haiku about git',
-    ]);
-  });
-
-  it('preserves single-quoted spans', () => {
-    expect(splitArgString("--flag 'value with spaces'")).toEqual(['--flag', 'value with spaces']);
+  it('keeps double- and single-quoted spans whole', () => {
+    expect(splitArgString(`--model 'composer 2' "write a haiku"`)).toEqual(['--model', 'composer 2', 'write a haiku']);
   });
 
   it('treats backslashes inside single quotes as literal', () => {
     expect(splitArgString("'a\\b'")).toEqual(['a\\b']);
   });
 
-  it('honours a backslash escape inside double quotes', () => {
+  it('honours a backslash escape inside double quotes and outside quotes', () => {
     expect(splitArgString('"a\\"b"')).toEqual(['a"b']);
-  });
-
-  it('honours a backslash escape outside quotes', () => {
     expect(splitArgString('a\\ b')).toEqual(['a b']);
   });
 
   it('keeps a trailing lone backslash rather than dropping the escape', () => {
     expect(splitArgString('a\\')).toEqual(['a\\']);
   });
-
-  it('splits on tabs and newlines as well as spaces', () => {
-    expect(splitArgString('a\tb\nc')).toEqual(['a', 'b', 'c']);
-  });
 });
 
 describe('a `--` inside the task text does not swallow flags', () => {
-  // Regression: a task containing a bare `--` used to flip parseArgv into
-  // end-of-flags mode, so `--model` never arrived and the job silently ran on
-  // the default model while reporting success.
+  // Regression: a task containing a bare `--` used to end flag parsing, so
+  // `--model` never arrived and the job silently ran on the default model.
   it('keeps flags that follow a `--` in the user text', () => {
-    const r = parseCommandArgv(['--', 'fix the bug -- see notes', '--model', 'composer-2']);
+    const r = parse(['--', 'fix the bug -- see notes', '--model', 'composer-2']);
     expect(r.flags['model']).toBe('composer-2');
     expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
   });
 
   it('keeps flags when the whole invocation arrives as --arg-string', () => {
-    const r = parseCommandArgv([
-      '--',
-      '--arg-string',
-      'fix the bug -- see notes --model composer-2 --timeout 60',
-    ]);
+    const r = parse(['--', '--arg-string', 'fix the bug -- see notes --model composer-2 --timeout 60']);
     expect(r.flags['model']).toBe('composer-2');
     expect(r.flags['timeout']).toBe(60);
     expect(r.positional.join(' ')).toBe('fix the bug -- see notes');
   });
-
-  it('still honours `--` for direct parseArgv callers', () => {
-    const r = parseArgv(['a', '--', '--model', 'composer-2']);
-    expect(r.flags['model']).toBeUndefined();
-    expect(r.positional).toEqual(['a', '--model', 'composer-2']);
-  });
-
-  it('treats `--` as ordinary text when honorDoubleDash is false', () => {
-    const r = parseArgv(['a', '--', '--model', 'composer-2'], [], { honorDoubleDash: false });
-    expect(r.flags['model']).toBe('composer-2');
-    expect(r.positional).toEqual(['a', '--']);
-  });
 });
 
-describe('parseArgv', () => {
-  it('splits positional vs flags', () => {
-    const r = parseArgv(['--model', 'composer-2', '--fresh', 'do', 'thing'], ['fresh']);
+describe('parseCommandArgv flags', () => {
+  it('splits positionals from flags, and a boolean flag does not take the next token', () => {
+    const r = parse(['--model', 'composer-2', '--help', 'do', 'thing'], ['help']);
     expect(r.flags['model']).toBe('composer-2');
-    expect(r.flags['fresh']).toBe(true);
+    expect(r.flags['help']).toBe(true);
     expect(r.positional).toEqual(['do', 'thing']);
   });
 
-  it('handles --no-* negation, populating both kebab and camel', () => {
-    const r = parseArgv(['--no-git-check'], ['git-check']);
-    expect(r.flags['git-check']).toBe(false);
-    expect(r.flags['gitCheck']).toBe(false);
-  });
-
-  it('populates kebab and camel for a positive kebab flag', () => {
-    const r = parseArgv(['--git-check'], ['git-check']);
-    expect(r.flags['git-check']).toBe(true);
-    expect(r.flags['gitCheck']).toBe(true);
-  });
-
-  it('auto-casts numeric flag values', () => {
-    const r = parseArgv(['--timeout', '60'], []);
-    expect(r.flags['timeout']).toBe(60);
-  });
-
-  it('does not cast an integer that would lose precision', () => {
-    const r = parseArgv(['--id', '12345678901234567890'], []);
-    expect(r.flags['id']).toBe('12345678901234567890');
-  });
-
-  it('handles --foo=value form', () => {
-    const r = parseArgv(['--resume=sess_abc', '--model=composer-2'], []);
-    expect(r.flags['resume']).toBe('sess_abc');
-    expect(r.flags['model']).toBe('composer-2');
-  });
-
-  it('treats everything after -- as positional', () => {
-    const r = parseArgv(['--model', 'composer-2', '--', '--weird', 'arg'], []);
-    expect(r.flags['model']).toBe('composer-2');
-    expect(r.positional).toEqual(['--weird', 'arg']);
-  });
-
-  it('boolean flag does not consume next token', () => {
-    const r = parseArgv(['--fresh', 'task-text'], ['fresh']);
-    expect(r.flags['fresh']).toBe(true);
-    expect(r.positional).toEqual(['task-text']);
-  });
-
-  it('undeclared flag with no following value becomes true', () => {
-    const r = parseArgv(['--fresh'], []);
-    expect(r.flags['fresh']).toBe(true);
-  });
-
-  it('undeclared flag does not consume a following flag-looking token', () => {
-    const r = parseArgv(['--model', '--fresh'], []);
-    expect(r.flags['model']).toBe(true);
-    expect(r.flags['fresh']).toBe(true);
-  });
-
-  // resume.mjs unshifts `--resume` onto argv. Delegate declares `resume` as a
-  // boolean so a follow-up prompt is not eaten as a session id. `--resume=<id>`
-  // still extracts the id because inline values bypass the boolean rule.
-  it('--resume followed by a prompt does not eat the prompt token', () => {
-    const r = parseArgv(['--resume', 'fix', 'the', 'parser'], ['resume']);
-    expect(r.flags['resume']).toBe(true);
-    expect(r.positional).toEqual(['fix', 'the', 'parser']);
-  });
-
-  it('--resume=<id> still extracts the session id even when boolean-declared', () => {
-    const r = parseArgv(['--resume=sess_abc', 'follow', 'up'], ['resume']);
-    expect(r.flags['resume']).toBe('sess_abc');
-    expect(r.positional).toEqual(['follow', 'up']);
+  it('negates --no-foo, and fills the camelCase name of a kebab flag', () => {
+    expect(parse(['--no-color']).flags['color']).toBe(false);
+    expect(parse(['--prompt-file', 'a.md']).flags['promptFile']).toBe('a.md');
   });
 
   it('keeps the inline value of --no-foo=value instead of discarding it', () => {
-    const { flags } = parseArgv(['--no-cache=5']);
+    const { flags } = parse(['--no-cache=5']);
     expect(flags['no-cache']).toBe(5);
     expect(flags['cache']).toBeUndefined();
+  });
+
+  it('reads --foo=value, and casts numbers only when they round-trip', () => {
+    const { flags } = parse(['--model=composer-2', '--timeout', '60', '--id', '12345678901234567890']);
+    expect(flags['model']).toBe('composer-2');
+    expect(flags['timeout']).toBe(60);
+    expect(flags['id']).toBe('12345678901234567890');
+  });
+
+  it('an undeclared flag with no value, or followed by another flag, becomes true', () => {
+    const { flags } = parse(['--model', '--fresh']);
+    expect(flags['model']).toBe(true);
+    expect(flags['fresh']).toBe(true);
   });
 });
 
 describe('collapseCommandArgv', () => {
   it('passes through a real-shell path that contains spaces', () => {
-    expect(collapseCommandArgv(['--', '--prompt-file', '/c/Users/Ahmed Ibrahim/x.md'])).toEqual([
-      '--prompt-file',
-      '/c/Users/Ahmed Ibrahim/x.md',
-    ]);
-  });
-
-  it('splits an --arg-string blob and merges it in order', () => {
-    expect(collapseCommandArgv(['--', '--arg-string', '--fresh fix the parser'])).toEqual([
-      '--fresh',
-      'fix',
-      'the',
-      'parser',
-    ]);
+    expect(collapseCommandArgv(['--', '--prompt-file', '/c/Users/Ahmed Ibrahim/x.md'])).toEqual(['--prompt-file', '/c/Users/Ahmed Ibrahim/x.md']);
   });
 
   it('preserves newlines when --arg-string is absent', () => {
     expect(collapseCommandArgv(['--', 'line one\nline two'])).toEqual(['line one\nline two']);
   });
 
-  it('leaves already-split argv untouched', () => {
-    expect(collapseCommandArgv(['--model', 'composer-2', '--', 'do "a thing"'])).toEqual([
-      '--model',
-      'composer-2',
-      'do "a thing"',
-    ]);
-  });
-
-  it('splits only an explicit --arg-string blob', () => {
-    expect(collapseCommandArgv(['--model', 'composer-2', '--', '--arg-string', 'do "a thing"'])).toEqual(
-      ['--model', 'composer-2', 'do', 'a thing'],
-    );
+  it('splits only an explicit --arg-string blob, in place', () => {
+    expect(collapseCommandArgv(['--model', 'composer-2', '--', '--arg-string', 'do "a thing"'])).toEqual(['--model', 'composer-2', 'do', 'a thing']);
   });
 
   it('drops a trailing --arg-string with no blob', () => {
@@ -206,40 +94,14 @@ describe('collapseCommandArgv', () => {
   });
 });
 
-describe('collapseArguments', () => {
-  it('returns empty for empty input', () => {
-    expect(collapseArguments('')).toEqual([]);
-    expect(collapseArguments(undefined)).toEqual([]);
-  });
-
-  it('tokenises with quoting', () => {
-    expect(collapseArguments('--model composer-2 "hello world"')).toEqual([
-      '--model',
-      'composer-2',
-      'hello world',
-    ]);
-  });
-});
-
 describe('parseTimeout', () => {
   it('falls back for junk, zero, and negatives', () => {
-    expect(parseTimeout('abc')).toBe(1800);
-    expect(parseTimeout('0')).toBe(1800);
-    expect(parseTimeout(0)).toBe(1800);
-    expect(parseTimeout(-1)).toBe(1800);
-    expect(parseTimeout('-10')).toBe(1800);
-    expect(parseTimeout(undefined)).toBe(1800);
-    expect(parseTimeout('')).toBe(1800);
-    expect(parseTimeout(Number.NaN)).toBe(1800);
+    for (const raw of ['abc', '0', 0, -1, '-10', -0.5, undefined, '', Number.NaN]) expect(parseTimeout(raw)).toBe(1800);
+    expect(parseTimeout('x', 5)).toBe(5);
   });
 
   it('keeps a positive number or numeric string', () => {
     expect(parseTimeout('60')).toBe(60);
     expect(parseTimeout(45)).toBe(45);
-  });
-
-  it('honours a custom fallback', () => {
-    expect(parseTimeout('x', 5)).toBe(5);
-    expect(parseTimeout(0, 3600)).toBe(3600);
   });
 });

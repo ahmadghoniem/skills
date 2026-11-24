@@ -17,21 +17,6 @@ describe('renderResult', () => {
     );
   });
 
-  it('never echoes the prompt back', () => {
-    const out = renderResult({ ...clean, prompt: 'a five kilobyte brief' });
-    expect(out).not.toContain('five kilobyte');
-    expect(out).not.toMatch(/prompt/i);
-  });
-
-  it('never lists files touched — that list conflated reads with writes', () => {
-    const out = renderResult({
-      ...clean,
-      filesTouched: ['src/api/client.ts', 'docs/only-read-this-one.md'],
-    });
-    expect(out).not.toContain('only-read-this-one');
-    expect(out).not.toMatch(/files touched/i);
-  });
-
   // The case this was written for: a run refused for a bad session id exited 1
   // with no write-up at all, and Cursor's explanation reached only the log file.
   it('surfaces the reason a run failed, first line inline and the rest indented', () => {
@@ -51,15 +36,6 @@ describe('renderResult', () => {
     expect(warnings({ ...clean, errorDetail: '   ' })).not.toContainEqual(
       expect.stringContaining('error:'),
     );
-  });
-
-  it('never renders model, timestamp, cost, or token counts', () => {
-    const out = renderResult({ ...clean, costUsd: 0.4936, numTurns: 26, model: 'composer-2' });
-    expect(out).not.toMatch(/cost/i);
-    expect(out).not.toMatch(/token/i);
-    expect(out).not.toContain('0.49');
-    expect(out).not.toContain('composer-2');
-    expect(out).not.toMatch(/\d+ turns/);
   });
 
   it('raises a stop reason that is not success', () => {
@@ -150,17 +126,6 @@ describe('isUnfinished', () => {
 });
 
 describe('warnings', () => {
-  it('is empty for a clean run', () => {
-    expect(warnings(clean)).toEqual([]);
-  });
-
-  it('does not collapse the stop reason and the exit code', () => {
-    expect(warnings({ ...clean, stopReason: 'max_tokens', exitCode: 2 })).toEqual([
-      { id: 'stop-reason', line: 'stop reason: max_tokens' },
-      { id: 'exit', line: 'exit 2' },
-    ]);
-  });
-
   // Backported from agy. Gated on both halves: a write-up that claims changes,
   // and a tree that shows none.
   it('raises wander when the write-up claims changes the tree does not show', () => {

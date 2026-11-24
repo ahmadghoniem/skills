@@ -138,7 +138,7 @@ export function toolBody(ev) {
  * @param {CursorEvent} ev
  * @returns {CommandRun|null}
  */
-export function shellCommandResult(ev) {
+function shellCommandResult(ev) {
   if (ev?.type !== 'tool_call') return null;
   const tool = toolBody(ev);
   if (!tool || tool.name !== 'shellToolCall') return null;

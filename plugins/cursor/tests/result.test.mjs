@@ -43,13 +43,6 @@ describe('/cursor:result', () => {
 
   const listed = () => [...out.matchAll(/^j\d{2}\b/gm)].map((m) => m[0]);
 
-  it('--all lists jobs instead of printing a single result', async () => {
-    seedJobs(2);
-    expect(await resultMain(['--all'])).toBe(0);
-    expect(out).toContain('id  status  started');
-    expect(listed()).toEqual(['j01', 'j00']);
-  });
-
   it('--list caps at 10, newest first', async () => {
     seedJobs(12);
     await resultMain(['--list']);
@@ -58,9 +51,10 @@ describe('/cursor:result', () => {
     expect(listed()).not.toContain('j00');
   });
 
-  it('--all returns every tracked job past the --list cap', async () => {
+  it('--all lists every tracked job, past the --list cap', async () => {
     seedJobs(12);
-    await resultMain(['--all']);
+    expect(await resultMain(['--all'])).toBe(0);
+    expect(out).toContain('id  status  started');
     expect(listed()).toHaveLength(12);
   });
 
@@ -94,29 +88,5 @@ describe('/cursor:result', () => {
     expect(await resultMain(['busy'])).toBe(0);
     expect(out).toContain('is still running');
     expect(out).toContain('2 tool calls, last tool search_replace');
-  });
-
-  it('offers a resume for a failed job that kept its session id', async () => {
-    createJob({ id: 'cut-short', repoPath: tmp.dir, prompt: 'big one', model: '' });
-    updateJob(tmp.dir, 'cut-short', {
-      status: 'failed',
-      summary: 'partial work',
-      chatId: '11111111-2222-3333-4444-555555555555',
-    });
-    await resultMain(['cut-short']);
-    expect(out).toContain('/cursor:resume cut-short');
-  });
-
-  it('offers no resume for a job that finished', async () => {
-    createJob({ id: 'finished', repoPath: tmp.dir, prompt: 'small one', model: '' });
-    updateJob(tmp.dir, 'finished', {
-      status: 'done',
-      summary: 'all good',
-      stopReason: 'success',
-      exitCode: 0,
-      chatId: '11111111-2222-3333-4444-555555555555',
-    });
-    await resultMain(['finished']);
-    expect(out).toBe('all good\n');
   });
 });

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { appendPapercut, formatOpenPapercuts, oneLine, readPapercuts } from './papercuts.mjs';
+import { appendPapercut, formatOpenPapercuts, readPapercuts } from './papercuts.mjs';
 import { parseCli } from './proc.mjs';
 import { compareVersions, latestRelease, noticeOnce, parseVersion, releasesSince, reviewedVersion, setReviewedVersion } from './release.mjs';
 
@@ -47,7 +47,6 @@ test('papercuts group by key and show recurrence after a fix', () => {
   assert.equal(formatOpenPapercuts(readPapercuts(path), 'grok'), '');
   appendPapercut(path, { ts: '2026-01-03T00:00:00Z', source: 'detected', key: 'error-detail', text: 'boom' });
   assert.match(formatOpenPapercuts(readPapercuts(path), 'grok'), /Recurred after a recorded fix/);
-  assert.equal(oneLine('a\n b').length, 3);
   rmSync(dir, { recursive: true });
 });
 

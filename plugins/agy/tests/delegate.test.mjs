@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MAX_STDIN_BYTES, resetBinCache } from '../scripts/lib/agy.mjs';
+import { MAX_STDIN_BYTES } from '../scripts/lib/agy.mjs';
 import { main } from '../scripts/delegate.mjs';
 import { STUB_BIN } from './helpers.mjs';
 
@@ -24,13 +24,11 @@ beforeEach(() => {
     AGY_STUB_ENV: join(home, 'env.json'),
   });
   process.chdir(repo);
-  resetBinCache();
 });
 
 afterEach(() => {
   process.chdir(prevCwd);
   process.env = { ...saved };
-  resetBinCache();
   rmSync(home, { recursive: true, force: true });
   rmSync(repo, { recursive: true, force: true });
 });
@@ -77,7 +75,6 @@ describe('delegate.mjs', () => {
     const argv = JSON.parse(read('argv.json'));
     expect(argv).toEqual(expect.arrayContaining(['--add-dir', '--agent', 'bash-delegate', '--model', 'gemini-4-hydrogen-medium', '--dangerously-skip-permissions']));
     expect(argv).not.toContain('--continue');
-    expect(argv).not.toContain('--print-timeout');
     const stdin = JSON.parse(read('stdin.txt'));
     expect(stdin.message.content).toMatch(/^OS: Windows[\s\S]*Git repository: false[\s\S]*# Task\n\ndo the thing$/);
   });

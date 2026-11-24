@@ -98,7 +98,7 @@ export function bashServerEntry() {
  *
  * @returns {Record<string, string>}
  */
-export function pluginFiles() {
+function pluginFiles() {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const files = {
@@ -247,7 +247,7 @@ export function childEnv(base = process.env) {
  * @param {string} stdout
  * @returns {ModelInfo[]}
  */
-export function parseModelList(stdout) {
+function parseModelList(stdout) {
   /** @type {ModelInfo[]} */
   const models = [];
   for (const line of String(stdout ?? '').split(/\r?\n/)) {
@@ -266,25 +266,15 @@ export function parseModelList(stdout) {
 let cachedBin = null;
 
 /**
- * Reset the cached binary path. Tests use this; production never needs it.
- */
-export function resetBinCache() {
-  cachedBin = null;
-}
-
-/**
  * Resolve the agy binary path. Precedence: `AGY_BIN`, PATH, then the default
  * installer location, `%LOCALAPPDATA%\agy\bin\agy.exe`.
  *
  * @returns {Promise<string>}
  */
 export async function resolveBin() {
-  if (cachedBin) return cachedBin;
   const override = process.env.AGY_BIN?.trim();
-  if (override) {
-    cachedBin = override;
-    return cachedBin;
-  }
+  if (override) return override;
+  if (cachedBin) return cachedBin;
   const res = await run('where', ['agy'], { timeoutMs: 5_000 });
   const hit = res.stdout.split(/\r?\n/).find((line) => line.trim());
   if (res.exitCode === 0 && hit) {

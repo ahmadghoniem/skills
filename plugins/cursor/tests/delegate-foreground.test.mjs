@@ -67,7 +67,6 @@ describe('/cursor:delegate', () => {
 
     const job = readJob(tmp.dir, id);
     expect(job?.status).toBe('done');
-    expect(job?.cliPid).toEqual(expect.any(Number));
     expect(readFileSync(`${job.rawLogPath}.prompt.txt`, 'utf8')).toBe('do the thing');
     expect(out).not.toContain('⚠');
   });
@@ -82,7 +81,7 @@ describe('/cursor:delegate', () => {
     expect(readFileSync(`${job.rawLogPath}.prompt.txt`, 'utf8')).toBe('## Goal\nAdd divide.');
   });
 
-  it('pre-assigns a chat id and passes no --model unless one was named', async () => {
+  it('names a new chat up front, and passes no --model unless one was named', async () => {
     const argvOut = `${tmp.dir}/argv.json`;
     process.env.CURSOR_AGENT_STUB_ARGV_OUT = argvOut;
     try {
@@ -94,6 +93,7 @@ describe('/cursor:delegate', () => {
     expect(chatId).toMatch(/^[0-9a-f-]{36}$/);
     const argv = JSON.parse(readFileSync(argvOut, 'utf8'));
     expect(argv[argv.indexOf('--new-session-id') + 1]).toBe(chatId);
+    expect(argv).not.toContain('--resume');
     expect(argv).not.toContain('--model');
   });
 

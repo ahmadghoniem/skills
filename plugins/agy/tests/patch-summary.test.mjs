@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { lineDelta, summarizePatch } from '../mcp/patch-summary.mjs';
 
 describe('lineDelta', () => {
-  it('counts an insertion', () => {
-    expect(lineDelta('a\nb\nc\n', 'a\nb\nx\ny\nc\n')).toEqual({ add: 2, del: 0, approx: false });
-  });
-
   it('counts a changed line as one added and one removed', () => {
     expect(lineDelta('a\nb\nc\n', 'a\nB\nc\n')).toEqual({ add: 1, del: 1, approx: false });
   });

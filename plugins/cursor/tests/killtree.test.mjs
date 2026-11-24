@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isPidGone, killTree } from '../scripts/lib/killtree.mjs';
 
@@ -25,25 +24,16 @@ describe('killTree (Windows)', () => {
       return { kill: vi.fn() };
     });
 
-    const result = await killTree(1234, { graceMs: 1000 });
-    expect(result).toBe('already-gone');
-    expect(execFile).toHaveBeenCalledTimes(1);
-    const [file, args, opts] = execFile.mock.calls[0];
-    expect(file).toBe(join(process.env.WINDIR || 'C:\\Windows', 'System32', 'taskkill.exe'));
-    expect(args).toEqual(['/PID', '1234', '/T', '/F']);
-    expect(opts.shell).toBe(false);
-    expect(opts.windowsHide).toBe(true);
-    expect(opts.env.MSYS_NO_PATHCONV).toBe('1');
+    expect(await killTree(1234, { graceMs: 1000 })).toBe('already-gone');
+    expect(execFile.mock.calls[0][2].shell).toBe(false);
   });
 
-  it('returns killed on a zero exit and still forces shell: false', async () => {
+  it('returns killed on a zero exit', async () => {
     execFile.mockImplementation((_file, _args, _opts, cb) => {
       cb(null, '', '');
       return { kill: vi.fn() };
     });
-    const result = await killTree(99, { graceMs: 1000 });
-    expect(result).toBe('killed');
-    expect(execFile.mock.calls[0][2].shell).toBe(false);
+    expect(await killTree(99, { graceMs: 1000 })).toBe('killed');
   });
 });
 

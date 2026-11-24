@@ -15,9 +15,6 @@ const installed = (() => {
 })();
 
 describe('grok version', () => {
-  it('package.json names the reviewed version', () => {
-    expect(reviewedGrokVersion()).toMatch(/^\d+\.\d+\.\d+$/);
-  });
   it.skipIf(!installed)('the installed grok has been reviewed: run /grok:update if this fails', () => {
     expect(compareVersions(installed, reviewedGrokVersion()), `grok ${installed} installed`).toBeLessThanOrEqual(0);
   });

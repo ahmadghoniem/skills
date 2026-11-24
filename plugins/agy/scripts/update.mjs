@@ -35,7 +35,7 @@ export async function fetchLatest() {
  * @param {string} stdout
  * @returns {{version: string, text: string}[]}
  */
-export function parseChangelog(stdout) {
+function parseChangelog(stdout) {
   const blocks = [];
   let current = null;
   for (const line of String(stdout ?? '').split(/\r?\n/)) {

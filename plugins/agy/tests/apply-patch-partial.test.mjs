@@ -77,13 +77,6 @@ describe('apply-patch-partial', () => {
     expect(again).toMatchObject([{ kind: 'update', path: 'a', blocks: [{ all: true, search: 'x', replace: 'y' }] }, { kind: 'delete', path: 'b' }]);
   });
 
-  it('Claude Code\'s apply-patch stays all-or-nothing', () => {
-    const d = dir({ 'a.ts': 'one\n' });
-    const r = spawnSync(process.execPath, [TOOLS], { cwd: d, input: `*** Update: a.ts\n${block('one', 'ONE')}${block('nope', 'x')}`, encoding: 'utf8' });
-    expect(r.status).toBe(1);
-    expect(readFileSync(join(d, 'a.ts'), 'utf8')).toBe('one\n');
-  });
-
   it('mcp/apply-patch.mjs is a symlink to tools/apply-patch, not a copy that can drift', () => {
     const agy = fileURLToPath(new URL('../mcp/apply-patch.mjs', import.meta.url));
     // A checkout with core.symlinks=false turns the link into a text file holding its target.

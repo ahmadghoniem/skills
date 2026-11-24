@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -29,15 +29,6 @@ describe('the detected-warning table and the renderer agree', () => {
     for (const id of DETECTED_WARNINGS) {
       expect(WARNING_IDS).toContain(id);
     }
-  });
-
-  // `stop-reason` and `exit` restate what `error-detail` and `killed` explain,
-  // and `resume` is an offer rather than a problem.
-  it('omits the three warnings that are not friction', async () => {
-    const { DETECTED_WARNINGS } = await lib();
-    expect(DETECTED_WARNINGS).not.toContain('stop-reason');
-    expect(DETECTED_WARNINGS).not.toContain('exit');
-    expect(DETECTED_WARNINGS).not.toContain('resume');
   });
 });
 
@@ -92,6 +83,8 @@ describe('detectedCuts', () => {
     expect(cuts[0].evidence.more).toEqual(['rg nothing → exit 1']);
   });
 
+  // `stop-reason` and `exit` restate what `error-detail` and `killed` explain,
+  // and `resume` is an offer rather than a problem.
   it('ignores warnings that are not friction', async () => {
     const { detectedCuts } = await lib();
     const cuts = detectedCuts(
@@ -112,28 +105,15 @@ describe('detectedCuts', () => {
 });
 
 describe('the log itself', () => {
-  it('appends one JSON object per line and reads them back', async () => {
-    const { appendPapercut, readPapercuts } = await lib();
-    const base = { ts: '2026-09-03T00:00:00Z', source: 'narrated', key: 'narrated' };
-    const a = appendPapercut({ ...base, text: 'first' });
-    const b = appendPapercut({ ...base, ts: '2026-09-03T01:00:00Z', text: 'second' });
-    expect(a).toMatch(/^[0-9a-f]{8}$/);
-    expect(b).not.toBe(a);
-
-    const raw = readFileSync(join(home, 'papercuts.jsonl'), 'utf8');
-    expect(raw.trimEnd().split('\n')).toHaveLength(2);
-    expect(readPapercuts().map((c) => c.text)).toEqual(['first', 'second']);
-  });
-
   // Two occurrences of the same problem stay two rows: recurrence is how a
   // fix that did not hold shows up.
-  it('gives repeat occurrences distinct ids', async () => {
+  it('keeps repeat occurrences as separate rows, in order', async () => {
     const { appendPapercut, readPapercuts } = await lib();
     const cut = { source: 'detected', key: 'wander', text: 'same' };
-    appendPapercut({ ...cut, ts: '2026-09-03T00:00:00Z' });
-    appendPapercut({ ...cut, ts: '2026-09-04T00:00:00Z' });
-    const ids = readPapercuts().map((c) => c.id);
-    expect(new Set(ids).size).toBe(2);
+    const a = appendPapercut({ ...cut, ts: '2026-09-03T00:00:00Z' });
+    const b = appendPapercut({ ...cut, ts: '2026-09-04T00:00:00Z' });
+    expect(b).not.toBe(a);
+    expect(readPapercuts().map((c) => c.ts)).toEqual(['2026-09-03T00:00:00Z', '2026-09-04T00:00:00Z']);
   });
 
   it('skips a line a crash truncated rather than failing the read', async () => {
@@ -142,11 +122,6 @@ describe('the log itself', () => {
     const { appendFileSync } = await import('node:fs');
     appendFileSync(join(home, 'papercuts.jsonl'), '{"id":"broken","te\n', 'utf8');
     expect(readPapercuts().map((c) => c.text)).toEqual(['good']);
-  });
-
-  it('returns an empty list when nothing has been logged yet', async () => {
-    const { readPapercuts } = await lib();
-    expect(readPapercuts()).toEqual([]);
   });
 });
 

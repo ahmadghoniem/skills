@@ -4,30 +4,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  BASH_SERVER,
-  bashServerEntry,
-  installPlugin,
-  mcpConfigPath,
-  PLUGIN_NAME,
-  pluginDir,
-  pluginFiles,
-  removeLegacyInstall,
-} from '../scripts/lib/agy.mjs';
+import { BASH_SERVER, installPlugin, mcpConfigPath, pluginDir, removeLegacyInstall } from '../scripts/lib/agy.mjs';
 import { STUB_BIN } from './helpers.mjs';
 
 const agentSource = readFileSync(new URL('../agy-agents/bash-delegate.md', import.meta.url), 'utf8');
 const config = () => join(homedir(), '.gemini', 'config');
-
-describe('pluginFiles', () => {
-  it('holds the manifest, the bash server pointing at this checkout, and the agent', () => {
-    const files = pluginFiles();
-    expect(JSON.parse(files['plugin.json'])).toMatchObject({ name: PLUGIN_NAME });
-    expect(JSON.parse(files['mcp_config.json'])).toEqual({ mcpServers: { [BASH_SERVER]: bashServerEntry() } });
-    expect(bashServerEntry().args[0]).toMatch(/\/mcp\/bash\.mjs$/);
-    expect(files['agents/bash-delegate.md']).toBe(agentSource);
-  });
-});
 
 describe('installPlugin', () => {
   const prevBin = process.env.AGY_BIN;
@@ -40,6 +21,8 @@ describe('installPlugin', () => {
   it('installs when missing, skips when the same, reinstalls when the copy differs', async () => {
     expect(await installPlugin(STUB_BIN)).toBe('installed');
     expect(readFileSync(join(pluginDir(), 'agents', 'bash-delegate.md'), 'utf8')).toBe(agentSource);
+    const { mcpServers } = JSON.parse(readFileSync(join(pluginDir(), 'mcp_config.json'), 'utf8'));
+    expect(mcpServers[BASH_SERVER].args[0]).toMatch(/\/mcp\/bash\.mjs$/);
     expect(await installPlugin(STUB_BIN)).toBe('unchanged');
     writeFileSync(join(pluginDir(), 'agents', 'bash-delegate.md'), 'stale', 'utf8');
     expect(await installPlugin(STUB_BIN)).toBe('updated');

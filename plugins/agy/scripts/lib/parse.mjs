@@ -70,18 +70,12 @@ export function parseEvents(text) {
  * @typedef {Object} RunSummary
  * @property {string|undefined} conversationId
  * @property {string|undefined} model
- * @property {string|undefined} cwd
- * @property {string|undefined} permissionMode
  * @property {string|null} status
  * @property {string} response
  * @property {string|null} error
  * @property {string|undefined} finishedReason
- * @property {number|undefined} durationSeconds
- * @property {unknown} usage
  * @property {number} toolCalls
- * @property {string|undefined} lastTool
  * @property {{tool: string, message: string}[]} toolErrors
- * @property {number} compactions
  */
 
 /**
@@ -97,8 +91,6 @@ export function parseEvents(text) {
 export function summariseEvents(events) {
   let conversationId;
   let model;
-  let cwd;
-  let permissionMode;
   /** @type {string|null} */
   let status = null;
   let response = '';
@@ -108,25 +100,13 @@ export function summariseEvents(events) {
   // and omits the field when the turn finished normally.
   /** @type {string|undefined} */
   let finishedReason;
-  /** @type {number|undefined} */
-  let durationSeconds;
-  /** @type {unknown} */
-  let usage;
   // Total tool steps during the run, successful or failed. agy sends one
   // step_update when a tool starts (ACTIVE) and another when it ends, both with
   // the same step_index, so a step is counted once by its index.
   let toolCalls = 0;
   const toolSteps = new Set();
-  /** @type {string|undefined} */
-  let lastTool;
   /** @type {{tool: string, message: string}[]} */
   const toolErrors = [];
-  // agy replaces the conversation so far with a summary once it grows large.
-  // Every fixture carries one `checkpoint` step before any real work, right
-  // after `user_input`; only count a `checkpoint` once work has actually
-  // started, or a clean run's opening checkpoint would count as one.
-  let sawWork = false;
-  let compactions = 0;
 
   for (const ev of events ?? []) {
     if (ev == null || typeof ev !== 'object') continue;
@@ -137,8 +117,6 @@ export function summariseEvents(events) {
       const init = ev.init;
       if (init != null && typeof init === 'object') {
         if (typeof init.model === 'string') model = init.model;
-        if (typeof init.cwd === 'string') cwd = init.cwd;
-        if (typeof init.permission_mode === 'string') permissionMode = init.permission_mode;
       }
       continue;
     }
@@ -149,16 +127,12 @@ export function summariseEvents(events) {
       if (!conversationId && typeof su.conversation_id === 'string') {
         conversationId = su.conversation_id;
       }
-      if (su.step_type === 'tool' || su.step_type === 'agent_response') sawWork = true;
-      else if (su.step_type === 'checkpoint' && sawWork) compactions += 1;
-
       if (su.step_type === 'tool') {
         if (typeof su.step_index !== 'number') toolCalls += 1;
         else if (!toolSteps.has(su.step_index)) {
           toolSteps.add(su.step_index);
           toolCalls += 1;
         }
-        if (typeof su.tool_name === 'string') lastTool = su.tool_name;
         const info = su.tool_info;
 
         // Record tool failures, including undocumented binary `state: "ERROR"`,
@@ -186,25 +160,17 @@ export function summariseEvents(events) {
       if (typeof r.error === 'string') error = r.error;
       else if (r.error != null) error = String(r.error);
       if (typeof r.finished_reason === 'string' && r.finished_reason) finishedReason = r.finished_reason;
-      if (typeof r.duration_seconds === 'number') durationSeconds = r.duration_seconds;
-      if (r.usage != null) usage = r.usage;
     }
   }
 
   return {
     conversationId,
     model,
-    cwd,
-    permissionMode,
     status,
     response,
     error,
     finishedReason,
-    durationSeconds,
-    usage,
     toolCalls,
-    lastTool,
     toolErrors,
-    compactions,
   };
 }

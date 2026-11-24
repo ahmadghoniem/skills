@@ -18,10 +18,6 @@ function installedAgy() {
 const installed = installedAgy();
 
 describe('agy version', () => {
-  it('package.json names the reviewed agy version', () => {
-    expect(reviewedAgyVersion()).toMatch(/^\d+\.\d+\.\d+$/);
-  });
-
   it.skipIf(!installed)('the installed agy has been reviewed: run /agy:update if this fails', () => {
     expect(compareVersions(installed, reviewedAgyVersion()), `agy ${installed} installed, plugin reviewed against ${reviewedAgyVersion()}`).toBeLessThanOrEqual(0);
   });

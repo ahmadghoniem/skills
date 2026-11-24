@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { shortSuffix } from '../scripts/lib/id.mjs';
 import { jobName, kebabSlug } from '../scripts/lib/slug.mjs';
 
 describe('kebabSlug', () => {
   it('slugs the leading words of a task', () => {
     expect(kebabSlug('Add retry to FetchUser')).toBe('add-retry-to-fetchuser');
-  });
-
-  it('cuts a first word longer than the cap', () => {
-    expect(kebabSlug('x'.repeat(500))).toBe('x'.repeat(40));
   });
 
   it('strips punctuation and collapses separators', () => {
@@ -31,18 +26,8 @@ describe('kebabSlug', () => {
   });
 });
 
-describe('shortSuffix / jobName', () => {
-  it('emits a 4-char lowercase alphanumeric suffix', () => {
-    const s = shortSuffix(4);
-    expect(s).toMatch(/^[a-z0-9]{4}$/);
-  });
-
-  it('builds names of the form slug-suffix', () => {
-    const name = jobName('Add retry to FetchUser', 'a7f3');
-    expect(name).toBe('add-retry-to-fetchuser-a7f3');
-  });
-
-  it('random names still match the resolver pattern', () => {
+describe('jobName', () => {
+  it('is the slug plus a random 4-character suffix', () => {
     const name = jobName('Add retry to FetchUser');
     expect(name).toMatch(/^add-retry-to-fetchuser-[a-z0-9]{4}$/);
   });

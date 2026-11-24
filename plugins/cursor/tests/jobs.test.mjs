@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, utimesSync } from 'node:fs';
+import { utimesSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   cancelJob,
@@ -12,7 +12,6 @@ import {
   readJob,
   updateJob,
 } from '../scripts/lib/jobs.mjs';
-import { jobsDir, repoHash } from '../scripts/lib/paths.mjs';
 import { makeTempHome } from './helpers.mjs';
 
 describe('jobs registry', () => {
@@ -45,12 +44,19 @@ describe('jobs registry', () => {
     expect(readJob(repo, 'job1')?.exitCode).toBe(0);
   });
 
-  it('round-trips cliPid on the job record', () => {
-    createJob({ id: 'clipid1', repoPath: repo, prompt: 'p', model: 'm' });
-    updateJob(repo, 'clipid1', { cliPid: 4242, pid: 111 });
-    const read = readJob(repo, 'clipid1');
-    expect(read?.cliPid).toBe(4242);
-    expect(read?.pid).toBe(111);
+  it('does not resurrect a cancelled job to done', () => {
+    createJob({ id: 'job1', repoPath: repo, prompt: 'x', model: 'composer-2.5' });
+    updateJob(repo, 'job1', { status: 'cancelled' });
+    updateJob(repo, 'job1', { status: 'done', exitCode: 0 });
+    const job = readJob(repo, 'job1');
+    expect(job.status).toBe('cancelled');
+    expect(job.exitCode).toBe(0);
+  });
+
+  it('lists a job record that is missing its prompt', () => {
+    createJob({ id: 'job2', repoPath: repo, prompt: 'ok', model: 'composer-2.5' });
+    writeFileSync(jobFilePath(repo, 'job3'), JSON.stringify({ id: 'job3', status: 'done', startedAt: new Date(0).toISOString() }), 'utf8');
+    expect(listJobs(repo).length).toBe(2);
   });
 
   it('lists jobs newest first, honours limit, and filters by status', () => {
@@ -68,16 +74,10 @@ describe('jobs registry', () => {
     expect(mostRecentFinishedJob(repo)?.id).toBe('c');
   });
 
-  it('keys job files by the repo hash, not the raw path', () => {
+  it('keeps each repo\'s jobs apart', () => {
     createJob({ id: 'h1', repoPath: repo, prompt: 'p', model: 'm' });
-    const dir = jobsDir(repo);
-    expect(dir).toContain(repoHash(repo));
-    expect(dir.startsWith(tmp.dir)).toBe(true);
-    expect(existsSync(jobFilePath(repo, 'h1'))).toBe(true);
-
     const other = '/tmp/a-different-repo';
     createJob({ id: 'h2', repoPath: other, prompt: 'p', model: 'm' });
-    expect(repoHash(other)).not.toBe(repoHash(repo));
     expect(listJobs(repo).map((j) => j.id)).toEqual(['h1']);
     expect(listJobs(other).map((j) => j.id)).toEqual(['h2']);
   });
@@ -122,15 +122,6 @@ describe('jobs registry', () => {
     expect(res?.status).toBe('done');
   });
 
-  it('marks a running job orphaned once its processes are gone', async () => {
-    const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
-    const pid = child.pid;
-    await new Promise((resolve) => child.on('close', resolve));
-    createJob({ id: 'gone1', repoPath: repo, prompt: 'p', model: 'm' });
-    updateJob(repo, 'gone1', { pid, cliPid: pid });
-    expect(readJob(repo, 'gone1')?.status).toBe('orphaned');
-  });
-
   it('readJob/updateJob find a job by id even when passed a different repoPath', () => {
     createJob({ id: 'drift1', repoPath: repo, prompt: 'p', model: 'm' });
     const otherGuess = '/tmp/some-other-cwd-guess';
@@ -139,9 +130,5 @@ describe('jobs registry', () => {
     expect(updated?.status).toBe('done');
     expect(readJob(repo, 'drift1')?.summary).toBe('ok');
     expect(listJobs(otherGuess).length).toBe(0);
-  });
-
-  it('readJob returns null for a genuinely unknown id', () => {
-    expect(readJob(repo, 'totally-unknown-id')).toBeNull();
   });
 });

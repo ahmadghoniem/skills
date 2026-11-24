@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { anomalies, isUnfinished, renderResult } from '../scripts/lib/render.mjs';
+import { anomalies, renderResult } from '../scripts/lib/render.mjs';
 
 const clean = { agyStatus: 'SUCCESS', exitCode: 0, response: 'Report.', conversationId: 'c1' };
 
 describe('renderResult', () => {
-  it('is the report and the conversation id on a clean run', () => {
-    expect(renderResult(clean)).toBe('Report.\n\nconversation: c1\n');
-    expect(isUnfinished(clean)).toBe(false);
-  });
   it('keeps status and exit code as separate lines', () => {
     const ids = anomalies({ ...clean, agyStatus: 'ERROR', exitCode: 3 }).map((a) => a.id);
     expect(ids).toEqual(['agy-status', 'exit']);

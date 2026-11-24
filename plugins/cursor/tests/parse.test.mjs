@@ -5,7 +5,6 @@ import {
   MAX_SUMMARY_CHARS,
   modelStarted,
   parseLine,
-  shellCommandResult,
   summariseEvents,
 } from '../scripts/lib/parse.mjs';
 import { FAILED_COMMAND_FIXTURE, HAPPY_FIXTURE, REFUSED_FIXTURE } from './helpers.mjs';
@@ -71,13 +70,7 @@ describe('summariseEvents', () => {
     expect(s.failedCommands[0].output).toContain('No such file or directory');
   });
 
-  it('is incomplete when there is no result event', () => {
-    const s = summariseEvents(loadFixture(HAPPY_FIXTURE).filter((e) => e.type !== 'result'));
-    expect(s.success).toBe(false);
-    expect(s.stopReason).toBe('incomplete');
-  });
-
-  it('reads a refused run as incomplete with no write-up', () => {
+  it('reads a run with no result event (refused) as incomplete with no write-up', () => {
     const s = summariseEvents(loadFixture(REFUSED_FIXTURE));
     expect(s.success).toBe(false);
     expect(s.stopReason).toBe('incomplete');
@@ -106,14 +99,6 @@ describe('modelStarted', () => {
     expect(modelStarted(events[1])).toBe(false);
     expect(events.some(modelStarted)).toBe(true);
     expect(loadFixture(REFUSED_FIXTURE).some(modelStarted)).toBe(false);
-  });
-});
-
-describe('shellCommandResult', () => {
-  it('ignores the started event and non-shell tools', () => {
-    const events = loadFixture(FAILED_COMMAND_FIXTURE).filter((e) => e.type === 'tool_call');
-    const results = events.map(shellCommandResult).filter(Boolean);
-    expect(results).toHaveLength(2);
   });
 });
 
