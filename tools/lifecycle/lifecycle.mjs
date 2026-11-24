@@ -41,6 +41,10 @@ function pids(exe) {
 }
 
 const wanted = (process.argv[2] ?? Object.keys(MEMBERS).join(',')).split(',');
+// Start and continue run in parallel; the stop checks run one member at a time,
+// so a process left behind is pinned on the member that left it.
+let stopQueue = Promise.resolve();
+const serially = (fn) => (stopQueue = stopQueue.then(fn, fn));
 const results = await Promise.all(
   wanted.map(async (member) => {
     const m = MEMBERS[member];
@@ -52,10 +56,12 @@ const results = await Promise.all(
     const start = first.code === 0 && Boolean(id);
     const second = id ? await delegate(member, [m.flag, id, 'What was the secret word I gave you? Reply with only the word.'], cwd) : { code: -1, out: '' };
     const recall = second.code === 0 && second.out.includes(secret);
-    const before = [...(await pids(m.exe)), ...(await pids('PING.EXE'))];
-    const long = await delegate(member, ['Run this shell command and wait for it to finish: ping -n 150 127.0.0.1 . Then reply with its last line.'], cwd, 30_000);
-    await new Promise((r) => setTimeout(r, 4_000));
-    const left = [...(await pids(m.exe)), ...(await pids('PING.EXE'))].filter((p) => !before.includes(p));
+    const { long, left } = await serially(async () => {
+      const before = [...(await pids(m.exe)), ...(await pids('PING.EXE'))];
+      const run = await delegate(member, ['Run this shell command and wait for it to finish: ping -n 150 127.0.0.1 . Then reply with its last line.'], cwd, 30_000);
+      await new Promise((r) => setTimeout(r, 4_000));
+      return { long: run, left: [...(await pids(m.exe)), ...(await pids('PING.EXE'))].filter((p) => !before.includes(p)) };
+    });
     return {
       member,
       start: start ? `ok (${id})` : `FAILED: ${first.out.trim().split('\n').slice(-3).join(' | ')}`,
