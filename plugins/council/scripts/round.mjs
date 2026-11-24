@@ -38,7 +38,7 @@ function runSeat(delegate, args, timeoutMs) {
 }
 
 const minutes = (ms) => `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`;
-const describe = (s) => [s.member, s.model ?? MEMBERS[s.member].defaultModel, s.effort, s.role].filter(Boolean).join(', ');
+const describe = (s) => [s.member, s.model ?? MEMBERS[s.member].defaultModel, s.effort].filter(Boolean).join(', ');
 
 /** @param {string[]} argv */
 export async function main(argv) {
@@ -101,7 +101,7 @@ export async function main(argv) {
     seats.map(async (seat) => {
       // A seat with no session (new, or MISSING last time) gets the first brief again.
       const context = seat.session || round === 1 || !council.firstBrief ? delta : `${readFileSync(council.firstBrief, 'utf8')}\n\n## Since then (round ${round})\n\n${delta}`;
-      const header = `# Council \`${council.name}\`, round ${round}\n\nYou are the seat \`${seat.name}\`${seat.role ? `, ${seat.role}` : ''}. ${frozen}\n\n`;
+      const header = `# Council \`${council.name}\`, round ${round}\n\nYou are the seat \`${seat.name}\`. ${frozen}\n\n`;
       const file = join(dir, `${seat.name}.brief.md`);
       writeFileSync(file, `${header}${context}${others(seat)}\n${ANSWER_RULES}`, 'utf8');
       const r = await runSeat(delegatePath(seat.member), seatArgs(seat, file), timeoutMs);

@@ -15,7 +15,7 @@ Windows only. Install the member plugins (grok, agy, opencode) the same way.
 ## Commands
 
 - **`/council:convene <question>`**: the protocol Claude follows: seat the council, show the roster, write a blind chair position, brief, run rounds, keep the dispute log, stop, and report.
-- **`/council:roster [name]`**: each seat's role, model, effort, CLI version and last quota error.
+- **`/council:roster [name]`**: each seat's kind (core or auditor), model, effort, CLI version and last quota error.
 
 ## Scripts
 

@@ -16,7 +16,6 @@ export const councilDir = (name) => join(councilHome(), name);
  * @property {string} member   grok | agy | opencode
  * @property {string=} model
  * @property {string=} effort  grok only: low | medium
- * @property {string=} role    what the seat is asked to look at
  * @property {boolean=} auditor  runs only after the core seats converge, on frozen code
  * @property {string=} session  set by the first round it answers in
  */

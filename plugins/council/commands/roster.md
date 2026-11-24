@@ -1,5 +1,5 @@
 ---
-description: Show the council roster: each seat's role, model, effort, CLI version and last quota error.
+description: Show the council roster: each seat's kind, model, effort, CLI version and last quota error.
 argument-hint: '[council name]'
 allowed-tools: Bash(node:*)
 ---

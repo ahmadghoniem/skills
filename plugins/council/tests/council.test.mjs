@@ -77,11 +77,11 @@ describe('members', () => {
 
 describe('round.mjs', () => {
   it('runs every core seat at once on frozen code, keeps their sessions, and prints their blocks', async () => {
-    council([{ name: 'g', member: 'grok', model: 'one' }, { name: 'n', member: 'agy', model: 'two', role: 'design' }, { name: 'aud', member: 'opencode', auditor: true }]);
+    council([{ name: 'g', member: 'grok', model: 'one' }, { name: 'n', member: 'agy', model: 'two' }, { name: 'aud', member: 'opencode', auditor: true }]);
     const r = await capture(() => round(['--council', 'c1', '--brief', brief('Is X right?')]));
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/frozen at commit [0-9a-f]{7}/);
-    expect(r.stdout).toContain('- **n** (agy, two, design): answered');
+    expect(r.stdout).toContain('- **n** (agy, two): answered');
     expect(r.stdout).toContain('Position: two says yes');
     expect(r.stdout).not.toContain('**aud**');
     const sent = calls();
@@ -142,9 +142,9 @@ describe('roster.mjs', () => {
     writeFileSync(join(cad, 'quota.json'), JSON.stringify({ 'gemini-4-neon-high': { at: '2026-11-24T01:00:00.000Z', message: 'Individual quota reached.', resetsAt: '2999-01-01T00:00:00.000Z' } }));
     process.env.CAD_HOME = cad;
     process.env.COUNCIL_GROK_CLI = process.env.COUNCIL_AGY_CLI = 'git';
-    council([{ name: 'neon', member: 'agy', model: 'gemini-4-neon-high', role: 'design' }, { name: 'g', member: 'grok', effort: 'low' }]);
+    council([{ name: 'neon', member: 'agy', model: 'gemini-4-neon-high' }, { name: 'g', member: 'grok', effort: 'low' }]);
     const r = await capture(() => roster(['--council', 'c1']));
-    expect(r.stdout).toContain('| neon | design | agy | gemini-4-neon-high | high |');
+    expect(r.stdout).toContain('| neon | core | agy | gemini-4-neon-high | high |');
     expect(r.stdout).toContain('Individual quota reached., blocked until 2999-01-01 00:00 UTC');
     expect(r.stdout).toContain('| g | core | grok | the account default | low |');
   });

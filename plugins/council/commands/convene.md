@@ -15,17 +15,19 @@ Write `~/.council/<short-name>/council.json`:
 ```json
 {
   "seats": [
-    { "name": "grok", "member": "grok", "effort": "medium", "role": "correctness" },
-    { "name": "neon", "member": "agy", "model": "gemini-4-neon-high", "role": "design" },
-    { "name": "muse", "member": "opencode", "model": "meta/muse-wonder-1.0", "role": "approach and trade-offs" },
+    { "name": "grok", "member": "grok", "effort": "medium" },
+    { "name": "neon", "member": "agy", "model": "gemini-4-neon-high" },
+    { "name": "muse", "member": "opencode", "model": "meta/muse-wonder-1.0" },
     { "name": "auditor", "member": "agy", "model": "gemini-4-hydrogen-high", "auditor": true }
   ]
 }
 ```
 
 `member` is the plugin the seat runs on; `model` and `effort` are optional (agy and
-opencode carry effort in the model id). Give each seat a role that splits the work. Seats
-marked `auditor` sit out the rounds and read the settled result on frozen code.
+opencode carry effort in the model id). Every seat gets the same question and the same
+brief: no roles, focus areas or per-seat assignments, so each member decides for itself
+what matters. Seats marked `auditor` sit out the rounds and read the settled result on
+frozen code.
 
 The standing council is the three seats above: Grok, Neon and Muse Wonder. Muse Wonder
 runs on opencode through its `meta` provider, so it reads the repo like the others. Swap
@@ -35,7 +37,7 @@ Then show the user the roster and wait for a go:
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/roster.mjs" -- --council <short-name>
 
-It lists each seat's role, model, effort, CLI version and last quota error. No cost
+It lists each seat's kind (core or auditor), model, effort, CLI version and last quota error. No cost
 estimate. Swap a seat whose model is blocked on quota before starting.
 
 ## 2. Write your own position first
@@ -54,7 +56,6 @@ Write it to `~/.council/<short-name>/brief-1.md`. It holds:
   overstated.
 - **A file map**: the paths that matter and what each holds.
 - **The user's hard rules** that bound the answer.
-- **One claim per seat to verify**, named by seat, on top of the shared question.
 - **Scope**: what is out of it. Members put anything else under Out of scope.
 
 The round script adds the review-only rule and the final-answer block format.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The roster shown before a council starts: each seat's role, model, effort,
+// The roster shown before a council starts: each seat's kind, model, effort,
 // CLI version, and the last quota error its plugin recorded for that model.
 // No CLI reports remaining quota to a headless caller, so the last error is
 // what there is; no cost estimate either.
@@ -12,9 +12,9 @@ import { readQuota } from './lib/shared/quota.mjs';
 
 /** The standing council, shown when no council is named. */
 const DEFAULT_SEATS = [
-  { name: 'grok', member: 'grok', effort: 'medium', role: 'correctness' },
-  { name: 'neon', member: 'agy', model: 'gemini-4-neon-high', role: 'design' },
-  { name: 'muse', member: 'opencode', model: 'meta/muse-wonder-1.0', role: 'approach and trade-offs' },
+  { name: 'grok', member: 'grok', effort: 'medium' },
+  { name: 'neon', member: 'agy', model: 'gemini-4-neon-high' },
+  { name: 'muse', member: 'opencode', model: 'meta/muse-wonder-1.0' },
 ];
 
 function effortOf(seat) {
@@ -56,10 +56,10 @@ export async function main(argv) {
     ),
   );
   const rows = [
-    '| Seat | Role | Member | Model | Effort | CLI | Last quota error |',
+    '| Seat | Kind | Member | Model | Effort | CLI | Last quota error |',
     '| --- | --- | --- | --- | --- | --- | --- |',
     ...seats.map((s) =>
-      `| ${s.name} | ${s.auditor ? 'auditor' : s.role ?? 'core'} | ${s.member}${delegatePath(s.member) ? '' : ' (plugin not installed)'} | ${s.model ?? MEMBERS[s.member].defaultModel} | ${effortOf(s)} | ${versions[s.member]} | ${quotaOf(s)} |`,
+      `| ${s.name} | ${s.auditor ? 'auditor' : 'core'} | ${s.member}${delegatePath(s.member) ? '' : ' (plugin not installed)'} | ${s.model ?? MEMBERS[s.member].defaultModel} | ${effortOf(s)} | ${versions[s.member]} | ${quotaOf(s)} |`,
     ),
   ];
   process.stdout.write(`${rows.join('\n')}\n`);
