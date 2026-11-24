@@ -17,7 +17,7 @@ Write `~/.council/<short-name>/council.json`:
   "seats": [
     { "name": "grok", "member": "grok", "effort": "medium", "role": "correctness" },
     { "name": "neon", "member": "agy", "model": "gemini-4-neon-high", "role": "design" },
-    { "name": "deepseek", "member": "opencode", "role": "edge cases" },
+    { "name": "muse", "member": "opencode", "model": "meta/muse-wonder-1.0", "role": "approach and trade-offs" },
     { "name": "auditor", "member": "agy", "model": "gemini-4-hydrogen-high", "auditor": true }
   ]
 }
@@ -26,6 +26,10 @@ Write `~/.council/<short-name>/council.json`:
 `member` is the plugin the seat runs on; `model` and `effort` are optional (agy and
 opencode carry effort in the model id). Give each seat a role that splits the work. Seats
 marked `auditor` sit out the rounds and read the settled result on frozen code.
+
+The standing council is the three seats above: Grok, Neon and Muse Wonder. Muse Wonder
+runs on opencode through its `meta` provider, so it reads the repo like the others. Swap
+or add seats only when the user names them or a model is blocked on quota.
 
 Then show the user the roster and wait for a go:
 

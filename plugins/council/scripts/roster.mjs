@@ -10,7 +10,12 @@ import { parseCli, run, runAsScript } from './lib/shared/proc.mjs';
 import { parseVersion } from './lib/shared/release.mjs';
 import { readQuota } from './lib/shared/quota.mjs';
 
-const DEFAULT_SEATS = Object.keys(MEMBERS).map((member) => ({ name: member, member }));
+/** The standing council, shown when no council is named. */
+const DEFAULT_SEATS = [
+  { name: 'grok', member: 'grok', effort: 'medium', role: 'correctness' },
+  { name: 'neon', member: 'agy', model: 'gemini-4-neon-high', role: 'design' },
+  { name: 'muse', member: 'opencode', model: 'meta/muse-wonder-1.0', role: 'approach and trade-offs' },
+];
 
 function effortOf(seat) {
   if (seat.member === 'grok') return seat.effort ?? 'medium';
