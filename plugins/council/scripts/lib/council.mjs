@@ -17,8 +17,30 @@ export const councilDir = (name) => join(councilHome(), name);
  * @property {string=} model
  * @property {string=} effort  grok only: low | medium
  * @property {boolean=} auditor  runs only after the core seats converge, on frozen code
+ * @property {string=} access   what the other seats are told it could use (default: the member's)
+ * @property {string=} label    the letter the other seats know it by; set once, at random
  * @property {string=} session  set by the first round it answers in
  */
+
+/**
+ * Gives every seat without one a letter (A, B, C …) the others know it by, in
+ * random order, so no model always lands on the same letter. Seats never see
+ * each other's model names; the chair and the user do.
+ */
+export function assignLabels(council) {
+  const used = new Set(council.seats.map((s) => s.label).filter(Boolean));
+  const free = [];
+  for (let i = 0; free.length < council.seats.length; i++) {
+    const letter = String.fromCharCode(65 + (i % 26)) + (i >= 26 ? String(Math.floor(i / 26)) : '');
+    if (!used.has(letter)) free.push(letter);
+  }
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [free[i], free[j]] = [free[j], free[i]];
+  }
+  for (const s of council.seats) if (!s.label) s.label = free.pop();
+  return council;
+}
 
 /** @returns {{name: string, seats: Seat[], rounds: number, firstBrief?: string}} */
 export function readCouncil(name) {

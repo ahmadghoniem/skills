@@ -33,6 +33,14 @@ The standing council is the three seats above: Grok, Neon and Muse Wonder. Muse 
 runs on opencode through its `meta` provider, so it reads the repo like the others. Swap
 or add seats only when the user names them or a model is blocked on quota.
 
+**Seats don't see each other's model names.** The round script gives each seat a random
+letter (Seat A, B, C …) and shows the others only that letter plus what the seat could
+use, such as "read the repo; had web and X search". Set a seat's `access` in
+`council.json` when it differs from its member's default, above all when a seat cannot read
+the repo. In everything a seat reads (briefs, the dispute log, follow-ups) name seats by
+letter only. You and the user see the real names: the round summary maps names to letters,
+and your report uses real names.
+
 Then show the user the roster and wait for a go:
 
     node "${CLAUDE_PLUGIN_ROOT}/scripts/roster.mjs" -- --council <short-name>
@@ -58,7 +66,8 @@ Write it to `~/.council/<short-name>/brief-1.md`. It holds:
 - **The user's hard rules** that bound the answer.
 - **Scope**: what is out of it. Members put anything else under Out of scope.
 
-The round script adds the review-only rule and the final-answer block format.
+The round script adds the seat's letter, the review-only rule and the final-answer block
+format.
 
 ## 4. Run a round
 

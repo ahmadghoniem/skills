@@ -81,7 +81,9 @@ describe('round.mjs', () => {
     const r = await capture(() => round(['--council', 'c1', '--brief', brief('Is X right?')]));
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/frozen at commit [0-9a-f]{7}/);
-    expect(r.stdout).toContain('- **n** (agy, two): answered');
+    const label = (name) => state().seats.find((s) => s.name === name).label;
+    expect(r.stdout).toContain(`- **n** (Seat ${label('n')}, agy, two): answered`);
+    expect(state().seats.map((s) => s.label).sort()).toEqual(['A', 'B', 'C']);
     expect(r.stdout).toContain('Position: two says yes');
     expect(r.stdout).not.toContain('**aud**');
     const sent = calls();
@@ -102,7 +104,10 @@ describe('round.mjs', () => {
     expect(g.session).toBe('grok-one');
     expect(g.brief).toContain('D1 is open');
     expect(g.brief).not.toContain('FIRST BRIEF');
-    expect(g.brief).toContain('### n (agy, two)');
+    const n = state().seats.find((s) => s.name === 'n');
+    expect(g.brief).toContain(`### Seat ${n.label} (read the repo; had web search)`);
+    expect(g.brief).toContain(`You are Seat ${state().seats.find((s) => s.name === 'g').label}.`);
+    expect(g.brief).not.toMatch(/\bagy\b|\btwo \(|### n\b/);
     expect(g.brief).toContain('Position: two says yes');
     expect(g.brief).not.toContain('Position: one says yes');
   });
@@ -110,7 +115,7 @@ describe('round.mjs', () => {
   it('stops a seat at the timeout, marks it MISSING, and gives it the first brief again next round', async () => {
     council([{ name: 'fast', member: 'grok', model: 'one' }, { name: 'late', member: 'grok', model: 'slow' }]);
     const r = await capture(() => round(['--council', 'c1', '--brief', brief('FIRST BRIEF'), '--timeout-min', '0.05']));
-    expect(r.stdout).toContain('**late** (grok, slow): MISSING');
+    expect(r.stdout).toMatch(/\*\*late\*\* \(Seat [AB], grok, slow\): MISSING/);
     expect(state().seats[1].session).toBeUndefined();
     await capture(() => round(['--council', 'c1', '--brief', brief('delta'), '--seats', 'late', '--timeout-min', '0.05']));
     const last = calls().at(-1);
@@ -121,7 +126,7 @@ describe('round.mjs', () => {
   it('flags a seat with no final block, and a workspace that changed during the round', async () => {
     council([{ name: 'quiet', member: 'grok', model: 'noblock' }, { name: 'editor', member: 'grok', model: 'edit' }]);
     const r = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
-    expect(r.stdout).toContain('**quiet** (grok, noblock): answered without a final answer block');
+    expect(r.stdout).toMatch(/\*\*quiet\*\* \(Seat [AB], grok, noblock\): answered without a final answer block/);
     expect(r.stdout).toContain('⚠ The workspace changed during the round');
     expect(r.stdout).toContain('touched.txt');
   });

@@ -12,13 +12,18 @@ const home = (envName, dir) => () => (process.env[envName]?.trim() ? resolve(pro
 
 /**
  * `continueFlag` continues a session; `idLine` reads its id off the run's last
- * line. `defaultModel` is what the plugin uses when a seat names none.
+ * line. `defaultModel` is what the plugin uses when a seat names none. `access`
+ * is what the other seats are told this seat could use; a seat's own `access`
+ * overrides it.
  */
 export const MEMBERS = Object.freeze({
-  grok: { cli: 'grok', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('CGD_HOME', '.cgd'), defaultModel: 'the account default', efforts: ['low', 'medium'] },
-  agy: { cli: 'agy', continueFlag: '--conversation', idLine: /^conversation: (\S+)\s*$/gm, home: home('CAD_HOME', '.cad'), defaultModel: 'gemini-4-hydrogen-medium', efforts: [] },
-  opencode: { cli: 'opencode', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('COD_HOME', '.cod'), defaultModel: 'nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017', efforts: [] },
+  grok: { cli: 'grok', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('CGD_HOME', '.cgd'), defaultModel: 'the account default', efforts: ['low', 'medium'], access: 'read the repo; had web and X search' },
+  agy: { cli: 'agy', continueFlag: '--conversation', idLine: /^conversation: (\S+)\s*$/gm, home: home('CAD_HOME', '.cad'), defaultModel: 'gemini-4-hydrogen-medium', efforts: [], access: 'read the repo; had web search' },
+  opencode: { cli: 'opencode', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('COD_HOME', '.cod'), defaultModel: 'nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017', efforts: [], access: 'read the repo; had web search' },
 });
+
+/** What the other seats are told this seat could use. */
+export const accessOf = (seat) => seat.access ?? MEMBERS[seat.member].access;
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

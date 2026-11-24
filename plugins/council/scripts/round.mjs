@@ -5,9 +5,9 @@
 // marked MISSING. Prints each seat's final-answer block.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ANSWER_RULES, councilDir, finalBlock, readCouncil, writeCouncil } from './lib/council.mjs';
+import { ANSWER_RULES, assignLabels, councilDir, finalBlock, readCouncil, writeCouncil } from './lib/council.mjs';
 import { changedDuring, snapshot } from './lib/git.mjs';
-import { delegatePath, MEMBERS, seatArgs, sessionFrom } from './lib/members.mjs';
+import { accessOf, delegatePath, MEMBERS, seatArgs, sessionFrom } from './lib/members.mjs';
 import { parseCli, run, runAsScript, spawnDirect } from './lib/shared/proc.mjs';
 
 const USAGE = 'Usage: round.mjs --council <name> --brief <file> [--seats a,b] [--timeout-min 30] [--no-others]\n';
@@ -38,7 +38,9 @@ function runSeat(delegate, args, timeoutMs) {
 }
 
 const minutes = (ms) => `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`;
-const describe = (s) => [s.member, s.model ?? MEMBERS[s.member].defaultModel, s.effort].filter(Boolean).join(', ');
+const describe = (s) => [`Seat ${s.label}`, s.member, s.model ?? MEMBERS[s.member].defaultModel, s.effort].filter(Boolean).join(', ');
+/** Per-seat files are named by letter: a seat can see the round folder, and a model name there would give it away. */
+const seatFile = (s, kind) => `seat-${s.label.toLowerCase()}.${kind}.md`;
 
 /** @param {string[]} argv */
 export async function main(argv) {
@@ -63,7 +65,7 @@ export async function main(argv) {
   let council;
   let delta;
   try {
-    council = readCouncil(values.council);
+    council = assignLabels(readCouncil(values.council));
     delta = readFileSync(values.brief, 'utf8');
   } catch (err) {
     return process.stderr.write(`Error: ${err.message}\n`), 2;
@@ -92,8 +94,8 @@ export async function main(argv) {
   const others = (self) => {
     if (round === 1 || values['no-others']) return '';
     const blocks = council.seats
-      .filter((s) => s.name !== self.name && existsSync(join(prev, `${s.name}.out.md`)))
-      .map((s) => `### ${s.name} (${describe(s)})\n\n${finalBlock(readFileSync(join(prev, `${s.name}.out.md`), 'utf8')) ?? '(no final answer block: MISSING or failed last round)'}`);
+      .filter((s) => s.name !== self.name && existsSync(join(prev, seatFile(s, 'out'))))
+      .map((s) => `### Seat ${s.label} (${accessOf(s)})\n\n${finalBlock(readFileSync(join(prev, seatFile(s, 'out')), 'utf8')) ?? '(no final answer block: MISSING or failed last round)'}`);
     return blocks.length ? `\n\n## The other members' final answers from round ${round - 1}\n\nRead them as a colleague's: check their evidence, don't adopt their conclusions.\n\n${blocks.join('\n\n')}` : '';
   };
 
@@ -101,11 +103,11 @@ export async function main(argv) {
     seats.map(async (seat) => {
       // A seat with no session (new, or MISSING last time) gets the first brief again.
       const context = seat.session || round === 1 || !council.firstBrief ? delta : `${readFileSync(council.firstBrief, 'utf8')}\n\n## Since then (round ${round})\n\n${delta}`;
-      const header = `# Council \`${council.name}\`, round ${round}\n\nYou are the seat \`${seat.name}\`. ${frozen}\n\n`;
-      const file = join(dir, `${seat.name}.brief.md`);
+      const header = `# Council \`${council.name}\`, round ${round}\n\nYou are Seat ${seat.label}. The other seats are named only by letter; refer to them that way. ${frozen}\n\n`;
+      const file = join(dir, seatFile(seat, 'brief'));
       writeFileSync(file, `${header}${context}${others(seat)}\n${ANSWER_RULES}`, 'utf8');
       const r = await runSeat(delegatePath(seat.member), seatArgs(seat, file), timeoutMs);
-      writeFileSync(join(dir, `${seat.name}.out.md`), r.out, 'utf8');
+      writeFileSync(join(dir, seatFile(seat, 'out')), r.out, 'utf8');
       const session = sessionFrom(seat.member, r.out);
       if (session) seat.session = session;
       else if (r.timedOut) delete seat.session;
@@ -123,7 +125,7 @@ export async function main(argv) {
   const changed = changedDuring(before, after);
   if (changed.length) lines.push('', '⚠ The workspace changed during the round, so the seats may have read different code:', ...changed.map((c) => `    ${c}`));
   for (const r of results) {
-    lines.push('', `## ${r.seat.name}`, '');
+    lines.push('', `## ${r.seat.name} (Seat ${r.seat.label})`, '');
     if (r.block) lines.push(r.block);
     else lines.push('```', ...r.out.trimEnd().split(/\r?\n/).slice(-15), '```');
   }
