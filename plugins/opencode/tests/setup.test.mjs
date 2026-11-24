@@ -9,5 +9,5 @@ it('reports the binary and the version', async () => {
   box = sandbox();
   const r = await capture(() => main());
   expect(r.code).toBe(0);
-  expect(r.stdout).toContain('✓ version 2.0.32');
+  expect(r.stdout).toContain('✓ version 2.4.1');
 });

@@ -4,7 +4,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 if (args[0] === '--version') {
-  process.stdout.write('2.0.32\n');
+  process.stdout.write('2.4.1\n');
   process.exit(0);
 }
 const at = (flag) => args[args.indexOf(flag) + 1];

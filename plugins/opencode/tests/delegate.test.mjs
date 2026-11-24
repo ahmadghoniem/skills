@@ -16,7 +16,7 @@ describe('delegate.mjs', () => {
     const r = await capture(() => main(['do the thing']));
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/^Done\.\n\nsession: ses_[0-9a-f]{26}\n$/);
-    expect(box.papercuts()).toEqual([expect.objectContaining({ key: 'tool-errors:read', text: 'File not found: a.txt', toolVersion: '2.0.32' })]);
+    expect(box.papercuts()).toEqual([expect.objectContaining({ key: 'tool-errors:read', text: 'File not found: a.txt', toolVersion: '2.4.1' })]);
   });
 
   it('always passes a model, names the session up front, and attaches the brief', async () => {
