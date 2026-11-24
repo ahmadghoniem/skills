@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Requires opencode 2.4.1.** Every flag the plugin passes (`run --standalone --format json
+  --auto --model --session -f`) is still in `opencode run --help` on 2.4.1.
+
 ## 0.2.0
 
 Rebuilt for opencode 2.x (checked on 2.0.32), in the shape of grok 0.6.0 and agy 0.5.0.
