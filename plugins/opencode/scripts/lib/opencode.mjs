@@ -53,8 +53,9 @@ export const newSessionId = () => `ses_${randomBytes(13).toString('hex')}`;
  *
  * - `--model` is required: with none, opencode picks one of its configured
  *   models on its own, which may be metered.
- * - `--auto` approves every permission not explicitly denied; nobody can answer
- *   a prompt in a headless run.
+ * - `--dangerously-skip-permissions` approves every permission not explicitly
+ *   denied; nobody can answer a prompt in a headless run. It is hidden from
+ *   `--help` and is an alias of `--auto` (as is `--yolo`); the name matches agy's.
  * - `-f` attaches the brief. It is an array flag that swallows the tokens after
  *   it, so `--` must come before the message.
  * - `--continue` is never used: it takes the newest session, which may belong to
@@ -67,7 +68,7 @@ export const newSessionId = () => `ses_${randomBytes(13).toString('hex')}`;
  * @param {{model: string, sessionId: string, promptFile: string}} o
  */
 export function buildArgs(o) {
-  return ['run', '--standalone', '--format', 'json', '--auto', '--model', o.model, '--session', o.sessionId, '-f', o.promptFile, '--', SIDECAR_MESSAGE];
+  return ['run', '--standalone', '--format', 'json', '--dangerously-skip-permissions', '--model', o.model, '--session', o.sessionId, '-f', o.promptFile, '--', SIDECAR_MESSAGE];
 }
 
 /** The environment opencode runs with: no `CLAUDECODE`, so a `claude` command it runs is not refused as nested. */

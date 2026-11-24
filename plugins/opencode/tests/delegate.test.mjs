@@ -23,7 +23,7 @@ describe('delegate.mjs', () => {
     await capture(() => main(['do the thing']));
     const [call] = box.calls();
     expect(call.args[0]).toBe('run');
-    expect(call.args).toEqual(expect.arrayContaining(['--standalone', '--auto']));
+    expect(call.args).toEqual(expect.arrayContaining(['--standalone', '--dangerously-skip-permissions']));
     expect(call.args[call.args.indexOf('--format') + 1]).toBe('json');
     expect(call.args[call.args.indexOf('--model') + 1]).toBe(DEFAULT_MODEL);
     expect(call.args[call.args.indexOf('--session') + 1]).toMatch(/^ses_/);

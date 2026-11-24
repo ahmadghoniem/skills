@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Runs pass `--dangerously-skip-permissions` instead of `--auto`.** On 2.4.1 it is a hidden alias of `--auto` (so is `--yolo`), so nothing changes in behaviour; the flag now reads the same as agy's.
 - **Requires opencode 2.4.1.** Every flag the plugin passes (`run --standalone --format json
   --auto --model --session -f`) is still in `opencode run --help` on 2.4.1.
 
