@@ -4,7 +4,7 @@ This repo is two things at once: a home for standalone skills, and a Claude Code
 
 ## Layout
 
-Skills live flat, one directory each, at `skills/<name>/SKILL.md`. No bucket folders and no parallel docs tree: with five skills both are overhead. A skill's own README, if it has one, sits beside its `SKILL.md`.
+Skills live flat, one directory each, at `skills/<name>/SKILL.md`. No bucket folders and no parallel docs tree: with seven skills both are overhead. A skill's own README, if it has one, sits beside its `SKILL.md`.
 
 Claude Code auto-discovers `skills/<name>/SKILL.md`, so `.claude-plugin/plugin.json` carries **no** `skills` array. Do not add one, and do not nest a skill a level deeper, or it stops being found.
 
@@ -16,7 +16,7 @@ Every skill under `skills/` is loaded unnamespaced, so those names must be globa
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises all six plugins (the skills bundle, the four delegates and the council). `plugins/_shared/` is copied into grok, agy, opencode and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises all five plugins (the skills bundle, the three delegates and the council). `plugins/_shared/` is copied into grok, agy, opencode and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -63,9 +63,10 @@ So each cached version directory is replaced by a **Windows directory junction**
 
 ```
 ~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
-~/.claude/plugins/cache/ahmadghoniem/grok/0.5.0     ->  <repo>/plugins/grok
-~/.claude/plugins/cache/ahmadghoniem/agy/0.3.0      ->  <repo>/plugins/agy
-~/.claude/plugins/cache/ahmadghoniem/opencode/0.1.0 ->  <repo>/plugins/opencode
+~/.claude/plugins/cache/ahmadghoniem/grok/0.6.0     ->  <repo>/plugins/grok
+~/.claude/plugins/cache/ahmadghoniem/agy/0.5.0      ->  <repo>/plugins/agy
+~/.claude/plugins/cache/ahmadghoniem/opencode/0.2.0 ->  <repo>/plugins/opencode
+~/.claude/plugins/cache/ahmadghoniem/council/0.1.0  ->  <repo>/plugins/council
 ```
 
 Made with `New-Item -ItemType Junction -Path <cache dir> -Target <repo dir>` after deleting the copied directory. Now an edit here is live in the next session, with no update step.
@@ -76,4 +77,8 @@ The caveat: a reinstall, or an update that actually finds a new version, writes 
 Get-ChildItem ~/.claude/plugins/cache/ahmadghoniem -Recurse -Depth 1 | Where-Object { $_.LinkType }
 ```
 
-The five skills must not also exist under `~/.claude/skills/`, or each one loads twice.
+When a plugin's version goes up, the junction keeps working under the old number, but the cache folder and `claude plugin list` show the stale version. To rename it, make a junction under the new version, point that plugin's `installPath` and `version` in `~/.claude/plugins/installed_plugins.json` at it, then remove the old link with `[System.IO.Directory]::Delete(<old dir>, $false)`, which deletes the link and not the repo behind it.
+
+The seven skills must not also exist under `~/.claude/skills/`, or each one loads twice.
+
+This file lives in `.claude/` rather than the repo root because the root is also the kit plugin's folder, and `claude plugin validate --strict` fails on a `CLAUDE.md` there.
