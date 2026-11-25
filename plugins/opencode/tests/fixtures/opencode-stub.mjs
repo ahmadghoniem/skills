@@ -12,7 +12,7 @@ const session = at('--session');
 if (process.env.OPENCODE_STUB_LOG) {
   appendFileSync(
     process.env.OPENCODE_STUB_LOG,
-    `${JSON.stringify({ args, brief: readFileSync(at('-f'), 'utf8'), CLAUDECODE: process.env.CLAUDECODE ?? null })}\n`,
+    `${JSON.stringify({ args, brief: readFileSync(at('-f'), 'utf8'), CLAUDECODE: process.env.CLAUDECODE ?? null, config: process.env.OPENCODE_CONFIG_CONTENT ?? null, compat: process.env.OPENCODE_DISABLE_CLAUDE_CODE ?? null })}\n`,
   );
 }
 const emit = (type, extra) => process.stdout.write(`${JSON.stringify({ type, timestamp: 1, sessionID: session, ...extra })}\n`);

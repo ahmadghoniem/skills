@@ -71,10 +71,31 @@ export function buildArgs(o) {
   return ['run', '--standalone', '--format', 'json', '--dangerously-skip-permissions', '--model', o.model, '--session', o.sessionId, '-f', o.promptFile, '--', SIDECAR_MESSAGE];
 }
 
-/** The environment opencode runs with: no `CLAUDECODE`, so a `claude` command it runs is not refused as nested. */
+/**
+ * Tools a headless delegate has no use for, denied for the run only (your own
+ * opencode keeps them): `question` asks a user nobody is there to be, the
+ * generators make media, and `execute` is Code Mode, whose catalog carries the
+ * scheduler (`automation_*`) and opencode's own session, worktree and MCP tools
+ * (`opencode_*`). Denying `execute` alone turns that catalog into plain tools,
+ * so the two patterns go too. Checked on 2.4.1 against the request opencode
+ * sends: 46 KB of prompt and tools fall to 27 KB. `opencode_worktree_remove`
+ * survives every permission rule and the `tools` key.
+ */
+export const DELEGATE_CONFIG = Object.freeze({
+  permission: { question: 'deny', generate_image: 'deny', generate_video: 'deny', execute: 'deny', 'automation_*': 'deny', 'opencode_*': 'deny' },
+});
+
+/**
+ * The environment opencode runs with:
+ * - no `CLAUDECODE`, so a `claude` command it runs is not refused as nested;
+ * - `DELEGATE_CONFIG`, merged over your config for this run only (`--standalone` keeps it in this process);
+ * - Claude Code compatibility off, so `~/.claude` skills and instructions written for Claude stay out; the brief carries what the run needs.
+ */
 export function childEnv(base = process.env) {
   const env = { ...base };
   delete env.CLAUDECODE;
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(DELEGATE_CONFIG);
+  env.OPENCODE_DISABLE_CLAUDE_CODE = '1';
   return env;
 }
 

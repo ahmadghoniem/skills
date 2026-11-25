@@ -37,6 +37,7 @@ Windows only. Requires opencode `engines.opencode` or later on `PATH` (`bun add 
 - **`--session ses_…`** names the session before the run starts, so a run that dies can still be continued. opencode creates a session it does not know and refuses ids that do not start with `ses`. `--continue` is never used: it takes the newest session, which may belong to another Claude session.
 - **`--format json`** prints one event per line. The write-up is the `text` parts; an `error` event (`provider.quota`, `provider.auth`, `provider.no-route`) says why a run failed. A tool part whose state is `error` could not run at all; a command that exits non-zero still reports `completed`.
 - `CLAUDECODE` is removed from opencode's environment, so a `claude` command it runs is not refused as a nested session.
+- Tools a headless run has no use for are denied for that run only, through `OPENCODE_CONFIG_CONTENT`: `question`, `generate_image`, `generate_video`, and Code Mode (`execute`) with the `automation_*` scheduler and opencode's own `opencode_*` tools. Claude Code compatibility is off too (`OPENCODE_DISABLE_CLAUDE_CODE=1`). opencode opened by hand keeps all of it.
 
 ## Output and papercuts
 

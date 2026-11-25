@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Tools a delegate can't use are denied, for the run only.** `question` (nobody is there to answer), `generate_image`, `generate_video`, and Code Mode (`execute`) with the scheduler (`automation_*`) and opencode's session, worktree and MCP tools (`opencode_*`) it carries. They go in through `OPENCODE_CONFIG_CONTENT` on the delegate's own process, so opencode opened by hand keeps them. On 2.4.1 the request opencode sends falls from 46 KB to 27 KB. `opencode_worktree_remove` can't be denied by any rule tried.
+- **Claude Code compatibility is off for delegate runs** (`OPENCODE_DISABLE_CLAUDE_CODE=1`): `~/.claude` skills and instructions written for Claude stay out; the brief carries what the run needs.
 - **Runs pass `--dangerously-skip-permissions` instead of `--auto`.** On 2.4.1 it is a hidden alias of `--auto` (so is `--yolo`), so nothing changes in behaviour; the flag now reads the same as agy's.
 - **Requires opencode 2.4.1.** Every flag the plugin passes (`run --standalone --format json
   --auto --model --session -f`) is still in `opencode run --help` on 2.4.1.

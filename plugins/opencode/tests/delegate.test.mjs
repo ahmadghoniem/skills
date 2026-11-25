@@ -33,6 +33,14 @@ describe('delegate.mjs', () => {
     expect(call.CLAUDECODE).toBeNull();
   });
 
+  it('denies the tools a headless run has no use for and turns Claude compatibility off, for the run only', async () => {
+    await capture(() => main(['do the thing']));
+    const [call] = box.calls();
+    expect(JSON.parse(call.config).permission).toMatchObject({ question: 'deny', execute: 'deny', 'automation_*': 'deny' });
+    expect(call.compat).toBe('1');
+    expect(process.env.OPENCODE_CONFIG_CONTENT).toBeUndefined();
+  });
+
   it('continues a session it is given', async () => {
     const r = await capture(() => main(['--session', 'ses_abc', '--model', 'nebius/x', 'more']));
     const [call] = box.calls();
