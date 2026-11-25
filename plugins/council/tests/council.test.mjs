@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main as round } from '../scripts/round.mjs';
 import { main as roster } from '../scripts/roster.mjs';
+import { main as check } from '../scripts/check.mjs';
 import { seatArgs, sessionFrom } from '../scripts/lib/members.mjs';
 
 const STUB = fileURLToPath(new URL('./fixtures/member-stub.mjs', import.meta.url));
@@ -30,9 +31,10 @@ async function capture(fn) {
   }
 }
 
-function council(seats) {
+function council(seats, { chair = true } = {}) {
   mkdirSync(join(dir, 'home', 'c1'), { recursive: true });
   writeFileSync(join(dir, 'home', 'c1', 'council.json'), JSON.stringify({ seats }));
+  if (chair) writeFileSync(join(dir, 'home', 'c1', 'chair.md'), 'My position.');
 }
 const state = () => JSON.parse(readFileSync(join(dir, 'home', 'c1', 'council.json'), 'utf8'));
 const calls = () => readFileSync(join(dir, 'stub.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -131,12 +133,61 @@ describe('round.mjs', () => {
     expect(r.stdout).toContain('touched.txt');
   });
 
+  it('flags a second edit to a file that was already uncommitted', async () => {
+    writeFileSync(join(repo, 'touched.txt'), 'before');
+    council([{ name: 'editor', member: 'grok', model: 'edit' }]);
+    const r = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
+    expect(r.stdout).toContain('plus 1 uncommitted file(s)');
+    expect(r.stdout).toMatch(/workspace changed during the round[^\n]*\n\s+touched\.txt/);
+  });
+
+  it('watches a folder outside git for edits', async () => {
+    const plain = join(dir, 'plain');
+    mkdirSync(plain);
+    writeFileSync(join(plain, 'a.txt'), 'a');
+    process.chdir(plain);
+    council([{ name: 'editor', member: 'grok', model: 'edit' }]);
+    const r = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
+    expect(r.stdout).toContain('not a git repository; the code is frozen as it is now');
+    expect(r.stdout).toMatch(/workspace changed during the round[^\n]*\n\s+touched\.txt/);
+  });
+
+  it('refuses round 1 until the chair has written chair.md', async () => {
+    council([{ name: 'g', member: 'grok', model: 'one' }], { chair: false });
+    const r = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('chair.md');
+    expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
+  });
+
   it('refuses unknown seats and members before starting anything', async () => {
     council([{ name: 'g', member: 'grok' }]);
     expect((await capture(() => round(['--council', 'c1', '--brief', brief('q'), '--seats', 'nope']))).code).toBe(2);
     council([{ name: 'g', member: 'codex' }]);
     expect((await capture(() => round(['--council', 'c1', '--brief', brief('q')]))).code).toBe(2);
     expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
+  });
+});
+
+describe('check.mjs', () => {
+  const LOG = '# Disputes\n\n### D1: is X safe? (OPEN)\nA: yes, a.mjs:3\nB: no, b.mjs:9\n\n### D2: rename it (CLOSED)\nclosed by c.mjs:1\n\n## Parking lot\n- later\n';
+  const write = (name, text) => writeFileSync(join(dir, 'home', 'c1', name), text);
+
+  it('passes when every OPEN dispute is copied word for word, and names the ones that are not', async () => {
+    council([{ name: 'g', member: 'grok' }]);
+    write('disputes.md', LOG);
+    write('report.md', '## For your decision\n\n### D1: is X safe? (OPEN)\r\nA: yes, a.mjs:3  \nB: no, b.mjs:9\n');
+    expect((await capture(() => check(['--council', 'c1']))).code).toBe(0);
+    write('report.md', '## For your decision\n\n### D1: is X safe? (OPEN)\nA: yes\nB: no, b.mjs:9\n');
+    const r = await capture(() => check(['--council', 'c1']));
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('D1');
+    expect(r.stdout).not.toContain('D2');
+  });
+
+  it('refuses when there is no report yet', async () => {
+    council([{ name: 'g', member: 'grok' }]);
+    expect((await capture(() => check(['--council', 'c1']))).code).toBe(2);
   });
 });
 

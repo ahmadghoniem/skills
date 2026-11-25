@@ -2,11 +2,12 @@
 // Runs one council round: every chosen seat gets the brief at once, on the code
 // as it stands (stamped with the commit), and the round ends when all have
 // answered or the hard timeout passes; a seat still running then is stopped and
-// marked MISSING. Prints each seat's final-answer block.
+// marked MISSING. Round 1 refuses to start before the chair has written
+// chair.md. Prints each seat's final-answer block.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ANSWER_RULES, assignLabels, councilDir, finalBlock, readCouncil, writeCouncil } from './lib/council.mjs';
-import { changedDuring, snapshot } from './lib/git.mjs';
+import { changedDuring, MAX_FILES, snapshot } from './lib/workspace.mjs';
 import { accessOf, delegatePath, MEMBERS, seatArgs, sessionFrom } from './lib/members.mjs';
 import { parseCli, run, runAsScript, spawnDirect } from './lib/shared/proc.mjs';
 
@@ -78,6 +79,10 @@ export async function main(argv) {
   if (missingPlugin.length) {
     return process.stderr.write(`Error: plugin not installed for ${missingPlugin.map((s) => `${s.name} (${s.member})`).join(', ')}.\n`), 2;
   }
+  const chair = join(councilDir(council.name), 'chair.md');
+  if (council.rounds === 0 && !(existsSync(chair) && readFileSync(chair, 'utf8').trim())) {
+    return process.stderr.write(`Error: write your own position to ${chair} before round 1, so the seats can't anchor it.\n`), 2;
+  }
 
   const round = council.rounds + 1;
   const dir = join(councilDir(council.name), `round-${round}`);
@@ -87,9 +92,9 @@ export async function main(argv) {
   const prev = join(councilDir(council.name), `round-${round - 1}`);
 
   const before = await snapshot(process.cwd());
-  const frozen = before
-    ? `The code is frozen at commit ${before.sha}${before.dirty.length ? `, plus ${before.dirty.length} uncommitted file(s) as they are now` : ''}.`
-    : 'The workspace is not a git repository.';
+  const frozen = before.sha
+    ? `The code is frozen at commit ${before.sha}${before.files.size ? `, plus ${before.files.size} uncommitted file(s) as they are now` : ''}.`
+    : 'The workspace is not a git repository; the code is frozen as it is now.';
 
   const others = (self) => {
     if (round === 1 || values['no-others']) return '';
@@ -111,6 +116,8 @@ export async function main(argv) {
       const session = sessionFrom(seat.member, r.out);
       if (session) seat.session = session;
       else if (r.timedOut) delete seat.session;
+      // Saved as each seat finishes, so a round stopped halfway keeps the sessions it got.
+      writeCouncil(council);
       return { seat, ...r, block: finalBlock(r.out) };
     }),
   );
@@ -124,6 +131,7 @@ export async function main(argv) {
   for (const r of results) lines.push(`- **${r.seat.name}** (${describe(r.seat)}): ${status(r)} in ${minutes(r.ms)}`);
   const changed = changedDuring(before, after);
   if (changed.length) lines.push('', '⚠ The workspace changed during the round, so the seats may have read different code:', ...changed.map((c) => `    ${c}`));
+  if (!before.files || !after.files) lines.push('', `⚠ The workspace isn't a git repository and holds over ${MAX_FILES} files, so edits during the round weren't watched.`);
   for (const r of results) {
     lines.push('', `## ${r.seat.name} (Seat ${r.seat.label})`, '');
     if (r.block) lines.push(r.block);

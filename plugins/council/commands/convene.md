@@ -52,7 +52,8 @@ estimate. Swap a seat whose model is blocked on quota before starting.
 
 Before any member answers, write your round-1 position to
 `~/.council/<short-name>/chair.md`: your answer and why. You read the members only after
-that, so their answers test yours instead of replacing it.
+that, so their answers test yours instead of replacing it. `round.mjs` refuses round 1
+until `chair.md` exists.
 
 ## 3. The brief
 
@@ -78,7 +79,7 @@ read the working tree as it is. Then, with the Bash tool and `run_in_background:
 
 Every core seat starts at once. The round ends when all have answered or at the timeout;
 a seat still running then is stopped and marked MISSING. Do not edit the workspace while
-a round runs (the summary flags any change), and do not wait idle: do other work, or stop
+a round runs (the summary flags any change, in a git repo or not), and do not wait idle: do other work, or stop
 until the notification. Don't read the output files while it runs.
 
 The output is each seat's status and its final-answer block; full outputs are in the
@@ -88,8 +89,9 @@ round folder it names.
 
 Keep `~/.council/<short-name>/disputes.md`:
 
-- **D1, D2 …** each a point the seats (or you) disagree on, with every side's position and
-  evidence, marked **OPEN**, **CLOSED** (with what closed it) or **PARKED**.
+- **D1, D2 …** each a point the seats (or you) disagree on, under its own heading
+  (`### D1: <the point> (OPEN)`) with every side's position and evidence below it. The
+  heading ends **OPEN**, **CLOSED** (with what closed it in the text) or **PARKED**.
 - **Parking lot**: everything from the Out of scope lines, and anything that grows the
   question. Fight scope creep: it does not go back in unless the user asks.
 
@@ -110,8 +112,14 @@ settled answer and the closed disputes.
 
 ## 7. Report to the user
 
+Write the report to `~/.council/<short-name>/report.md`:
+
 - The answer the council settled on, with its evidence, and where you differ.
-- **For your decision**: every OPEN dispute copied verbatim from the log, each side with
-  its evidence, as questions. Do not settle them yourself.
+- **For your decision**: every OPEN dispute copied verbatim from the log, heading and all,
+  each side with its evidence, as questions. Do not settle them yourself.
 - The parking lot.
 - Seats that were MISSING or failed, by name and model.
+
+Then check it, fix whatever it names, and only then give the user the report:
+
+    node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs" -- --council <short-name>
