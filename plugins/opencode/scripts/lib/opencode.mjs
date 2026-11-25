@@ -73,16 +73,13 @@ export function buildArgs(o) {
 
 /**
  * Tools a headless delegate has no use for, denied for the run only (your own
- * opencode keeps them): `question` asks a user nobody is there to be, the
- * generators make media, and `execute` is Code Mode, whose catalog carries the
- * scheduler (`automation_*`) and opencode's own session, worktree and MCP tools
- * (`opencode_*`). Denying `execute` alone turns that catalog into plain tools,
- * so the two patterns go too. Checked on 2.4.1 against the request opencode
- * sends: 46 KB of prompt and tools fall to 27 KB. `opencode_worktree_remove`
- * survives every permission rule and the `tools` key.
+ * opencode keeps them): `question` asks a user nobody is there to be, and the
+ * generators make media nobody asked for. Code Mode (`execute`) and the
+ * scheduler and opencode tools in its catalog stay. Checked on 2.4.1 against
+ * the request opencode sends.
  */
 export const DELEGATE_CONFIG = Object.freeze({
-  permission: { question: 'deny', generate_image: 'deny', generate_video: 'deny', execute: 'deny', 'automation_*': 'deny', 'opencode_*': 'deny' },
+  permission: { question: 'deny', generate_image: 'deny', generate_video: 'deny' },
 });
 
 /**

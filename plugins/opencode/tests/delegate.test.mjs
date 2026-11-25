@@ -36,7 +36,7 @@ describe('delegate.mjs', () => {
   it('denies the tools a headless run has no use for and turns Claude compatibility off, for the run only', async () => {
     await capture(() => main(['do the thing']));
     const [call] = box.calls();
-    expect(JSON.parse(call.config).permission).toMatchObject({ question: 'deny', execute: 'deny', 'automation_*': 'deny' });
+    expect(JSON.parse(call.config).permission).toEqual({ question: 'deny', generate_image: 'deny', generate_video: 'deny' });
     expect(call.compat).toBe('1');
     expect(process.env.OPENCODE_CONFIG_CONTENT).toBeUndefined();
   });
