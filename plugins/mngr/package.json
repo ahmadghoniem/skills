@@ -1,0 +1,49 @@
+{
+  "name": "claude-mngr",
+  "version": "0.1.0",
+  "description": "Manage the Grok, Antigravity and opencode CLIs from Claude Code and delegate coding tasks to them.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Ahmed Ghoniem",
+    "url": "https://github.com/ahmadghoniem"
+  },
+  "homepage": "https://github.com/ahmadghoniem/skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmadghoniem/skills.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "grok",
+    "agy",
+    "antigravity",
+    "opencode",
+    "agent-delegation"
+  ],
+  "engines": {
+    "node": ">=18.18",
+    "grok": ">=1.0.92",
+    "agy": ">=1.5.14",
+    "opencode": ">=2.4.1"
+  },
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "plugin.json",
+    "commands",
+    "scripts",
+    "clis"
+  ],
+  "scripts": {
+    "test": "vitest run && npm run test:grok && npm run test:agy && npm run test:opencode",
+    "test:grok": "cd clis/grok && vitest run",
+    "test:agy": "cd clis/agy && vitest run",
+    "test:opencode": "cd clis/opencode && vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}

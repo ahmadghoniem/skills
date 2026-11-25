@@ -25,7 +25,7 @@ Windows only. Install the member plugins (grok, agy, opencode) the same way.
 
 State lives in `~/.council/<name>/` (`COUNCIL_HOME`): `council.json` (seats and sessions), the chair's `chair.md`, `disputes.md` and `report.md`, and `round-N/` (what each seat was sent, what it said, the summary).
 
-`COUNCIL_<MEMBER>_DELEGATE` points a member at another `delegate.mjs`; otherwise the council finds the member next to it, in this repo or in Claude Code's plugin cache.
+`COUNCIL_<MEMBER>_DELEGATE` points a member at another `delegate.mjs`; otherwise the council finds the member's delegate inside the [mngr](../mngr/README.md) plugin next to it, in this repo or in Claude Code's plugin cache.
 
 ## Where the rules come from
 

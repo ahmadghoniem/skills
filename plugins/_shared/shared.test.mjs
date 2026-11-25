@@ -32,7 +32,7 @@ test('the update notice prints once per release', async () => {
   const path = join(dir, 'release.json');
   delete process.env.DELEGATE_RELEASE_CHECK;
   const release = await latestRelease(path, async () => ({ latest: '1.0.93', times: { '1.0.93': '2026-11-24T' } }));
-  const args = { path, tool: 'grok', command: '/grok:update', release, installed: '1.0.92' };
+  const args = { path, tool: 'grok', command: '/mngr:update grok', release, installed: '1.0.92' };
   assert.match(noticeOnce(args), /grok 1\.0\.93 is out/);
   assert.equal(noticeOnce(args), '');
   assert.equal(noticeOnce({ ...args, installed: '1.0.93' }), '');

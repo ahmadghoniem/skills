@@ -1,6 +1,6 @@
 # Repo conventions
 
-This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising five plugins.
+This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising three plugins.
 
 ## Layout
 
@@ -8,7 +8,7 @@ Skills live flat, one directory each, at `skills/<name>/SKILL.md`. No bucket fol
 
 Claude Code auto-discovers `skills/<name>/SKILL.md`, so `.claude-plugin/plugin.json` carries **no** `skills` array. Do not add one, and do not nest a skill a level deeper, or it stops being found.
 
-Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`grok:delegate`), so those may repeat.
+Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`mngr:delegate`), so those may repeat.
 
 `tools/<name>/` holds standalone scripts that are neither skill nor plugin. `tools/apply-patch/` is reached through a junction at `~/.claude/scripts/apply-patch`, so edits are live; its tests use `node:test` and need no install.
 
@@ -16,7 +16,7 @@ Every skill under `skills/` is loaded unnamespaced, so those names must be globa
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises all five plugins (the skills bundle, the three delegates and the council). `plugins/_shared/` is copied into grok, agy, opencode and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises all three plugins (the skills bundle, `mngr` and the council). mngr drives three CLIs: its commands take the CLI as their first word (`/mngr:delegate grok …`), `scripts/` hands that on, and each CLI keeps its own scripts, tests, contract and `CHANGELOG.md` under `plugins/mngr/clis/<cli>/`. The CLIs share mngr's one version, `package.json` (with `engines.<cli>`) and data folder, `~/.mngr/<cli>/`. `plugins/_shared/` is copied into mngr and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -40,8 +40,8 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # shared + grok + agy + opencode + council + apply-patch
-npm run test:agy      # or one at a time
+npm test              # shared + mngr (dispatcher, grok, agy, opencode) + council + apply-patch
+npm run test:agy      # or one CLI at a time
 ```
 
 Do not add npm `workspaces` to the root `package.json`. It makes `npm ci` inside a plugin directory fail outright; the `--prefix` scripts exist for that reason.
@@ -54,7 +54,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install kit@ahmadghoniem   # and grok@, agy@, opencode@, council@
+claude plugin install kit@ahmadghoniem   # and mngr@, council@
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
@@ -63,9 +63,7 @@ So each cached version directory is replaced by a **Windows directory junction**
 
 ```
 ~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
-~/.claude/plugins/cache/ahmadghoniem/grok/0.6.0     ->  <repo>/plugins/grok
-~/.claude/plugins/cache/ahmadghoniem/agy/0.5.0      ->  <repo>/plugins/agy
-~/.claude/plugins/cache/ahmadghoniem/opencode/0.2.0 ->  <repo>/plugins/opencode
+~/.claude/plugins/cache/ahmadghoniem/mngr/0.1.0     ->  <repo>/plugins/mngr
 ~/.claude/plugins/cache/ahmadghoniem/council/0.1.0  ->  <repo>/plugins/council
 ```
 

@@ -8,7 +8,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareVersions } from './shared/release.mjs';
 
-const home = (envName, dir) => () => (process.env[envName]?.trim() ? resolve(process.env[envName]) : join(homedir(), dir));
+/** Where mngr keeps a CLI's papercuts and quota record: `~/.mngr/<cli>`, as mngr's own `paths.mjs` has it. */
+const home = (cli) => () => {
+  const own = process.env[`MNGR_${cli.toUpperCase()}_HOME`]?.trim();
+  if (own) return resolve(own);
+  return join(process.env.MNGR_HOME?.trim() ? resolve(process.env.MNGR_HOME) : join(homedir(), '.mngr'), cli);
+};
 
 /**
  * `continueFlag` continues a session; `idLine` reads its id off the run's last
@@ -17,9 +22,9 @@ const home = (envName, dir) => () => (process.env[envName]?.trim() ? resolve(pro
  * overrides it.
  */
 export const MEMBERS = Object.freeze({
-  grok: { cli: 'grok', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('CGD_HOME', '.cgd'), defaultModel: 'the account default', efforts: ['low', 'medium'], access: 'read the repo; had web and X search' },
-  agy: { cli: 'agy', continueFlag: '--conversation', idLine: /^conversation: (\S+)\s*$/gm, home: home('CAD_HOME', '.cad'), defaultModel: 'gemini-4-hydrogen-medium', efforts: [], access: 'read the repo; had web search' },
-  opencode: { cli: 'opencode', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('COD_HOME', '.cod'), defaultModel: 'nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017', efforts: [], access: 'read the repo; had web search' },
+  grok: { cli: 'grok', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('grok'), defaultModel: 'the account default', efforts: ['low', 'medium'], access: 'read the repo; had web and X search' },
+  agy: { cli: 'agy', continueFlag: '--conversation', idLine: /^conversation: (\S+)\s*$/gm, home: home('agy'), defaultModel: 'gemini-4-hydrogen-medium', efforts: [], access: 'read the repo; had web search' },
+  opencode: { cli: 'opencode', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('opencode'), defaultModel: 'nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017', efforts: [], access: 'read the repo; had web search' },
 });
 
 /** What the other seats are told this seat could use. */
@@ -28,21 +33,22 @@ export const accessOf = (seat) => seat.access ?? MEMBERS[seat.member].access;
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * The member plugin's delegate.mjs, or null. `COUNCIL_<MEMBER>_DELEGATE`
- * overrides; otherwise the sibling folder in this repo (`plugins/<member>`), or
- * the newest installed version next to this plugin in Claude Code's cache
- * (`cache/<marketplace>/<member>/<version>`).
+ * The member's delegate.mjs inside the mngr plugin, or null.
+ * `COUNCIL_<MEMBER>_DELEGATE` overrides; otherwise mngr next to this plugin in
+ * this repo (`plugins/mngr`), or the newest installed mngr in Claude Code's
+ * cache (`cache/<marketplace>/mngr/<version>`).
  */
 export function delegatePath(member) {
   const override = process.env[`COUNCIL_${member.toUpperCase()}_DELEGATE`]?.trim();
   if (override) return existsSync(override) ? override : null;
-  const sibling = join(PLUGIN_ROOT, '..', member, 'scripts', 'delegate.mjs');
+  const inMngr = (root) => join(root, 'clis', member, 'scripts', 'delegate.mjs');
+  const sibling = inMngr(join(PLUGIN_ROOT, '..', 'mngr'));
   if (existsSync(sibling)) return sibling;
-  const cached = join(PLUGIN_ROOT, '..', '..', member);
+  const cached = join(PLUGIN_ROOT, '..', '..', 'mngr');
   try {
     const versions = readdirSync(cached).sort(compareVersions).reverse();
     for (const v of versions) {
-      const p = join(cached, v, 'scripts', 'delegate.mjs');
+      const p = inMngr(join(cached, v));
       if (existsSync(p)) return p;
     }
   } catch {

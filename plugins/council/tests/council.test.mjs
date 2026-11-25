@@ -196,7 +196,7 @@ describe('roster.mjs', () => {
     const cad = join(dir, 'cad');
     mkdirSync(cad);
     writeFileSync(join(cad, 'quota.json'), JSON.stringify({ 'gemini-4-neon-high': { at: '2026-11-24T01:00:00.000Z', message: 'Individual quota reached.', resetsAt: '2999-01-01T00:00:00.000Z' } }));
-    process.env.CAD_HOME = cad;
+    process.env.MNGR_AGY_HOME = cad;
     process.env.COUNCIL_GROK_CLI = process.env.COUNCIL_AGY_CLI = 'git';
     council([{ name: 'neon', member: 'agy', model: 'gemini-4-neon-high' }, { name: 'g', member: 'grok', effort: 'low' }]);
     const r = await capture(() => roster(['--council', 'c1']));

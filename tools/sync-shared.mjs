@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copies plugins/_shared/*.mjs into each delegate plugin's scripts/lib/shared/.
+// Copies plugins/_shared/*.mjs into mngr's and council's scripts/lib/shared/.
 // An installed plugin is copied on its own, so it cannot import a sibling
 // folder; the copies are committed. `--check` changes nothing and exits 1 when
 // a copy differs from its source (the root `npm test` runs it).
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const source = join(root, 'plugins', '_shared');
-const PLUGINS = ['grok', 'agy', 'opencode', 'council'];
+const PLUGINS = ['mngr', 'council'];
 const check = process.argv.includes('--check');
 
 const files = readdirSync(source).filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs'));

@@ -1,4 +1,4 @@
-// The last quota error each model hit, per plugin (`~/.cgd`, `~/.cad`, `~/.cod`
+// The last quota error each model hit, per CLI (`~/.mngr/<cli>`
 // quota.json). None of the three CLIs reports remaining quota to a headless
 // caller (`grok usage` refuses outside grok, agy and opencode have no command),
 // so this is what a run learns the hard way, kept for the next one:
