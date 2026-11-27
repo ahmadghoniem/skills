@@ -1,6 +1,6 @@
 # council
 
-Part of [mngr](../README.md). Convene the CLIs as a review council: seats on [grok](../clis/grok/README.md), [agy](../clis/agy/README.md) and [opencode](../clis/opencode/README.md) answer the same question, read each other's answers between rounds, and Claude chairs. What they settle comes back with its evidence; what they don't comes back to you as questions.
+Part of [mngr](../README.md). Convene the CLIs as a review council: seats on [grok](../clis/grok/README.md), [agy](../clis/agy/README.md), [opencode](../clis/opencode/README.md) and [codex](../clis/codex/README.md) answer the same question, read each other's answers between rounds, and Claude chairs. What they settle comes back with its evidence; what they don't comes back to you as questions.
 
 The council never starts a CLI itself. Each seat runs mngr's own `clis/<cli>/scripts/delegate.mjs`, so launching, error reading, papercuts and quota stay there.
 
@@ -8,7 +8,7 @@ The council never starts a CLI itself. Each seat runs mngr's own `clis/<cli>/scr
 
 - **`/mngr:council [seats:] <question>`**: the protocol Claude follows: seat the agents you name (or propose some for you to pick), show the roster and wait for your go, write a blind chair position, brief, run rounds, keep the dispute log, stop, and report.
 
-There are no standing seats. Every seat runs an exact model, never an account default: its own `model`, or its CLI's pinned seat model (grok `grok-4.7`, agy `gemini-4-neon-high`, opencode `meta/muse-wonder-1.0#high`).
+There are no standing seats. Every seat runs an exact model, never an account default: its own `model`, or its CLI's pinned seat model (grok `grok-4.7`, agy `gemini-4-neon-high`, opencode `meta/muse-wonder-1.0#high`, codex `gpt-6.2-astra` at `low`).
 
 ## Scripts
 

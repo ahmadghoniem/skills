@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `/mngr:delegate`: `delegate.mjs -- <grok|agy|opencode> [flags] <task...>` runs that CLI's delegate.
+// `/mngr:delegate`: `delegate.mjs -- <grok|agy|opencode|codex> [flags] <task...>` runs that CLI's delegate.
 import { dispatch } from './lib/clis.mjs';
 import { runAsScript } from './lib/shared/proc.mjs';
 

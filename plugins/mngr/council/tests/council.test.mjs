@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main as round } from '../round.mjs';
-import { agyQuotaLeft, grokQuotaLeft, main as roster } from '../roster.mjs';
+import { agyQuotaLeft, codexQuotaLeft, grokQuotaLeft, main as roster } from '../roster.mjs';
 import { main as check } from '../check.mjs';
 import { seatArgs, sessionFrom } from '../lib/members.mjs';
 import { rosterOf } from '../lib/council.mjs';
@@ -182,7 +182,7 @@ describe('round.mjs', () => {
   it('refuses unknown seats and members before starting anything', async () => {
     council([{ name: 'g', member: 'grok' }]);
     expect((await capture(() => round(['--council', 'c1', '--brief', brief('q'), '--seats', 'nope']))).code).toBe(2);
-    council([{ name: 'g', member: 'codex' }]);
+    council([{ name: 'g', member: 'nope' }]);
     expect((await capture(() => round(['--council', 'c1', '--brief', brief('q')]))).code).toBe(2);
     expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
   });
@@ -252,5 +252,12 @@ describe('roster.mjs', () => {
     expect(grokQuotaLeft(billing(104))).toBe('left: 0% weekly (full 2026-11-30 20:11 UTC)');
     expect(grokQuotaLeft(null)).toBeNull();
     expect(grokQuotaLeft({ config: {} })).toBeNull();
+  });
+
+  it('reads what codex has left in its 5-hour and weekly windows from the app server', () => {
+    const limits = { rateLimits: { primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 1795803674 }, secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1796322374 } } };
+    expect(codexQuotaLeft(limits)).toBe('left: 90% 5-hour (full 2026-11-27 18:21 UTC), 100% weekly');
+    expect(codexQuotaLeft(null)).toBeNull();
+    expect(codexQuotaLeft({ rateLimits: {} })).toBeNull();
   });
 });

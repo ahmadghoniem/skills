@@ -16,7 +16,7 @@ The repo root is the kit plugin, so every skill under `skills/` loads as `kit:<n
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises both plugins (the skills bundle, `kit`, and `mngr`). mngr drives three CLIs: its commands take the CLI as their first word (`/mngr:delegate grok …`), `scripts/` hands that on, and each CLI keeps its own scripts, tests, contract and `CHANGELOG.md` under `plugins/mngr/clis/<cli>/`. The council is part of mngr too (`/mngr:council`, code and tests under `plugins/mngr/council/`), and runs its seats through the same delegate scripts. Everything shares mngr's one version, `package.json` (with `engines.<cli>`), the helpers in `plugins/mngr/scripts/lib/shared/`, and the data folder `~/.mngr/` (`<cli>/` per CLI, `council/` per council). After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises both plugins (the skills bundle, `kit`, and `mngr`). mngr drives four CLIs: its commands take the CLI as their first word (`/mngr:delegate grok …`), `scripts/` hands that on, and each CLI keeps its own scripts, tests, contract and `CHANGELOG.md` under `plugins/mngr/clis/<cli>/`. The council is part of mngr too (`/mngr:council`, code and tests under `plugins/mngr/council/`), and runs its seats through the same delegate scripts. Everything shares mngr's one version, `package.json` (with `engines.<cli>`), the helpers in `plugins/mngr/scripts/lib/shared/`, and the data folder `~/.mngr/` (`<cli>/` per CLI, `council/` per council). After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -40,7 +40,7 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # mngr (dispatcher and shared helpers, grok, agy, opencode, council) + apply-patch + relink
+npm test              # mngr (dispatcher and shared helpers, grok, agy, opencode, codex, council) + apply-patch + relink
 npm run test:agy      # or one CLI at a time
 ```
 

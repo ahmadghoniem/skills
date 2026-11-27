@@ -20,9 +20,9 @@
     },
     {
       "name": "mngr",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/mngr",
-      "description": "Manage the grok, agy and opencode CLIs from Claude Code (setup, update, papercuts), delegate coding tasks to them, and convene them as a review council.",
+      "description": "Manage the grok, agy, opencode and codex CLIs from Claude Code (setup, update, papercuts), delegate coding tasks to them, and convene them as a review council.",
       "category": "engineering",
       "keywords": [
         "grok",

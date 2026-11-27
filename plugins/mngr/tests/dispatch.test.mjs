@@ -42,9 +42,9 @@ describe('dispatch', () => {
   });
 
   it('refuses a missing or unknown CLI before running anything', async () => {
-    const r = await quiet(() => delegate(['--', 'codex', 'do it']));
+    const r = await quiet(() => delegate(['--', 'nope', 'do it']));
     expect(r.code).toBe(2);
-    expect(r.stderr).toContain('grok, agy, opencode');
+    expect(r.stderr).toContain('grok, agy, opencode, codex');
     expect((await quiet(() => delegate([]))).code).toBe(2);
     expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
   });

@@ -23,6 +23,7 @@
     "test:grok": "npm --prefix plugins/mngr run test:grok",
     "test:agy": "npm --prefix plugins/mngr run test:agy",
     "test:opencode": "npm --prefix plugins/mngr run test:opencode",
+    "test:codex": "npm --prefix plugins/mngr run test:codex",
     "test:council": "npm --prefix plugins/mngr run test:council",
     "test:apply-patch": "node --test tools/apply-patch/apply-patch.test.mjs tools/apply-patch/bash-guard.test.mjs",
     "test:relink": "node --test tools/relink/relink.test.mjs",

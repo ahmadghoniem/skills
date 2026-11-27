@@ -1,5 +1,10 @@
 # Changelog
 
+## mngr 0.3.0
+
+- **codex can hold a seat:** `gpt-6.2-astra` at `low`, Astra's own default, always passed as `--effort` so a change in Codex's default can't move it. The roster shows what codex has left in its 5-hour and weekly windows, read from `codex app-server` without spending tokens.
+- A seat's first output line now names its session as the run starts, so a stopped seat's session can be kept.
+
 ## mngr 0.2.0
 
 - **The council is part of mngr.** `/council:convene` is now `/mngr:council`; `/council:roster` is gone, since the roster is shown at the start of every council. The code moved to `plugins/mngr/council/`, and seats run mngr's delegate scripts directly instead of looking for a sibling plugin or a cache folder. State moved from `~/.council/` to `~/.mngr/council/`.

@@ -1,6 +1,6 @@
 ---
-description: Health-check grok, agy and opencode (or the one named): binary, version, sign-in, and agy's bash tool.
-argument-hint: '[grok|agy|opencode]'
+description: Health-check grok, agy, opencode and codex (or the one named): binary, version, sign-in, and agy's bash tool.
+argument-hint: '[grok|agy|opencode|codex]'
 allowed-tools: Bash(node:*)
 ---
 

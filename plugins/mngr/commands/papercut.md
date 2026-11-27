@@ -1,6 +1,6 @@
 ---
 description: Record one friction point in a CLI's papercut log, or close one once it is fixed.
-argument-hint: '<grok|agy|opencode> <what the CLI said blocked it, or the fix to close>'
+argument-hint: '<grok|agy|opencode|codex> <what the CLI said blocked it, or the fix to close>'
 allowed-tools: Bash(node:*)
 ---
 

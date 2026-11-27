@@ -1,5 +1,5 @@
 ---
-description: Convene grok, agy and opencode seats as a review council on a question, in rounds on frozen code, and bring back what they settled and what is yours to decide.
+description: Convene grok, agy, opencode and codex seats as a review council on a question, in rounds on frozen code, and bring back what they settled and what is yours to decide.
 argument-hint: '[seats, e.g. grok agy opencode:] <question>'
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Grep, Glob, AskUserQuestion
 ---
@@ -30,8 +30,8 @@ Write `~/.mngr/council/<short-name>/council.json`:
 
 `member` is the CLI the seat runs on. Every seat runs an exact model, never an account
 default: with no `model`, it gets its member's pinned seat model (grok `grok-4.7`, agy
-`gemini-4-neon-high`, opencode `meta/muse-wonder-1.0#high`). Set `model` when the user names
-another; `effort` is grok's only (agy and opencode carry effort in the model id). Every
+`gemini-4-neon-high`, opencode `meta/muse-wonder-1.0#high`, codex `gpt-6.2-astra` at `low`). Set `model` when the user names
+another; `effort` is for grok and codex (agy and opencode carry effort in the model id). Every
 seat gets the same question and the same brief: no roles, focus areas or per-seat
 assignments, so each member decides for itself what matters. Seats marked `auditor` sit
 out the rounds and read the settled result on frozen code.

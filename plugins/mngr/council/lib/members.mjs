@@ -24,7 +24,27 @@ export const MEMBERS = Object.freeze({
   grok: { cli: 'grok', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('grok'), seatModel: 'grok-4.7', efforts: ['low', 'medium'], access: 'read the repo; had web and X search' },
   agy: { cli: 'agy', continueFlag: '--conversation', idLine: /^conversation: (\S+)\s*$/gm, home: home('agy'), seatModel: 'gemini-4-neon-high', efforts: [], access: 'read the repo; had web search' },
   opencode: { cli: 'opencode', continueFlag: '--session', idLine: /^session: (\S+)\s*$/gm, home: home('opencode'), seatModel: 'meta/muse-wonder-1.0#high', efforts: [], access: 'read the repo; had web search' },
+  codex: {
+    cli: codexCli(),
+    continueFlag: '--session',
+    idLine: /^session: (\S+)\s*$/gm,
+    home: home('codex'),
+    seatModel: 'gpt-6.2-astra',
+    // The provider's default for Astra, written out so a change in Codex's own default can't move it.
+    seatEffort: 'low',
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    access: 'read the repo; had web search',
+  },
 });
+
+/** The standalone codex.exe when installed, else `codex` on PATH. */
+function codexCli() {
+  const standalone = join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe');
+  return existsSync(standalone) ? standalone : 'codex';
+}
+
+/** The effort a seat runs at: its own, or its member's pinned one. Null where the model id carries it. */
+export const seatEffortOf = (seat) => (MEMBERS[seat.member]?.efforts.length ? seat.effort ?? MEMBERS[seat.member].seatEffort ?? null : null);
 
 /** The model a seat runs: its own, or its member's pinned seat model. */
 export const modelOf = (seat) => seat.model ?? MEMBERS[seat.member]?.seatModel;
@@ -51,7 +71,8 @@ export function sessionFrom(member, stdout) {
 export function seatArgs(seat, promptFile) {
   const m = MEMBERS[seat.member];
   const args = ['--prompt-file', promptFile, '--model', modelOf(seat)];
-  if (seat.effort && m.efforts.length) args.push('--effort', seat.effort);
+  const effort = seatEffortOf(seat);
+  if (effort) args.push('--effort', effort);
   if (seat.session) args.push(m.continueFlag, seat.session);
   return args;
 }

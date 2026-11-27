@@ -1,6 +1,6 @@
 # mngr
 
-Manage three coding CLIs from Claude Code, and hand them work: [grok](./clis/grok/README.md) (Grok Build), [agy](./clis/agy/README.md) (Antigravity) and [opencode](./clis/opencode/README.md). Claude writes the brief and reviews the diff; the CLI does the editing in its own session. mngr never commits.
+Manage four coding CLIs from Claude Code, and hand them work: [grok](./clis/grok/README.md) (Grok Build), [agy](./clis/agy/README.md) (Antigravity), [opencode](./clis/opencode/README.md) and [codex](./clis/codex/README.md) (OpenAI Codex). Claude writes the brief and reviews the diff; the CLI does the editing in its own session. mngr never commits.
 
 `/mngr:council` seats them as a review council: the [council](./council/README.md) runs each seat through the same delegate scripts.
 
@@ -15,9 +15,9 @@ Windows only, Node 18.18+, and each CLI you use on `PATH` at the version in `pac
 
 ## Commands
 
-Every command takes the CLI as its first word. With none, `/mngr:delegate` asks which; `/mngr:setup` and `/mngr:update` cover all three.
+Every command takes the CLI as its first word. With none, `/mngr:delegate` asks which; `/mngr:setup` and `/mngr:update` cover all four.
 
-- **`/mngr:delegate <cli> <task>`** writes a brief to `~/.mngr/<cli>/briefs/` and runs the CLI on it in a background Bash call. The output ends with the session id that continues the work. TaskStop stops a run.
+- **`/mngr:delegate <cli> <task>`** writes a brief to `~/.mngr/<cli>/briefs/` and runs the CLI on it in a background Bash call. The first line names the model and the session as the run starts, and the last line repeats the session id that continues the work. TaskStop stops a run.
 - **`/mngr:setup [cli]`** checks the binary, the version and the sign-in, and installs agy's bash tool.
 - **`/mngr:update [cli]`** updates the CLI, lists the releases since the version mngr was last reviewed against, and reviews mngr and the open papercuts against them.
 - **`/mngr:papercut <cli>`** records what the CLI said blocked it, or closes papercuts once fixed.

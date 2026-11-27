@@ -1,7 +1,7 @@
 {
   "name": "claude-mngr",
-  "version": "0.2.0",
-  "description": "Manage the Grok, Antigravity and opencode CLIs from Claude Code, delegate coding tasks to them, and convene them as a review council.",
+  "version": "0.3.0",
+  "description": "Manage the Grok, Antigravity, opencode and Codex CLIs from Claude Code, delegate coding tasks to them, and convene them as a review council.",
   "type": "module",
   "license": "MIT",
   "author": {
@@ -20,6 +20,7 @@
     "agy",
     "antigravity",
     "opencode",
+    "codex",
     "agent-delegation",
     "council"
   ],
@@ -27,7 +28,8 @@
     "node": ">=18.18",
     "grok": ">=1.0.92",
     "agy": ">=1.5.14",
-    "opencode": ">=2.4.1"
+    "opencode": ">=2.4.1",
+    "codex": ">=0.172.0"
   },
   "os": [
     "win32"
@@ -40,11 +42,12 @@
     "council"
   ],
   "scripts": {
-    "test": "vitest run && npm run test:grok && npm run test:agy && npm run test:opencode && npm run test:council",
+    "test": "vitest run && npm run test:grok && npm run test:agy && npm run test:opencode && npm run test:codex && npm run test:council",
     "test:council": "cd council && vitest run",
     "test:grok": "cd clis/grok && vitest run",
     "test:agy": "cd clis/agy && vitest run",
-    "test:opencode": "cd clis/opencode && vitest run"
+    "test:opencode": "cd clis/opencode && vitest run",
+    "test:codex": "cd clis/codex && vitest run"
   },
   "devDependencies": {
     "vitest": "^2.1.8"

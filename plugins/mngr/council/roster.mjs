@@ -12,13 +12,16 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readCouncil, rosterOf, writeCouncil } from './lib/council.mjs';
-import { delegatePath, MEMBERS, modelOf } from './lib/members.mjs';
-import { parseCli, run, runAsScript } from '../scripts/lib/shared/proc.mjs';
+import { delegatePath, MEMBERS, modelOf, seatEffortOf } from './lib/members.mjs';
+import { createInterface } from 'node:readline';
+import { parseCli, run, runAsScript, spawnDirect } from '../scripts/lib/shared/proc.mjs';
 import { parseVersion } from '../scripts/lib/shared/release.mjs';
 import { readQuota } from '../scripts/lib/shared/quota.mjs';
 
 function effortOf(seat) {
   if (seat.member === 'grok') return seat.effort ?? 'medium';
+  const pinned = seatEffortOf(seat);
+  if (pinned) return pinned;
   const m = /-(low|medium|high|xhigh|max)$|#(\w+)$/.exec(modelOf(seat));
   return m ? m[1] ?? m[2] : 'default';
 }
@@ -107,6 +110,61 @@ async function grokUsage(version) {
   }
 }
 
+/**
+ * What Codex has left in its 5-hour and weekly windows, from the app server's
+ * `account/rateLimits/read` result. Null when it has no windows.
+ *
+ * @param {any} result
+ */
+export function codexQuotaLeft(result) {
+  const limits = result?.rateLimits;
+  const windows = [limits?.primary, limits?.secondary].filter((w) => w && Number.isFinite(Number(w.usedPercent)));
+  if (!windows.length) return null;
+  const name = (mins) => (mins === 300 ? '5-hour' : mins === 10080 ? 'weekly' : `${mins}-minute`);
+  const one = (w) => {
+    const left = Math.max(0, Math.floor(100 - Number(w.usedPercent)));
+    const full = left < 100 && w.resetsAt ? ` (full ${new Date(w.resetsAt * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC)` : '';
+    return `${left}% ${name(Number(w.windowDurationMins))}${full}`;
+  };
+  return `left: ${windows.map(one).join(', ')}`;
+}
+
+/** One `account/rateLimits/read` through `codex app-server` over stdio, which spends no tokens. Null on any failure. */
+function codexUsage() {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnDirect(process.env.COUNCIL_CODEX_CLI ?? MEMBERS.codex.cli, ['app-server'], { stdio: ['pipe', 'pipe', 'ignore'] });
+    } catch {
+      return resolve(null);
+    }
+    const done = (value) => {
+      clearTimeout(timer);
+      child.stdin.end();
+      child.kill();
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(null), 20_000);
+    const send = (m) => child.stdin.write(`${JSON.stringify(m)}\n`);
+    child.on('error', () => done(null));
+    child.stdin.on('error', () => {});
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      let m;
+      try {
+        m = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (m.id === 1) {
+        send({ method: 'initialized' });
+        send({ id: 2, method: 'account/rateLimits/read' });
+      }
+      if (m.id === 2) done(m.result ?? null);
+    });
+    send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'mngr-roster', version: '1' } } });
+  });
+}
+
 /** @param {string[]} argv */
 export async function main(argv) {
   let values;
@@ -132,9 +190,13 @@ export async function main(argv) {
     ),
   );
   const has = (m) => seats.some((s) => s.member === m);
-  const [usage, billing] = await Promise.all([has('agy') ? agyUsage() : null, has('grok') ? grokUsage(versions.grok) : null]);
+  const [usage, billing, codexLimits] = await Promise.all([
+    has('agy') ? agyUsage() : null,
+    has('grok') ? grokUsage(versions.grok) : null,
+    has('codex') ? codexUsage() : null,
+  ]);
   const quotaOf = (s) => {
-    const left = s.member === 'agy' ? agyQuotaLeft(usage, modelOf(s)) : s.member === 'grok' ? grokQuotaLeft(billing) : null;
+    const left = { agy: () => agyQuotaLeft(usage, modelOf(s)), grok: () => grokQuotaLeft(billing), codex: () => codexQuotaLeft(codexLimits) }[s.member]?.() ?? null;
     return left ? `${left}; ${lastErrorOf(s)}` : lastErrorOf(s);
   };
   const rows = [

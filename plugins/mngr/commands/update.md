@@ -1,6 +1,6 @@
 ---
-description: Update grok, agy and opencode (or the one named), then review mngr's workarounds and open papercuts against what changed.
-argument-hint: '[grok|agy|opencode]'
+description: Update grok, agy, opencode and codex (or the one named), then review mngr's workarounds and open papercuts against what changed.
+argument-hint: '[grok|agy|opencode|codex]'
 allowed-tools: Bash(node:*), Bash(grok:*), Bash(agy:*), Bash(opencode:*), Read, Grep, Glob, WebFetch
 ---
 

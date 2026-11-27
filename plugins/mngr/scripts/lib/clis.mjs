@@ -1,7 +1,7 @@
 // The CLIs mngr drives, and how a top-level script hands its arguments to one.
 // Each CLI keeps its own scripts under `clis/<cli>/scripts/`.
 
-export const CLIS = Object.freeze(['grok', 'agy', 'opencode']);
+export const CLIS = Object.freeze(['grok', 'agy', 'opencode', 'codex']);
 
 // A relative specifier: Node and Vite (the tests) both resolve it against this file.
 const load = (cli, script) => import(`../../clis/${cli}/scripts/${script}.mjs`);

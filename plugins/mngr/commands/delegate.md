@@ -1,11 +1,11 @@
 ---
-description: Delegate a coding task, code sweep, or research pass to grok, agy or opencode.
-argument-hint: '<grok|agy|opencode> <what to change, or what to find out>'
+description: Delegate a coding task, code sweep, or research pass to grok, agy, opencode or codex.
+argument-hint: '<grok|agy|opencode|codex> <what to change, or what to find out>'
 allowed-tools: Bash(node:*), Write, Read, AskUserQuestion
 ---
 
 `$ARGUMENTS` is the raw text the user typed after `/mngr:delegate`. Its first word names
-the CLI: `grok`, `agy` or `opencode`. If it names none, ask which with AskUserQuestion
+the CLI: `grok`, `agy`, `opencode` or `codex`. If it names none, ask which with AskUserQuestion
 (one option per CLI) before anything else.
 
 Then read `${CLAUDE_PLUGIN_ROOT}/clis/<cli>/delegate.md`: what that CLI is for, what it
