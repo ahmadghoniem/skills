@@ -22,7 +22,8 @@ describe('/mngr:delegate codex', () => {
     await capture(() => main(['--model', 'gpt-6.2-astra', 'do the thing']));
     const [call] = box.calls();
     expect(call.args.slice(0, 1)).toEqual(['exec']);
-    expect(call.args).toEqual(expect.arrayContaining(['--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check']));
+    expect(call.args).toEqual(expect.arrayContaining(['--json', '--dangerously-bypass-approvals-and-sandbox']));
+    expect(call.args).not.toContain('--skip-git-repo-check');
     expect(at(call.args, '-m')).toBe('gpt-6.2-astra');
     expect(at(call.args, '-c')).toBe('model_reasoning_effort=low');
     expect(call.args.at(-1)).toBe('-');

@@ -65,10 +65,10 @@ export async function listModels() {
  * - `exec --json`: one JSON event per line; `thread.started` names the session first.
  * - `--dangerously-bypass-approvals-and-sandbox`: nobody can answer an approval,
  *   as with the other CLIs; the guard is that nothing is committed and Claude reads the diff.
- * - `--skip-git-repo-check`: codex refuses to start outside a git repository
- *   without it (council and scratch folders aren't). `--trust` is not passed: it
- *   writes the folder into `config.toml` for good, and with approvals and the
- *   sandbox bypassed it changes nothing else a run needs.
+ * - Neither `--skip-git-repo-check` nor `--trust` is passed. With approvals and
+ *   the sandbox bypassed, codex starts outside a git repository anyway, and it
+ *   reads the repo's `AGENTS.md` in an untrusted folder too (both checked on
+ *   0.172). `--trust` would also write each folder into `config.toml` for good.
  * - The prompt goes on stdin (`-`), which is then closed: with the prompt as an
  *   argument codex waits on an open stdin (openai/codex#20919).
  * - Your `config.toml` is read as usual (MCP servers, plugins, skills); `-m` and
@@ -80,7 +80,7 @@ export async function listModels() {
 export function buildArgs(o) {
   const args = ['exec'];
   if (o.sessionId) args.push('resume', o.sessionId);
-  args.push('--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check');
+  args.push('--json', '--dangerously-bypass-approvals-and-sandbox');
   if (o.model) args.push('-m', o.model);
   if (o.effort) args.push('-c', `model_reasoning_effort=${o.effort}`);
   args.push('-');

@@ -29,11 +29,11 @@ Windows only. Requires the standalone Codex CLI at mngr's `engines.codex` or lat
 
 ## How codex is run
 
-`codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -m <model> -c model_reasoning_effort=<level> -`, with the brief on stdin, which is then closed. A follow-up is `codex exec resume <thread_id> …`.
+`codex exec --json --dangerously-bypass-approvals-and-sandbox -m <model> -c model_reasoning_effort=<level> -`, with the brief on stdin, which is then closed. A follow-up is `codex exec resume <thread_id> …`.
 
 - **The prompt is never an argument:** passed that way, codex waits on an open stdin (openai/codex#20919).
 - **No approvals, no sandbox,** as with the other CLIs: nobody can answer a prompt. The guard is that nothing is committed and Claude reads the diff.
-- **`--skip-git-repo-check`** lets it start outside a git repository. `--trust` is not passed: it saves each folder into `config.toml` for good.
+- **No `--skip-git-repo-check` or `--trust`:** with approvals and the sandbox bypassed, codex starts outside a git repository anyway and reads the repo's `AGENTS.md` in an untrusted folder too (checked on 0.172). `--trust` would also save each folder into `config.toml` for good.
 - **Your `config.toml` loads as usual,** MCP servers, plugins and skills included, so a run can use the browser and computer use like your own sessions. Measured on a trivial run, it adds about 1.5k tokens and 3 s. mngr always passes the model and effort, so the ones in `config.toml` never apply.
 - **`CLAUDECODE` is removed** from codex's environment, so a `claude` command it runs isn't refused as nested.
 - **Known:** `exec` still offers `request_user_input_async`, and no flag removes it. It returns at once without waiting; the questions note in every brief tells the model to list questions at the end instead.
