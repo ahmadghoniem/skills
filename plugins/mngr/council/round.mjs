@@ -23,9 +23,12 @@ function runSeat(delegate, args, timeoutMs) {
     let timedOut = false;
     child.stdout.setEncoding('utf8').on('data', (d) => (out += d));
     child.stderr.setEncoding('utf8').on('data', (d) => (out += d));
+    // A seat past its time is stopped with its whole tree. taskkill by full path,
+    // so no other `taskkill` on PATH is picked up; exit 128 means it already ended.
     const timer = setTimeout(() => {
       timedOut = true;
-      run('taskkill', ['/pid', String(child.pid), '/T', '/F'], { timeoutMs: 15_000 }).then((r) => r.exitCode !== 0 && child.kill());
+      const taskkill = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
+      run(taskkill, ['/pid', String(child.pid), '/T', '/F'], { timeoutMs: 15_000 }).then((r) => r.exitCode !== 0 && r.exitCode !== 128 && child.kill());
     }, timeoutMs);
     const done = (exitCode) => {
       clearTimeout(timer);
