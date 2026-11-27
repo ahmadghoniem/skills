@@ -1,95 +1,44 @@
 #!/usr/bin/env node
-// Runs one opencode task and prints its write-up. Claude starts it in a
-// background Bash call: Claude Code reports when it ends, keeps the output, and
-// TaskStop ends it, so the plugin keeps no job records of its own.
-import { installedVersion, runHeadless } from './lib/opencode.mjs';
+// `/mngr:delegate opencode`: opencode's side of the shared delegate run
+// (`scripts/lib/shared/delegate.mjs`).
+import { installedVersion, listModels, newSessionId, runHeadless } from './lib/opencode.mjs';
 import { recordDetected } from './lib/papercuts.mjs';
-import { quotaPath, releasePath } from './lib/paths.mjs';
-import { blockedMessage, noteRun, quotaBlock } from '../../../scripts/lib/shared/quota.mjs';
-import { isUnfinished, renderResult, warnings } from './lib/render.mjs';
-import { parseCli, readPromptFile, runAsScript } from '../../../scripts/lib/shared/proc.mjs';
-import { latestRelease, noticeOnce } from '../../../scripts/lib/shared/release.mjs';
+import { modelsPath, quotaPath, releasePath } from './lib/paths.mjs';
+import { isUnfinished, warnings } from './lib/render.mjs';
+import { runDelegate } from '../../../scripts/lib/shared/delegate.mjs';
+import { runAsScript } from '../../../scripts/lib/shared/proc.mjs';
 import { fetchLatest } from './update.mjs';
 
-// opencode runs on API keys, which bill per token, so mngr picks no model for
-// it: a run without `--model` is refused rather than left to opencode, which
-// would pick one of its configured models on its own.
-const USAGE = 'Usage: delegate.mjs --model <provider/model[#variant]> [--session <ses_id>] (--prompt-file <path> | <task...>)\n';
+/** @type {import('../../../scripts/lib/shared/delegate.mjs').Adapter} */
+export const adapter = {
+  name: 'opencode',
+  usage: 'Usage: delegate.mjs --model <provider/model[#variant]> [--session <ses_id>] (--prompt-file <path> | <task...>)\n',
+  sessionFlag: 'session',
+  checkSession: (id) => (id.startsWith('ses') ? undefined : 'an opencode session id starts with `ses`.'),
+  // opencode runs on API keys, which bill per token, so mngr picks no model for
+  // it: a run without `--model` is refused rather than left to opencode, which
+  // would pick one of its configured models on its own.
+  model: (values) => {
+    const model = values.model?.trim();
+    return model ? { model } : { error: 'name a model with --model: opencode runs on API keys, so mngr picks none. `opencode models` lists them.' };
+  },
+  baseModel: (model) => model.split('#')[0],
+  listModels,
+  get modelsCache() {
+    return modelsPath();
+  },
+  newSession: newSessionId,
+  run: (ctx) => runHeadless({ prompt: ctx.prompt, model: ctx.model, sessionId: ctx.sessionId }),
+  warnings,
+  isUnfinished,
+  record: (warns, run, ctx) =>
+    recordDetected(warns, { toolErrors: run.toolErrors, toolVersion: ctx.toolVersion, model: ctx.model, sessionId: run.sessionId, exitCode: run.exitCode }),
+  paths: { quota: quotaPath, release: releasePath },
+  installedVersion,
+  fetchLatest,
+};
 
 /** @param {string[]} argv */
-export async function main(argv) {
-  let values;
-  let positionals;
-  try {
-    ({ values, positionals } = parseCli(argv, {
-      'prompt-file': { type: 'string' },
-      model: { type: 'string' },
-      session: { type: 'string' },
-      help: { type: 'boolean' },
-    }));
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}\n${USAGE}`);
-    return 2;
-  }
-  if (values.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  const model = values.model?.trim();
-  if (!model) {
-    process.stderr.write(`Error: name a model with --model: opencode runs on API keys, so mngr picks none. \`opencode models\` lists them.\n${USAGE}`);
-    return 2;
-  }
-  const session = values.session?.trim() || undefined;
-  if (session && !session.startsWith('ses')) {
-    process.stderr.write('Error: an opencode session id starts with `ses`.\n');
-    return 2;
-  }
-  const inline = positionals.join(' ').trim();
-  if (inline && values['prompt-file']) {
-    process.stderr.write('Error: pass the task inline or with --prompt-file, not both.\n');
-    return 2;
-  }
-  if (values['prompt-file']) {
-    try {
-      readPromptFile(values['prompt-file']);
-    } catch (err) {
-      process.stderr.write(`Error: ${err.message}\n`);
-      return 2;
-    }
-  }
-  let prompt = inline;
-  if (!prompt && !values['prompt-file']) {
-    if (!session) {
-      process.stderr.write(`Error: no task given.\n${USAGE}`);
-      return 2;
-    }
-    prompt = 'Continue from where you left off.';
-  }
-
-  const blocked = quotaBlock(quotaPath(), model);
-  if (blocked) {
-    process.stderr.write(blockedMessage('opencode', model, blocked));
-    return 1;
-  }
-
-  const release = latestRelease(releasePath(), fetchLatest).catch(() => null);
-  const version = installedVersion();
-  const run = await runHeadless({ prompt, promptFile: values['prompt-file'], model, session });
-
-  noteRun(quotaPath(), model, isUnfinished(run) ? run.error ?? `exit ${run.exitCode}` : undefined);
-  recordDetected(warnings(run), {
-    toolErrors: run.toolErrors,
-    toolVersion: (await version) ?? undefined,
-    model,
-    sessionId: run.sessionId,
-    exitCode: run.exitCode,
-  });
-  process.stdout.write(renderResult(run));
-  process.stdout.write(
-    noticeOnce({ path: releasePath(), tool: 'opencode', command: '/mngr:update opencode', release: await release, installed: await version }),
-  );
-  return isUnfinished(run) ? 1 : 0;
-}
+export const main = (argv) => runDelegate(adapter, argv);
 
 runAsScript(import.meta.url, main);

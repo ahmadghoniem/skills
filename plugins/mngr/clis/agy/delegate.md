@@ -16,7 +16,7 @@ When the user is unsure what is available or a model is out of quota, run `agy m
 | Flag | Effect |
 | --- | --- |
 | `--model <id>` | A full model id. Defaults to `gemini-4-hydrogen-medium`. |
-| `--conversation <uuid>` | Continue that conversation, with the id from a run's last line. A follow-up goes in the prompt. |
+| `--conversation <uuid>` | Continue that conversation, with the id from a run's first or last line. A follow-up goes in the prompt. |
 
 agy keeps each conversation's record in
 `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`.

@@ -36,6 +36,10 @@ dependencies; if a pre-existing test already fails, report it, do not fix it.
 
 A spec that already lives in the repo is a path in the brief, not a copy.
 
+mngr ends every fresh brief with a note that nobody can answer questions during the run,
+and that any question goes under "Open questions" at the end of the report. Do not add
+your own.
+
 Do not ask for a list of changed files or a summary of the edits; you read the diff.
 Ask for what the diff cannot show: items it was unsure about or skipped, problems it
 noticed but did not fix, the result of each check, and any answer the task needs.
@@ -73,7 +77,11 @@ conversation.
 ## Reading the output
 
 Read `${CLAUDE_PLUGIN_ROOT}/clis/<cli>/contract.md` before you act on the output: it
-explains every `⚠` line.
+explains every `⚠` line. The first line names the model and session as the run starts;
+a model the CLI does not list is refused before anything starts, with the close matches.
+
+When the report ends with "Open questions", answer them yourself where you can, ask the
+user the rest, and send the answers as a follow-up on the same session.
 
 If the write-up says something blocked it (a missing tool, a refused command, an
 instruction it could not follow), record it with

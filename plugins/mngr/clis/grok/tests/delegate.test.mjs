@@ -19,10 +19,11 @@ describe('/mngr:delegate grok', () => {
     const [call] = box.calls();
     const session = call.args[call.args.indexOf('-s') + 1];
     expect(session).toMatch(/^[0-9a-f-]{36}$/);
-    expect(r.stdout).toBe(`Done: renamed X to Y.\n\nsession: ${session}\n`);
-    expect(call.args).toEqual(expect.arrayContaining(['--prompt-file', brief, '--output-format', 'json', '--trust', '--no-auto-update']));
+    expect(r.stdout).toBe(`model: grok's default (grok) · session: ${session}\nDone: renamed X to Y.\n\nsession: ${session}\n`);
+    expect(call.args).toEqual(expect.arrayContaining(['--output-format', 'json', '--trust', '--no-auto-update']));
     expect(call.args).toContain('--reasoning-effort');
     expect(call.brief).toContain('Rename X to Y.');
+    expect(call.brief).toContain('Nobody can answer questions during this run');
   });
 
   it('runs grok without CLAUDECODE and with the Claude sources off', async () => {
@@ -36,7 +37,7 @@ describe('/mngr:delegate grok', () => {
     await capture(() => main(['--effort', 'low', 'Rename', 'X']));
     const [call] = box.calls();
     const file = call.args[call.args.indexOf('--prompt-file') + 1];
-    expect(call.brief).toBe('Rename X');
+    expect(call.brief).toMatch(/^Rename X\n\n---\nNobody can answer/);
     expect(existsSync(file)).toBe(false);
   });
 
@@ -46,7 +47,8 @@ describe('/mngr:delegate grok', () => {
     const [call] = box.calls();
     expect(call.args).toContain('--resume');
     expect(call.args).not.toContain('-s');
-    expect(r.stdout).toContain(`session: ${id}`);
+    expect(r.stdout).toMatch(new RegExp(`^model: kept from the session \\(grok\\) · session: ${id}\\n`));
+    expect(call.brief).toBe('one more thing');
   });
 
   it('shows grok error with the wrapped provider message, exits 1 and files a papercut', async () => {

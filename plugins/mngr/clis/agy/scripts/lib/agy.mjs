@@ -321,6 +321,7 @@ export async function listModels() {
  * @property {string[]} args
  * @property {string=} cwd
  * @property {string=} input               Written to stdin, which is then closed.
+ * @property {(ev: Record<string, unknown>) => void=} onEvent  called on each event as it arrives
  */
 
 /**
@@ -376,6 +377,7 @@ export async function runHeadless(opts) {
     const ev = parseLine(line);
     if (!ev) return;
     events.push(ev);
+    opts.onEvent?.(ev);
   });
   stderrLines.on('line', (line) => {
     if (line.trim().length === 0) return;

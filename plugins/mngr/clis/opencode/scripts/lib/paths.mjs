@@ -10,3 +10,4 @@ export function pluginHome() {
 export const papercutsPath = () => join(pluginHome(), 'papercuts.jsonl');
 export const releasePath = () => join(pluginHome(), 'opencode-release.json');
 export const quotaPath = () => join(pluginHome(), 'quota.json');
+export const modelsPath = () => join(pluginHome(), 'models.json');

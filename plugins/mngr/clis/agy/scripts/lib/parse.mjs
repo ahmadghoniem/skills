@@ -79,6 +79,19 @@ export function parseEvents(text) {
  */
 
 /**
+ * The conversation id an event names, if any: `init` and `result` carry it,
+ * and so may a `step_update`.
+ *
+ * @param {AgyEvent} ev
+ * @returns {string|undefined}
+ */
+export function conversationOf(ev) {
+  if (ev == null || typeof ev !== 'object') return undefined;
+  const id = ev.conversation_id ?? ev.step_update?.conversation_id ?? ev.result?.conversation_id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
+/**
  * Fold a whole run's event stream into the record a job needs.
  *
  * Preserves agy's raw status string without inferring pass/fail verdicts.

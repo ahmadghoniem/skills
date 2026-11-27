@@ -1,5 +1,5 @@
-// What a run prints: opencode's write-up, a ⚠ line for each way the run can be
-// wrong while still looking done, and the session id last.
+// opencode's ⚠ lines: each way a run can be wrong while still looking done.
+// The shared delegate run prints them under the write-up.
 
 /** Every ⚠ id, in print order. `contract.md` at the plugin root explains each; a test keeps them in step. */
 export const WARNING_IDS = Object.freeze(['exit', 'error-detail']);
@@ -14,19 +14,3 @@ export function warnings(run) {
 
 export const isUnfinished = (run) => run.exitCode !== 0 || Boolean(run.error);
 
-export function renderResult(run) {
-  const warns = warnings(run);
-  const lines = [];
-  const text = String(run.text ?? '').replace(/\s+$/, '');
-  if (text) lines.push(text);
-  else if (!warns.length) lines.push('(opencode returned no write-up)');
-  if (warns.length) {
-    if (lines.length) lines.push('');
-    for (const w of warns) {
-      lines.push(`⚠ ${w.line}`);
-      for (const d of w.detail ?? []) lines.push(`    ${d}`);
-    }
-  }
-  lines.push('', `session: ${run.sessionId}`);
-  return `${lines.join('\n')}\n`;
-}

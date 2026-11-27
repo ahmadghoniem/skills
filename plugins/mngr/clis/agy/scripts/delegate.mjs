@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Runs one agy task and prints its report. Claude starts it in a background
-// Bash call: Claude Code reports when it ends, keeps the output, and TaskStop
-// ends it, so the plugin keeps no job records of its own.
+// `/mngr:delegate agy`: agy's side of the shared delegate run
+// (`scripts/lib/shared/delegate.mjs`).
 import { existsSync } from 'node:fs';
 import {
   MAX_STDIN_BYTES,
@@ -17,12 +16,11 @@ import {
 } from './lib/agy.mjs';
 import { repoRoot, shortHistory } from './lib/git.mjs';
 import { recordDetected } from './lib/papercuts.mjs';
-import { summariseEvents } from './lib/parse.mjs';
-import { quotaPath, releasePath } from './lib/paths.mjs';
-import { blockedMessage, noteRun, quotaBlock } from '../../../scripts/lib/shared/quota.mjs';
-import { anomalies, isUnfinished, renderResult } from './lib/render.mjs';
-import { parseCli, readPromptFile, runAsScript } from '../../../scripts/lib/shared/proc.mjs';
-import { latestRelease, noticeOnce } from '../../../scripts/lib/shared/release.mjs';
+import { conversationOf, summariseEvents } from './lib/parse.mjs';
+import { modelsPath, quotaPath, releasePath } from './lib/paths.mjs';
+import { anomalies, isUnfinished } from './lib/render.mjs';
+import { runDelegate } from '../../../scripts/lib/shared/delegate.mjs';
+import { runAsScript } from '../../../scripts/lib/shared/proc.mjs';
 import { fetchLatest } from './update.mjs';
 
 /** The model of a fresh run with no `--model`. Its id carries the effort level. */
@@ -31,136 +29,84 @@ const DEFAULT_MODEL = 'gemini-4-hydrogen-medium';
 /** The agy agent every fresh run uses. */
 const AGENT = 'bash-delegate';
 
-const USAGE =
-  'Usage: delegate.mjs [--model <id>] [--conversation <uuid>] (--prompt-file <path> | <task...>)\n';
+/** @type {import('../../../scripts/lib/shared/delegate.mjs').Adapter} */
+export const adapter = {
+  name: 'agy',
+  usage: 'Usage: delegate.mjs [--model <id>] [--conversation <uuid>] (--prompt-file <path> | <task...>)\n',
+  options: { effort: { type: 'string' } },
+  sessionFlag: 'conversation',
+  checkArgs: (values) =>
+    values.effort === undefined ? undefined : '--effort is not an option. Pass a full model id, which carries the level: --model gemini-4-hydrogen-high.',
+  // A continued conversation keeps its model and agent.
+  model: (values, resume) => ({ model: values.model?.trim() || (resume ? undefined : DEFAULT_MODEL) }),
+  listModels,
+  get modelsCache() {
+    return modelsPath();
+  },
 
-/**
- * @param {string[]} argv
- * @returns {Promise<number>}
- */
-export async function main(argv) {
-  let values;
-  let positionals;
-  try {
-    ({ values, positionals } = parseCli(argv, {
-      'prompt-file': { type: 'string' },
-      model: { type: 'string' },
-      conversation: { type: 'string' },
-      effort: { type: 'string' },
-      help: { type: 'boolean' },
-    }));
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}\n${USAGE}`);
-    return 2;
-  }
-  if (values.help) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  if (values.effort !== undefined) {
-    process.stderr.write('Error: --effort is not an option. Pass a full model id, which carries the level: --model gemini-4-hydrogen-high.\n');
-    return 2;
-  }
-  const conversation = values.conversation?.trim() || undefined;
-  const inline = positionals.join(' ').trim();
-  if (inline && values['prompt-file']) {
-    process.stderr.write('Error: pass the task inline or with --prompt-file, not both.\n');
-    return 2;
-  }
-  let task = inline;
-  if (values['prompt-file']) {
+  async prepare(ctx) {
+    ctx.root = await repoRoot(ctx.cwd);
+    const isGit = existsSync(`${ctx.root}/.git`);
+    ctx.message = ctx.session
+      ? ctx.prompt
+      : taskMessage({ workspace: ctx.root, isGit, history: isGit ? await shortHistory(ctx.root) : undefined, task: ctx.prompt });
+    const bytes = Buffer.byteLength(ctx.message, 'utf8');
+    if (bytes > MAX_STDIN_BYTES) {
+      return { code: 2, message: `the message is ${bytes} bytes, over the ${MAX_STDIN_BYTES} agy reads from stdin: shorten the brief or split the task.` };
+    }
+    // The agent and its bash tool come from agy's plugin, loaded on every start.
+    // The agent relies on the tool for every search and edit, so a run without it stops here.
     try {
-      task = readPromptFile(values['prompt-file']);
+      await installPlugin(await resolveBin());
     } catch (err) {
-      process.stderr.write(`Error: ${err.message}\n`);
-      return 2;
+      return `bash tool not installed, so agy was not started: ${err.message}`;
     }
-  }
-  if (!task) {
-    if (!conversation) {
-      process.stderr.write(`Error: no task given.\n${USAGE}`);
-      return 2;
-    }
-    task = 'Continue from where you left off.';
-  }
+    const entry = bashServerEntry().args[0];
+    if (!existsSync(entry)) return `bash tool not installed, so agy was not started: ${entry} is missing`;
+    return undefined;
+  },
 
-  const root = await repoRoot(process.cwd());
-  // A resumed conversation keeps its model and agent.
-  const model = values.model?.trim() || (conversation ? undefined : DEFAULT_MODEL);
-  const isGit = existsSync(`${root}/.git`);
-  const message = conversation
-    ? task
-    : taskMessage({ workspace: root, isGit, history: isGit ? await shortHistory(root) : undefined, task });
-  const bytes = Buffer.byteLength(message, 'utf8');
-  if (bytes > MAX_STDIN_BYTES) {
-    process.stderr.write(`Error: the message is ${bytes} bytes, over the ${MAX_STDIN_BYTES} agy reads from stdin: shorten the brief or split the task.\n`);
-    return 2;
-  }
+  async run(ctx, onSession) {
+    const args = buildArgs({
+      addDir: ctx.session ? undefined : ctx.root,
+      model: ctx.model,
+      agent: ctx.session ? undefined : AGENT,
+      conversationId: ctx.session,
+    });
+    // agy names the conversation in its first events, so the id is printed as soon as it appears.
+    const result = await runHeadless({ args, input: stdinLine(ctx.message), cwd: ctx.root, onEvent: (ev) => onSession(conversationOf(ev)) });
+    const summary = summariseEvents(result.events);
+    return {
+      agyStatus: summary.status,
+      exitCode: result.exitCode,
+      error: summary.error,
+      text: summary.response,
+      sessionId: summary.conversationId ?? ctx.session,
+      finishedReason: summary.finishedReason,
+      stderr: result.stderr,
+      summary,
+    };
+  },
 
-  // The agent and its bash tool come from agy's plugin, loaded on every start.
-  // The agent relies on the tool for every search and edit, so a run without it stops here.
-  try {
-    await installPlugin(await resolveBin());
-  } catch (err) {
-    process.stderr.write(`Error: bash tool not installed, so agy was not started: ${err.message}\n`);
-    return 1;
-  }
-  if (!existsSync(bashServerEntry().args[0])) {
-    process.stderr.write(`Error: bash tool not installed, so agy was not started: ${bashServerEntry().args[0]} is missing\n`);
-    return 1;
-  }
+  failureText: (run) => [run.error, ...(run.stderr ?? [])].filter(Boolean).join('\n'),
+  warnings: anomalies,
+  isUnfinished,
+  record: (warns, run, ctx) =>
+    recordDetected(warns, {
+      toolErrors: run.summary?.toolErrors,
+      toolVersion: ctx.toolVersion,
+      model: run.summary?.model ?? ctx.model,
+      conversationId: run.sessionId,
+      toolCalls: run.summary?.toolCalls,
+      agyStatus: run.agyStatus,
+      exitCode: run.exitCode,
+    }),
+  paths: { quota: quotaPath, release: releasePath },
+  installedVersion,
+  fetchLatest,
+};
 
-  const quotaKey = model ?? 'default';
-  const blocked = quotaBlock(quotaPath(), quotaKey);
-  if (blocked) {
-    process.stderr.write(blockedMessage('agy', quotaKey, blocked));
-    return 1;
-  }
-
-  // Both run alongside agy; the release check reaches GitHub at most once a day.
-  const release = latestRelease(releasePath(), fetchLatest).catch(() => null);
-  const version = installedVersion();
-
-  const args = buildArgs({
-    addDir: conversation ? undefined : root,
-    model,
-    agent: conversation ? undefined : AGENT,
-    conversationId: conversation,
-  });
-  const result = await runHeadless({ args, input: stdinLine(message), cwd: root });
-  const summary = summariseEvents(result.events);
-
-  const run = {
-    agyStatus: summary.status,
-    exitCode: result.exitCode,
-    error: summary.error,
-    response: summary.response,
-    conversationId: summary.conversationId ?? conversation,
-    finishedReason: summary.finishedReason,
-    stderr: result.stderr,
-  };
-  // agy names display labels on a rejected model, which `--model` does not
-  // accept; list the ids instead.
-  if (/invalid model selection/i.test(String(run.error ?? '')) && /not recognized/i.test(String(run.error))) {
-    run.validModels = await listModels().then((ms) => ms.map((m) => m.id)).catch(() => undefined);
-  }
-
-  noteRun(quotaPath(), quotaKey, isUnfinished(run) ? [run.error, run.stderr].filter(Boolean).join('\n') || `exit ${run.exitCode}` : undefined);
-  const warns = anomalies(run);
-  recordDetected(warns, {
-    toolErrors: summary.toolErrors,
-    toolVersion: (await version) ?? undefined,
-    model: summary.model ?? model,
-    conversationId: run.conversationId,
-    toolCalls: summary.toolCalls,
-    agyStatus: summary.status,
-    exitCode: result.exitCode,
-  });
-  process.stdout.write(renderResult(run));
-  process.stdout.write(
-    noticeOnce({ path: releasePath(), tool: 'agy', command: '/mngr:update agy', release: await release, installed: await version }),
-  );
-  return isUnfinished(run) ? 1 : 0;
-}
+/** @param {string[]} argv */
+export const main = (argv) => runDelegate(adapter, argv);
 
 runAsScript(import.meta.url, main);

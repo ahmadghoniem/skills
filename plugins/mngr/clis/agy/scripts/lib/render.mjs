@@ -1,6 +1,6 @@
-// What a run prints: agy's report, a ⚠ line for each way the run can be wrong
-// while still looking done, and the conversation id last. Status and exit code
-// are separate facts that can each raise a line; nothing is folded into a verdict.
+// agy's ⚠ lines: each way a run can be wrong while still looking done. The
+// shared delegate run prints them under the report. Status and exit code are
+// separate facts that can each raise a line; nothing is folded into a verdict.
 
 /** Continuation lines of agy's `error` kept before truncation. */
 const ERROR_TAIL_LIMIT = 4;
@@ -13,11 +13,10 @@ export const WARNING_IDS = Object.freeze(['agy-status', 'exit', 'stderr', 'agy-e
  * @property {string|null} [agyStatus]
  * @property {number} exitCode
  * @property {string|null} [error]
- * @property {string} [response]
- * @property {string} [conversationId]
+ * @property {string} [text]
+ * @property {string} [sessionId]  the conversation id
  * @property {string} [finishedReason]
  * @property {string[]} [stderr]
- * @property {string[]} [validModels]  agy's model ids, listed when it rejected the model
  */
 
 /**
@@ -36,7 +35,7 @@ export function anomalies(run) {
   const out = [];
   const status = run.agyStatus == null ? '' : String(run.agyStatus);
   if (status && status.toUpperCase() !== 'SUCCESS') {
-    const hasReport = Boolean(String(run.response ?? '').trim());
+    const hasReport = Boolean(String(run.text ?? '').trim());
     out.push({ id: 'agy-status', line: `agy status: ${status} (${hasReport ? 'write-up present' : 'no write-up'})` });
   }
   if (run.exitCode !== 0) out.push({ id: 'exit', line: `exit ${run.exitCode}` });
@@ -48,10 +47,8 @@ export function anomalies(run) {
 
   if (run.error) {
     const lines = String(run.error).split('\n');
-    let detail = lines.slice(1, 1 + ERROR_TAIL_LIMIT);
+    const detail = lines.slice(1, 1 + ERROR_TAIL_LIMIT);
     if (lines.length - 1 > ERROR_TAIL_LIMIT) detail.push(`… ${lines.length - 1 - ERROR_TAIL_LIMIT} more lines`);
-    // agy names display labels, which `--model` does not accept; list the ids.
-    if (run.validModels?.length) detail = ['Valid ids:', ...run.validModels.map((id) => `  ${id}`)];
     out.push({ id: 'agy-error', line: lines[0], detail });
   }
 
@@ -61,20 +58,3 @@ export function anomalies(run) {
   return out;
 }
 
-/** @param {RunView} run */
-export function renderResult(run) {
-  const warns = anomalies(run);
-  const lines = [];
-  const report = String(run.response ?? '').replace(/\s+$/, '');
-  if (report) lines.push(report);
-  else if (!warns.length) lines.push('(agy returned no report)');
-  if (warns.length) {
-    if (lines.length) lines.push('');
-    for (const w of warns) {
-      lines.push(`⚠ ${w.line}`);
-      for (const d of w.detail ?? []) lines.push(`  ${d}`);
-    }
-  }
-  if (run.conversationId) lines.push('', `conversation: ${run.conversationId}`);
-  return `${lines.join('\n')}\n`;
-}

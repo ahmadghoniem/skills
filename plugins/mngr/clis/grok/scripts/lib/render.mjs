@@ -1,5 +1,5 @@
-// What a run prints: grok's write-up, a ⚠ line for each way the run can be
-// wrong while still looking done, and the session id last.
+// grok's ⚠ lines: each way a run can be wrong while still looking done. The
+// shared delegate run prints them under the write-up.
 
 /** Every ⚠ id, in print order. `contract.md` explains each; a test keeps them in step. */
 export const WARNING_IDS = Object.freeze(['stop-reason', 'exit', 'error-detail']);
@@ -22,20 +22,3 @@ export function isUnfinished(run) {
   return run.exitCode !== 0 || Boolean(run.error) || (Boolean(run.stopReason) && run.stopReason !== 'end_turn');
 }
 
-/** @param {import('./grok.mjs').RunResult} run */
-export function renderResult(run) {
-  const warns = warnings(run);
-  const lines = [];
-  const text = run.text.replace(/\s+$/, '');
-  if (text) lines.push(text);
-  else if (!warns.length) lines.push('(grok returned no write-up)');
-  if (warns.length) {
-    if (lines.length) lines.push('');
-    for (const w of warns) {
-      lines.push(`⚠ ${w.line}`);
-      for (const d of w.detail ?? []) lines.push(`    ${d}`);
-    }
-  }
-  lines.push('', `session: ${run.sessionId}`);
-  return `${lines.join('\n')}\n`;
-}

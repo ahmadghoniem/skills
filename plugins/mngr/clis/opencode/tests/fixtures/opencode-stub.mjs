@@ -7,6 +7,10 @@ if (args[0] === '--version') {
   process.stdout.write('2.4.1\n');
   process.exit(0);
 }
+if (args[0] === 'models') {
+  process.stdout.write('test/model\nnebius/x\nmeta/muse-wonder-1.0\n');
+  process.exit(0);
+}
 const at = (flag) => args[args.indexOf(flag) + 1];
 const session = at('--session');
 if (process.env.OPENCODE_STUB_LOG) {

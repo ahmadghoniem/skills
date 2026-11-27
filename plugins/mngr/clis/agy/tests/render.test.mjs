@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { anomalies, renderResult } from '../scripts/lib/render.mjs';
+import { anomalies } from '../scripts/lib/render.mjs';
+import { adapter } from '../scripts/delegate.mjs';
+import { renderResult } from '../../../scripts/lib/shared/delegate.mjs';
 
-const clean = { agyStatus: 'SUCCESS', exitCode: 0, response: 'Report.', conversationId: 'c1' };
+const clean = { agyStatus: 'SUCCESS', exitCode: 0, text: 'Report.', sessionId: 'c1' };
 
 describe('renderResult', () => {
   it('keeps status and exit code as separate lines', () => {
@@ -14,6 +16,6 @@ describe('renderResult', () => {
     expect(a.detail.at(-1)).toBe('… 2 more lines');
   });
   it('says so when agy returned nothing', () => {
-    expect(renderResult({ agyStatus: 'SUCCESS', exitCode: 0 })).toBe('(agy returned no report)\n');
+    expect(renderResult(adapter, { agyStatus: 'SUCCESS', exitCode: 0 })).toBe('(agy returned no write-up)\n');
   });
 });

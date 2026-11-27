@@ -42,6 +42,18 @@ export async function installedVersion() {
 }
 
 /**
+ * The `provider/model` ids opencode can run, from `opencode models`. Slow (a few
+ * seconds), so the shared delegate run caches the list for a day.
+ *
+ * @returns {Promise<{id: string}[]>}
+ */
+export async function listModels() {
+  const res = await run(await resolveBin(), ['models'], { timeoutMs: 60_000 });
+  if (res.exitCode !== 0) return [];
+  return res.stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => /^[\w.-]+\/\S+$/.test(l)).map((id) => ({ id }));
+}
+
+/**
  * A new session id. opencode refuses ids that do not start with `ses`, and
  * creates the session when `--session` names one that does not exist yet, so a
  * run that dies still leaves a session to continue.
@@ -132,17 +144,17 @@ export function parseStream(stdout) {
 }
 
 /**
- * Run opencode once and wait for it. An inline brief goes through a temp file.
+ * Run opencode once and wait for it. The brief goes through a temp file.
  *
- * @param {{prompt?: string, promptFile?: string, model: string, session?: string, cwd?: string}} o
+ * @param {{prompt: string, model: string, sessionId?: string, cwd?: string}} o
  */
 export async function runHeadless(o) {
   const bin = await resolveBin();
-  const tempFile = o.promptFile ? null : join(tmpdir(), `opencode-brief-${randomBytes(6).toString('hex')}.md`);
-  if (tempFile) writeFileSync(tempFile, o.prompt ?? '', 'utf8');
-  const sessionId = o.session ?? newSessionId();
+  const tempFile = join(tmpdir(), `opencode-brief-${randomBytes(6).toString('hex')}.md`);
+  writeFileSync(tempFile, o.prompt, 'utf8');
+  const sessionId = o.sessionId ?? newSessionId();
   try {
-    const res = await run(bin, buildArgs({ model: o.model, sessionId, promptFile: o.promptFile ?? tempFile }), {
+    const res = await run(bin, buildArgs({ model: o.model, sessionId, promptFile: tempFile }), {
       cwd: o.cwd ?? process.cwd(),
       env: childEnv(),
     });
@@ -153,6 +165,6 @@ export async function runHeadless(o) {
     }
     return { exitCode: res.exitCode, text: parsed.text, error, toolErrors: parsed.toolErrors, sessionId: parsed.sessionId ?? sessionId };
   } finally {
-    if (tempFile) rmSync(tempFile, { force: true });
+    rmSync(tempFile, { force: true });
   }
 }

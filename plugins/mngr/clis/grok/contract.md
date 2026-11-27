@@ -1,6 +1,6 @@
 # Reading a grok run's output
 
-A clean run prints grok's write-up, then `session: <id>` on the last line.
+A run's first line, printed as it starts, names the model and session: `model: <id> (grok) · session: <id>`. A run that is stopped or stuck can still be continued with that id. A clean run then prints grok's write-up, and `session: <id>` again on the last line.
 Relay the write-up as-is; `git diff` shows what changed.
 
 Keep the session id: `--session <id>` continues that grok session with

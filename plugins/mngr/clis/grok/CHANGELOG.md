@@ -1,5 +1,10 @@
 # Changelog
 
+## mngr 0.3.0
+
+- **`workflow` joins the removed tools.** grok's headless docs say a headless run doesn't wait for a workflow it started, so its results never reach the output.
+- The run itself moved to mngr's shared delegate run; a brief passed with `--prompt-file` now reaches grok through a temp file with the questions note added.
+
 ## 0.6.0 — the trim
 
 Claude Code's background tasks already report when a run ends, keep its whole output and

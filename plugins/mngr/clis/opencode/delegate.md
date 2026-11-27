@@ -14,4 +14,4 @@ effort level). Never invent one.
 | Flag | Effect |
 | --- | --- |
 | `--model <id>` | Required. A `provider/model` id from `opencode models`. |
-| `--session <ses_id>` | Continue that session, with the id from a run's last line. A follow-up goes in the prompt. |
+| `--session <ses_id>` | Continue that session, with the id from a run's first or last line. A follow-up goes in the prompt. |

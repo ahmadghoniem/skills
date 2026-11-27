@@ -43,6 +43,8 @@ if (process.env.AGY_STUB_FAIL === '1') {
 if (args[0] === 'models' || args.includes('models')) {
   process.stdout.write(
     [
+      'gemini-4-hydrogen-medium\tGemini 4 Hydrogen (Medium)',
+      'gemini-4-neon-high\tGemini 4 Neon (High)',
       'gemini-3.7-flash-high\tGemini 3.7 Flash (High)',
       'gemini-3.7-flash-medium\tGemini 3.7 Flash (Medium)',
       'gemini-3.7-flash-low\tGemini 3.7 Flash (Low)',

@@ -1,4 +1,4 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -49,6 +49,7 @@ export const DISALLOWED_TOOLS = Object.freeze([
   'scheduler_create',
   'scheduler_delete',
   'scheduler_list',
+  'workflow',
 ]);
 
 /** @type {string|null} */
@@ -70,6 +71,19 @@ export async function resolveBin() {
   const installed = join(homedir(), '.grok', 'bin', 'grok.exe');
   if (existsSync(installed)) return (cachedBin = installed);
   throw new Error('grok not found on PATH or at %USERPROFILE%\\.grok\\bin. Install the Grok CLI, or set GROK_BIN to its full path.');
+}
+
+/**
+ * The models grok offers this account, from the list it keeps in
+ * `~/.grok/models_cache.json` (`GROK_HOME` moves `~/.grok`). Reading it costs
+ * nothing, so it is read on every run.
+ *
+ * @returns {Promise<{id: string}[]>}
+ */
+export async function listModels() {
+  const file = join(process.env.GROK_HOME?.trim() || join(homedir(), '.grok'), 'models_cache.json');
+  const models = JSON.parse(readFileSync(file, 'utf8')).models ?? [];
+  return models.map((m) => m?.info?.id).filter((id) => typeof id === 'string').map((id) => ({ id }));
 }
 
 /** The installed grok version, or null. */
@@ -178,18 +192,18 @@ export function readableError(message) {
  */
 
 /**
- * Run grok once and wait for it. A brief passed inline goes through a temp file,
- * so no brief ever reaches the command line.
+ * Run grok once and wait for it. The brief goes through a temp file, so no
+ * brief ever reaches the command line.
  *
- * @param {{prompt?: string, promptFile?: string, model?: string, effort?: string, session?: string, cwd?: string}} o
+ * @param {{prompt: string, model?: string, effort?: string, sessionId?: string, resume?: boolean, cwd?: string}} o
  * @returns {Promise<RunResult>}
  */
 export async function runHeadless(o) {
   const bin = await resolveBin();
-  const tempFile = o.promptFile ? null : join(tmpdir(), `grok-brief-${randomUUID()}.md`);
-  if (tempFile) writeFileSync(tempFile, o.prompt ?? '', 'utf8');
-  const sessionId = o.session ?? randomUUID();
-  const args = buildArgs({ promptFile: o.promptFile ?? tempFile, model: o.model, effort: o.effort, sessionId, resume: Boolean(o.session) });
+  const tempFile = join(tmpdir(), `grok-brief-${randomUUID()}.md`);
+  writeFileSync(tempFile, o.prompt, 'utf8');
+  const sessionId = o.sessionId ?? randomUUID();
+  const args = buildArgs({ promptFile: tempFile, model: o.model, effort: o.effort, sessionId, resume: Boolean(o.resume) });
   try {
     const res = await run(bin, args, { cwd: o.cwd ?? process.cwd(), env: childEnv() });
     const out = parseResult(res.stdout) ?? {};
@@ -206,6 +220,6 @@ export async function runHeadless(o) {
       turns: typeof out.num_turns === 'number' ? out.num_turns : undefined,
     };
   } finally {
-    if (tempFile) rmSync(tempFile, { force: true });
+    rmSync(tempFile, { force: true });
   }
 }

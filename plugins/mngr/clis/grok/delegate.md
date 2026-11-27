@@ -19,6 +19,6 @@ moves and boilerplate. The xAI plan this runs on allows only `low` and `medium`.
 | --- | --- |
 | `--model <id>` | Pin a model from `grok models`. Omit unless the user chose one. |
 | `--effort <level>` | `low` or `medium`, passed to grok's `--reasoning-effort`. Defaults to `medium`. |
-| `--session <uuid>` | Continue that grok session, with the id from a run's last line. A follow-up goes in the prompt; with none, grok is told to continue where it left off. |
+| `--session <uuid>` | Continue that grok session, with the id from a run's first or last line. A follow-up goes in the prompt; with none, grok is told to continue where it left off. |
 
 To see past grok sessions, `grok sessions list`; to read one, `grok export <id>`.

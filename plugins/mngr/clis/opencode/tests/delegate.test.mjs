@@ -15,8 +15,15 @@ describe('delegate.mjs', () => {
   it('prints the write-up and the session id, and files tools that could not run', async () => {
     const r = await capture(() => main(['--model', 'test/model', 'do the thing']));
     expect(r.code).toBe(0);
-    expect(r.stdout).toMatch(/^Done\.\n\nsession: ses_[0-9a-f]{26}\n$/);
+    expect(r.stdout).toMatch(/^model: test\/model \(opencode\) · session: (ses_[0-9a-f]{26})\nDone\.\n\nsession: \1\n$/);
     expect(box.papercuts()).toEqual([expect.objectContaining({ key: 'tool-errors:read', text: 'File not found: a.txt', toolVersion: '2.4.1' })]);
+  });
+
+  it('refuses a model opencode does not list, before starting it', async () => {
+    const r = await capture(() => main(['--model', 'test/modle', 'do the thing']));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('opencode has no model `test/modle`. Close matches: test/model.');
+    expect(box.calls()).toEqual([]);
   });
 
   it('refuses a run without --model', async () => {
@@ -36,7 +43,7 @@ describe('delegate.mjs', () => {
     expect(call.args[call.args.indexOf('--session') + 1]).toMatch(/^ses_/);
     expect(call.args.slice(-2)).toEqual(['--', SIDECAR_MESSAGE]);
     expect(call.args).not.toContain('--continue');
-    expect(call.brief).toBe('do the thing');
+    expect(call.brief).toMatch(/^do the thing\n\n---\nNobody can answer/);
     expect(call.CLAUDECODE).toBeNull();
   });
 
@@ -76,7 +83,7 @@ describe('delegate.mjs', () => {
     const brief = join(box.dir, 'brief.md');
     writeFileSync(brief, '# Goal\n');
     await capture(() => main(['--model', 'test/model', '--prompt-file', brief]));
-    expect(box.calls()[0].brief).toBe('# Goal\n');
+    expect(box.calls()[0].brief).toMatch(/^# Goal\n\n---\nNobody can answer/);
     expect((await capture(() => main([]))).code).toBe(2);
     expect((await capture(() => main(['--model', 'test/model', '--session', 'abc', 'x']))).code).toBe(2);
     expect((await capture(() => main(['--model', 'test/model', '--prompt-file', brief, 'x']))).code).toBe(2);

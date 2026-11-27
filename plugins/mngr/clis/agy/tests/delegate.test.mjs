@@ -66,7 +66,7 @@ describe('delegate.mjs', () => {
     fixture([result({ status: 'SUCCESS', conversation_id: CONV, response: 'All done.' })]);
     const r = await capture(() => main(['do the thing']));
     expect(r.code).toBe(0);
-    expect(r.stdout).toBe(`All done.\n\nconversation: ${CONV}\n`);
+    expect(r.stdout).toBe(`model: gemini-4-hydrogen-medium (agy) · conversation: ${CONV}\nAll done.\n\nconversation: ${CONV}\n`);
   });
 
   it('runs a fresh task on bash-delegate with the default model, in the workspace', async () => {
@@ -76,7 +76,7 @@ describe('delegate.mjs', () => {
     expect(argv).toEqual(expect.arrayContaining(['--add-dir', '--agent', 'bash-delegate', '--model', 'gemini-4-hydrogen-medium', '--dangerously-skip-permissions']));
     expect(argv).not.toContain('--continue');
     const stdin = JSON.parse(read('stdin.txt'));
-    expect(stdin.message.content).toMatch(/^OS: Windows[\s\S]*Git repository: false[\s\S]*# Task\n\ndo the thing$/);
+    expect(stdin.message.content).toMatch(/^OS: Windows[\s\S]*Git repository: false[\s\S]*# Task\n\ndo the thing\n\n---\nNobody can answer/);
   });
 
   it('starts agy without CLAUDECODE and with auto-update off', async () => {
@@ -108,7 +108,7 @@ describe('delegate.mjs', () => {
     expect((await capture(() => main(['x']))).stdout).not.toContain('stderr');
     fixture([], { exit: 1, stderr: 'not signed in' });
     const r = await capture(() => main(['x']));
-    expect(r.stdout).toContain('⚠ agy wrote to stderr:\n  not signed in');
+    expect(r.stdout).toContain('⚠ agy wrote to stderr:\n    not signed in');
     expect(r.code).toBe(1);
   });
 
@@ -119,10 +119,11 @@ describe('delegate.mjs', () => {
     expect(r.code).toBe(1);
   });
 
-  it('lists the valid model ids when agy rejects the model', async () => {
-    fixture([result({ status: 'ERROR', response: '', error: 'invalid model selection (--model "nope"): model not recognized' })], { exit: 1 });
-    const r = await capture(() => main(['--model', 'nope', 'x']));
-    expect(r.stdout).toContain('Valid ids:\n    gemini-3.7-flash-high');
+  it('refuses a model agy does not list before starting it, naming close matches', async () => {
+    const r = await capture(() => main(['--model', 'gemini-4-neon-max', 'x']));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('agy has no model `gemini-4-neon-max`. Close matches: gemini-4-neon-high.');
+    expect(() => read('argv.json')).toThrow();
   });
 
   it('files failed tool calls as papercuts without printing them', async () => {
