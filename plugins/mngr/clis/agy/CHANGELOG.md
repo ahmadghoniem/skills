@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`--sandbox` is gone.** mngr never turned it on, and it only boxes in agy's own terminal tool, while mngr's agy runs send their commands through mngr's bash tool; on Windows agy has no sandbox to turn on. A flag named "sandbox" read like protection it didn't give.
+
 ## 0.5.0
 
 ### Trimmed

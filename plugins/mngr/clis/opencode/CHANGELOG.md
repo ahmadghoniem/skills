@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **`--model` is required.** opencode runs on API keys, which bill per token, so the default (`nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017`) is gone and a run without a model is refused.
 - **Tools a delegate can't use are denied, for the run only:** `question` (nobody is there to answer), `generate_image` and `generate_video`. They go in through `OPENCODE_CONFIG_CONTENT` on the delegate's own process, so opencode opened by hand keeps them. Code Mode (`execute`) and its catalog stay.
 - **Claude Code compatibility is off for delegate runs** (`OPENCODE_DISABLE_CLAUDE_CODE=1`): `~/.claude` skills and instructions written for Claude stay out; the brief carries what the run needs.
 - **Runs pass `--dangerously-skip-permissions` instead of `--auto`.** On 2.4.1 it is a hidden alias of `--auto` (so is `--yolo`), so nothing changes in behaviour; the flag now reads the same as agy's.

@@ -6,7 +6,7 @@ Claude plans and reviews; agy writes code in its own session. The plugin never c
 
 agy handles high-volume tasks: code sweeps, refactors, bulk file reading, research, and scoped implementations. Tokens land in agy's context instead of yours.
 
-Sibling of [grok](../grok/README.md) and [opencode](../opencode/README.md), and a member of the [council](../../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps what Claude can't work out on its own (how to start agy, the bash tool agy works through, how to read agy's failures); Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
+Sibling of [grok](../grok/README.md) and [opencode](../opencode/README.md), and a member of the [council](../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps what Claude can't work out on its own (how to start agy, the bash tool agy works through, how to read agy's failures); Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
@@ -131,7 +131,6 @@ node scripts/delegate.mjs -- agy --model gemini-4-hydrogen-high "the hard one"
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. Not combined with an inline task. |
 | `--model <id>` | A full id from `agy models`, such as `gemini-4-hydrogen-high`; the id carries the effort level. On an unknown id, the valid ones are listed. Default `gemini-4-hydrogen-medium`. |
-| `--sandbox` | Restricts agy's own terminal commands only. |
 | `--conversation <uuid>` | Continue that conversation. `--continue` is never used: it takes the newest conversation, which may belong to another Claude session. |
 
 ## What the output looks like
@@ -175,7 +174,7 @@ a recurrence. `--resolve <id>` closes one cut.
 | `MNGR_AGY_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.mngr\agy`. |
 | `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
 
-`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
+The process, release, papercut and quota helpers are mngr's, in `scripts/lib/shared/` at its root.
 
 ## Licence
 

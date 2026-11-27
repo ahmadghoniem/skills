@@ -1,6 +1,6 @@
 ---
 description: Delegate a coding task, code sweep, or research pass to grok, agy or opencode.
-argument-hint: '<grok|agy|opencode> [--prompt-file <path>] [flags] <task...>'
+argument-hint: '<grok|agy|opencode> <what to change, or what to find out>'
 allowed-tools: Bash(node:*), Write, Read, AskUserQuestion
 ---
 

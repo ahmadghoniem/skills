@@ -204,7 +204,7 @@ export function removeLegacyInstall(configPath = mcpConfigPath()) {
  * closes after one line; agy exits once that turn ends. `--disable-slash-commands`
  * stops a message that starts with `/usage` or similar from running a command.
  *
- * @param {{addDir?: string, model?: string, agent?: string, sandbox?: boolean, conversationId?: string}} opts
+ * @param {{addDir?: string, model?: string, agent?: string, conversationId?: string}} opts
  * @returns {string[]}
  */
 export function buildArgs(opts) {
@@ -217,7 +217,6 @@ export function buildArgs(opts) {
   if (opts.model) args.push('--model', opts.model);
   if (opts.agent && !isResume) args.push('--agent', opts.agent);
   args.push('--dangerously-skip-permissions');
-  if (opts.sandbox) args.push('--sandbox');
   if (isResume) args.push('--conversation', opts.conversationId);
   return args;
 }

@@ -1,12 +1,12 @@
-// node --test plugins/_shared/shared.test.mjs
+// The helpers every CLI shares, in scripts/lib/shared/.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
-import { appendPapercut, formatOpenPapercuts, readPapercuts } from './papercuts.mjs';
-import { parseCli } from './proc.mjs';
-import { compareVersions, latestRelease, noticeOnce, parseVersion, releasesSince, reviewedVersion, setReviewedVersion } from './release.mjs';
+import { test } from 'vitest';
+import { appendPapercut, formatOpenPapercuts, readPapercuts } from '../scripts/lib/shared/papercuts.mjs';
+import { parseCli } from '../scripts/lib/shared/proc.mjs';
+import { compareVersions, latestRelease, noticeOnce, parseVersion, releasesSince, reviewedVersion, setReviewedVersion } from '../scripts/lib/shared/release.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'shared-test-'));
 
@@ -33,7 +33,7 @@ test('the update notice prints once per release', async () => {
   delete process.env.DELEGATE_RELEASE_CHECK;
   const release = await latestRelease(path, async () => ({ latest: '1.0.93', times: { '1.0.93': '2026-11-24T' } }));
   const args = { path, tool: 'grok', command: '/mngr:update grok', release, installed: '1.0.92' };
-  assert.match(noticeOnce(args), /grok 1\.0\.93 is out/);
+  assert.match(noticeOnce(args), /grok 1\.0\.93 is out, 1 release after your 1\.0\.92\./);
   assert.equal(noticeOnce(args), '');
   assert.equal(noticeOnce({ ...args, installed: '1.0.93' }), '');
   rmSync(dir, { recursive: true });
@@ -56,7 +56,7 @@ test('parseCli drops a leading -- and refuses unknown flags', () => {
 });
 
 test('a quota error with a reset time blocks that model until it passes', async () => {
-  const { noteRun, parseResetMs, quotaBlock, readQuota } = await import('./quota.mjs');
+  const { noteRun, parseResetMs, quotaBlock, readQuota } = await import('../scripts/lib/shared/quota.mjs');
   const dir = tmp();
   const path = join(dir, 'quota.json');
   assert.equal(parseResetMs('Individual quota reached. Resets in 3h25m10s.'), (3 * 3600 + 25 * 60 + 10) * 1000);

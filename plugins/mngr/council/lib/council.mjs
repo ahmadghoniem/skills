@@ -1,13 +1,13 @@
-// A council's state on disk: `~/.council/<name>/council.json` (seats, their
-// sessions, the round count) and one folder per round with what each seat was
-// sent and what it said.
+// A council's state on disk: `~/.mngr/council/<name>/council.json` (seats,
+// their sessions, the round count, the roster the user approved) and one
+// folder per round with what each seat was sent and what it said.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { MEMBERS } from './members.mjs';
+import { MEMBERS, modelOf } from './members.mjs';
 
-export const councilHome = () => (process.env.COUNCIL_HOME?.trim() ? resolve(process.env.COUNCIL_HOME) : join(homedir(), '.council'));
+export const councilHome = () => (process.env.COUNCIL_HOME?.trim() ? resolve(process.env.COUNCIL_HOME) : join(homedir(), '.mngr', 'council'));
 export const councilDir = (name) => join(councilHome(), name);
 
 /**
@@ -45,7 +45,7 @@ export function assignLabels(council) {
 /** @returns {{name: string, seats: Seat[], rounds: number, firstBrief?: string}} */
 export function readCouncil(name) {
   const path = join(councilDir(name), 'council.json');
-  if (!existsSync(path)) throw new Error(`no council \`${name}\`: write ${path} first (see /council:convene).`);
+  if (!existsSync(path)) throw new Error(`no council \`${name}\`: write ${path} first (see /mngr:council).`);
   const c = JSON.parse(readFileSync(path, 'utf8'));
   if (!Array.isArray(c.seats) || !c.seats.length) throw new Error(`${path} lists no seats.`);
   const names = new Set();
@@ -55,6 +55,21 @@ export function readCouncil(name) {
     names.add(s.name);
   }
   return { rounds: 0, ...c, name };
+}
+
+/** One line per seat, as the user approves it: name, member, exact model, effort, kind. */
+export const rosterOf = (seats) => seats.map((s) => [s.name, s.member, modelOf(s), s.effort ?? '', s.auditor ? 'auditor' : 'core'].join(' | '));
+
+/**
+ * Why round 1 can't start yet, or null. The user approves the roster (seats
+ * and exact models) before round 1; a seat changed after that needs approving
+ * again.
+ */
+export function approvalProblem(c) {
+  if (!c.approved) return 'the user has not approved this roster yet';
+  const now = rosterOf(c.seats);
+  const changed = now.filter((line) => !c.approved.includes(line)).concat(c.approved.filter((line) => !now.includes(line)));
+  return changed.length ? `the roster changed since the user approved it (${changed.join('; ')})` : null;
 }
 
 export function writeCouncil(c) {

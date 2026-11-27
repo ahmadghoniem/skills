@@ -2,14 +2,15 @@
 // Runs one council round: every chosen seat gets the brief at once, on the code
 // as it stands (stamped with the commit), and the round ends when all have
 // answered or the hard timeout passes; a seat still running then is stopped and
-// marked MISSING. Round 1 refuses to start before the chair has written
-// chair.md. Prints each seat's final-answer block.
+// marked MISSING. Round 1 refuses to start before the user has approved the
+// roster and the chair has written chair.md. Prints each seat's final-answer
+// block.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ANSWER_RULES, assignLabels, councilDir, finalBlock, readCouncil, writeCouncil } from './lib/council.mjs';
+import { ANSWER_RULES, approvalProblem, assignLabels, councilDir, finalBlock, readCouncil, writeCouncil } from './lib/council.mjs';
 import { changedDuring, MAX_FILES, snapshot } from './lib/workspace.mjs';
-import { accessOf, delegatePath, MEMBERS, seatArgs, sessionFrom } from './lib/members.mjs';
-import { parseCli, run, runAsScript, spawnDirect } from './lib/shared/proc.mjs';
+import { accessOf, delegatePath, modelOf, seatArgs, sessionFrom } from './lib/members.mjs';
+import { parseCli, run, runAsScript, spawnDirect } from '../scripts/lib/shared/proc.mjs';
 
 const USAGE = 'Usage: round.mjs --council <name> --brief <file> [--seats a,b] [--timeout-min 30] [--no-others]\n';
 
@@ -39,7 +40,7 @@ function runSeat(delegate, args, timeoutMs) {
 }
 
 const minutes = (ms) => `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`;
-const describe = (s) => [`Seat ${s.label}`, s.member, s.model ?? MEMBERS[s.member].defaultModel, s.effort].filter(Boolean).join(', ');
+const describe = (s) => [`Seat ${s.label}`, s.member, modelOf(s), s.effort].filter(Boolean).join(', ');
 /** Per-seat files are named by letter: a seat can see the round folder, and a model name there would give it away. */
 const seatFile = (s, kind) => `seat-${s.label.toLowerCase()}.${kind}.md`;
 
@@ -77,7 +78,11 @@ export async function main(argv) {
   const seats = council.seats.filter((s) => (wanted ? wanted.includes(s.name) : !s.auditor));
   const missingPlugin = seats.filter((s) => !delegatePath(s.member));
   if (missingPlugin.length) {
-    return process.stderr.write(`Error: plugin not installed for ${missingPlugin.map((s) => `${s.name} (${s.member})`).join(', ')}.\n`), 2;
+    return process.stderr.write(`Error: no delegate script for ${missingPlugin.map((s) => `${s.name} (${s.member})`).join(', ')}.\n`), 2;
+  }
+  const unapproved = council.rounds === 0 && approvalProblem(council);
+  if (unapproved) {
+    return process.stderr.write(`Error: ${unapproved}. Show the user the roster (roster.mjs --council ${council.name}); once they say go, run it again with --approve.\n`), 2;
   }
   const chair = join(councilDir(council.name), 'chair.md');
   if (council.rounds === 0 && !(existsSync(chair) && readFileSync(chair, 'utf8').trim())) {

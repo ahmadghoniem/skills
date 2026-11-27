@@ -1,6 +1,6 @@
-// Version bookkeeping shared by the delegate plugins: the CLI version a plugin
+// Version bookkeeping shared by every CLI mngr drives: the CLI version mngr
 // was last reviewed against, the latest release, and the once-per-release
-// notice. See proc.mjs for how this file reaches each plugin.
+// notice.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -119,7 +119,8 @@ export function noticeOnce({ path, tool, command, release, installed }) {
   const state = readState(path);
   if (state.notified === latest) return '';
   writeState(path, { ...state, notified: latest });
+  // Always a count: version numbers alone don't say how many releases came out.
   const count = releasesSince(release.times, installed, latest).length;
-  const since = count > 1 ? `, ${count} releases after the installed ${installed}` : ` (installed: ${installed})`;
+  const since = count ? `, ${count} release${count === 1 ? '' : 's'} after your ${installed}` : ` (you have ${installed})`;
   return `\n${tool} ${latest} is out${since}. Ask the user whether to run \`${command}\`.\n`;
 }

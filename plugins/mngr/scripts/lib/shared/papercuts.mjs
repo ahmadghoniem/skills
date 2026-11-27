@@ -1,7 +1,7 @@
-// The friction log shared by the delegate plugins: one JSON object per line,
+// The friction log shared by every CLI mngr drives: one JSON object per line,
 // append-only, machine-wide per CLI (`~/.mngr/<cli>`). Each
 // plugin decides which of its warnings become rows; this file stores, groups
-// and closes them. See proc.mjs for how this file reaches each plugin.
+// and closes them.
 //
 // Every cut has a `key`, its group: a warning id, `tool-errors:<tool>`, or
 // `narrated`. A resolution names a key, closing every cut in that group

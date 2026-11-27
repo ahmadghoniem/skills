@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_MODEL, main } from '../scripts/delegate.mjs';
+import { main } from '../scripts/delegate.mjs';
 import { SIDECAR_MESSAGE } from '../scripts/lib/opencode.mjs';
 import { capture, sandbox } from './helpers.mjs';
 
@@ -13,19 +13,26 @@ afterEach(() => box.cleanup());
 
 describe('delegate.mjs', () => {
   it('prints the write-up and the session id, and files tools that could not run', async () => {
-    const r = await capture(() => main(['do the thing']));
+    const r = await capture(() => main(['--model', 'test/model', 'do the thing']));
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/^Done\.\n\nsession: ses_[0-9a-f]{26}\n$/);
     expect(box.papercuts()).toEqual([expect.objectContaining({ key: 'tool-errors:read', text: 'File not found: a.txt', toolVersion: '2.4.1' })]);
   });
 
-  it('always passes a model, names the session up front, and attaches the brief', async () => {
-    await capture(() => main(['do the thing']));
+  it('refuses a run without --model', async () => {
+    const r = await capture(() => main(['--model', '', 'do the thing']));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('--model');
+    expect(box.calls()).toEqual([]);
+  });
+
+  it('passes the model, names the session up front, and attaches the brief', async () => {
+    await capture(() => main(['--model', 'test/model', 'do the thing']));
     const [call] = box.calls();
     expect(call.args[0]).toBe('run');
     expect(call.args).toEqual(expect.arrayContaining(['--standalone', '--dangerously-skip-permissions']));
     expect(call.args[call.args.indexOf('--format') + 1]).toBe('json');
-    expect(call.args[call.args.indexOf('--model') + 1]).toBe(DEFAULT_MODEL);
+    expect(call.args[call.args.indexOf('--model') + 1]).toBe('test/model');
     expect(call.args[call.args.indexOf('--session') + 1]).toMatch(/^ses_/);
     expect(call.args.slice(-2)).toEqual(['--', SIDECAR_MESSAGE]);
     expect(call.args).not.toContain('--continue');
@@ -34,7 +41,7 @@ describe('delegate.mjs', () => {
   });
 
   it('denies the tools a headless run has no use for and turns Claude compatibility off, for the run only', async () => {
-    await capture(() => main(['do the thing']));
+    await capture(() => main(['--model', 'test/model', 'do the thing']));
     const [call] = box.calls();
     expect(JSON.parse(call.config).permission).toEqual({ question: 'deny', generate_image: 'deny', generate_video: 'deny' });
     expect(call.compat).toBe('1');
@@ -52,7 +59,7 @@ describe('delegate.mjs', () => {
   it('shows opencode error events and exits 1', async () => {
     box.cleanup();
     box = sandbox({ OPENCODE_STUB_MODE: 'error' });
-    const r = await capture(() => main(['x']));
+    const r = await capture(() => main(['--model', 'test/model', 'x']));
     expect(r.code).toBe(1);
     expect(r.stdout).toContain('⚠ exit 1\n⚠ error: provider.quota: Free usage limit reached.');
     expect(box.papercuts()[0]).toEqual(expect.objectContaining({ key: 'error-detail' }));
@@ -61,18 +68,18 @@ describe('delegate.mjs', () => {
   it('falls back to the end of stderr when opencode printed no events', async () => {
     box.cleanup();
     box = sandbox({ OPENCODE_STUB_MODE: 'crash' });
-    const r = await capture(() => main(['x']));
+    const r = await capture(() => main(['--model', 'test/model', 'x']));
     expect(r.stdout).toContain('⚠ error: boot\n    Error: Location plugins did not finish activating');
   });
 
   it('reads --prompt-file and refuses bad input before starting opencode', async () => {
     const brief = join(box.dir, 'brief.md');
     writeFileSync(brief, '# Goal\n');
-    await capture(() => main(['--prompt-file', brief]));
+    await capture(() => main(['--model', 'test/model', '--prompt-file', brief]));
     expect(box.calls()[0].brief).toBe('# Goal\n');
     expect((await capture(() => main([]))).code).toBe(2);
-    expect((await capture(() => main(['--session', 'abc', 'x']))).code).toBe(2);
-    expect((await capture(() => main(['--prompt-file', brief, 'x']))).code).toBe(2);
+    expect((await capture(() => main(['--model', 'test/model', '--session', 'abc', 'x']))).code).toBe(2);
+    expect((await capture(() => main(['--model', 'test/model', '--prompt-file', brief, 'x']))).code).toBe(2);
     expect((await capture(() => main(['--nope']))).code).toBe(2);
     expect(box.calls()).toHaveLength(1);
   });

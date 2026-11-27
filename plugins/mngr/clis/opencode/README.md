@@ -2,7 +2,7 @@
 
 Delegate coding tasks from Claude Code to the [opencode](https://opencode.ai) CLI, then review the diff and land it yourself. opencode reaches the models the other delegates don't: DeepSeek, Kimi, GLM and Qwen through your own provider keys.
 
-Sibling of [grok](../grok/README.md) and [agy](../agy/README.md), and a member of the [council](../../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps only what Claude can't work out on its own: how to start opencode headless, and how to read its failures. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
+Sibling of [grok](../grok/README.md) and [agy](../agy/README.md), and a member of the [council](../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps only what Claude can't work out on its own: how to start opencode headless, and how to read its failures. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
@@ -23,7 +23,7 @@ Windows only. Requires opencode at mngr's `engines.opencode` or later on `PATH` 
 | Flag | Effect |
 | --- | --- |
 | `--prompt-file <path>` | Read the brief from a file. |
-| `--model <provider/model>` | Default `nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017`. |
+| `--model <provider/model>` | Required: opencode runs on API keys, so mngr picks no model for it. |
 | `--session <ses_id>` | Continue that session. |
 
 ## How opencode is run
@@ -51,7 +51,7 @@ A clean run prints the write-up, then `session: <id>`. `⚠ exit N` and `⚠ err
 | `MNGR_OPENCODE_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.mngr\opencode`. |
 | `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
 
-`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
+The process, release, papercut and quota helpers are mngr's, in `scripts/lib/shared/` at its root.
 
 ## Licence
 

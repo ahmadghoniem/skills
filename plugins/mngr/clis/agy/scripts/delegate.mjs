@@ -32,7 +32,7 @@ const DEFAULT_MODEL = 'gemini-4-hydrogen-medium';
 const AGENT = 'bash-delegate';
 
 const USAGE =
-  'Usage: delegate.mjs [--model <id>] [--sandbox] [--conversation <uuid>] (--prompt-file <path> | <task...>)\n';
+  'Usage: delegate.mjs [--model <id>] [--conversation <uuid>] (--prompt-file <path> | <task...>)\n';
 
 /**
  * @param {string[]} argv
@@ -46,7 +46,6 @@ export async function main(argv) {
       'prompt-file': { type: 'string' },
       model: { type: 'string' },
       conversation: { type: 'string' },
-      sandbox: { type: 'boolean' },
       effort: { type: 'string' },
       help: { type: 'boolean' },
     }));
@@ -126,7 +125,6 @@ export async function main(argv) {
     addDir: conversation ? undefined : root,
     model,
     agent: conversation ? undefined : AGENT,
-    sandbox: values.sandbox,
     conversationId: conversation,
   });
   const result = await runHeadless({ args, input: stdinLine(message), cwd: root });

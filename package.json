@@ -18,15 +18,16 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "test": "npm run test:shared && npm run test:mngr && npm run test:council && npm run test:apply-patch",
-    "test:shared": "node tools/sync-shared.mjs --check && node --test plugins/_shared/shared.test.mjs",
+    "test": "npm run test:mngr && npm run test:apply-patch && npm run test:relink",
     "test:mngr": "npm --prefix plugins/mngr test",
     "test:grok": "npm --prefix plugins/mngr run test:grok",
     "test:agy": "npm --prefix plugins/mngr run test:agy",
     "test:opencode": "npm --prefix plugins/mngr run test:opencode",
-    "test:council": "npm --prefix plugins/council test",
+    "test:council": "npm --prefix plugins/mngr run test:council",
     "test:apply-patch": "node --test tools/apply-patch/apply-patch.test.mjs tools/apply-patch/bash-guard.test.mjs",
-    "install:all": "npm --prefix plugins/mngr ci && npm --prefix plugins/council ci",
+    "test:relink": "node --test tools/relink/relink.test.mjs",
+    "relink": "node tools/relink/relink.mjs",
+    "install:all": "npm --prefix plugins/mngr ci",
     "validate": "claude plugin validate . --strict"
   }
 }

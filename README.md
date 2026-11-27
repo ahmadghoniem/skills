@@ -2,7 +2,7 @@
 
 My Claude Code skills and CLI delegation plugins, in one repo and one marketplace.
 
-Five standalone skills ship as the `kit` plugin. The `mngr` plugin drives three coding CLIs (`grok`, `agy`, `opencode`), and the `council` that convenes them ships alongside, each keeping its own commands, scripts and test suite.
+Five standalone skills ship as the `kit` plugin. The `mngr` plugin drives three coding CLIs (`grok`, `agy`, `opencode`) and convenes them as a review council (`/mngr:council`).
 
 Consolidated from seven separate repos: `align`, `tailwind-skill`, `delegate-to-opencode`, `snapshot-recall`, `claude-cursor-delegate`, `claude-grok-delegate` and `claude-agy-delegate`. Each file's history came with it, so `git log` and `git blame` still work back through the original commits.
 
@@ -16,11 +16,10 @@ Add the marketplace once, then install what you want:
 /reload-plugins
 ```
 
-The CLI plugin and the council are separate installs:
+The CLI plugin, council included:
 
 ```
 /plugin install mngr@ahmadghoniem     # then /mngr:setup, which checks every CLI
-/plugin install council@ahmadghoniem
 ```
 
 To run from a checkout instead, point the marketplace at the directory:
@@ -33,7 +32,7 @@ Installing still copies the plugin into `~/.claude/plugins/cache/`, so an edit i
 
 ```
 claude plugin marketplace update ahmadghoniem
-claude plugin update kit    # and mngr, council
+claude plugin update kit    # and mngr
 ```
 
 ## Skills
@@ -59,16 +58,13 @@ Reachable by name, and the agent fires them when a task fits.
 
 ## Delegation plugins
 
-`/mngr:delegate <cli>` hands a task to an external CLI and `/mngr:setup [cli]` health-checks it. grok, agy and opencode run in a background Bash call and end with a session id that continues the work; Claude Code reports when they finish and TaskStop stops them.
+`/mngr:delegate <cli>` hands a task to an external CLI and `/mngr:setup [cli]` health-checks it. grok, agy and opencode run in a background Bash call and end with a session id that continues the work; Claude Code reports when they finish and TaskStop stops them. `/mngr:council` seats them as a review council.
 
 | Plugin | What | Platform |
 | --- | --- | --- |
-| [mngr](./plugins/mngr/README.md) | [grok](./plugins/mngr/clis/grok/README.md) (Grok Build), [agy](./plugins/mngr/clis/agy/README.md) (Antigravity) and [opencode](./plugins/mngr/clis/opencode/README.md): delegate, setup, update, papercuts | Windows |
-| [council](./plugins/council/README.md) | grok, agy and opencode as a review council | Windows |
+| [mngr](./plugins/mngr/README.md) | [grok](./plugins/mngr/clis/grok/README.md) (Grok Build), [agy](./plugins/mngr/clis/agy/README.md) (Antigravity) and [opencode](./plugins/mngr/clis/opencode/README.md): delegate, setup, update, papercuts, and the [council](./plugins/mngr/council/README.md) | Windows |
 
-`plugins/_shared/` holds the helpers mngr and council share; `node tools/sync-shared.mjs` copies them into each plugin.
-
-Each plugin keeps its own version number. mngr keeps one `CHANGELOG.md` per CLI.
+mngr has one version; each CLI, and the council, keeps its own `CHANGELOG.md`.
 
 ## Layout
 

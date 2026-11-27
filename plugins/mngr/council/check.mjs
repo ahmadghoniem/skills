@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { councilDir } from './lib/council.mjs';
-import { parseCli, runAsScript } from './lib/shared/proc.mjs';
+import { parseCli, runAsScript } from '../scripts/lib/shared/proc.mjs';
 
 const USAGE = 'Usage: check.mjs --council <name>\n';
 

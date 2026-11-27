@@ -1,6 +1,6 @@
 # Repo conventions
 
-This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising three plugins.
+This repo is two things at once: a home for standalone skills, and a Claude Code **marketplace** advertising two plugins.
 
 ## Layout
 
@@ -8,7 +8,7 @@ Skills live flat, one directory each, at `skills/<name>/SKILL.md`. No bucket fol
 
 Claude Code auto-discovers `skills/<name>/SKILL.md`, so `.claude-plugin/plugin.json` carries **no** `skills` array. Do not add one, and do not nest a skill a level deeper, or it stops being found.
 
-Every skill under `skills/` is loaded unnamespaced, so those names must be globally unique. A plugin's own skills are namespaced by the plugin (`mngr:delegate`), so those may repeat.
+The repo root is the kit plugin, so every skill under `skills/` loads as `kit:<name>` (`kit:recall`), just as mngr's load as `mngr:<name>`. Only skills in `~/.claude/skills/` load without a prefix.
 
 `tools/<name>/` holds standalone scripts that are neither skill nor plugin. `tools/apply-patch/` is reached through a junction at `~/.claude/scripts/apply-patch`, so edits are live; its tests use `node:test` and need no install.
 
@@ -16,7 +16,7 @@ Every skill under `skills/` is loaded unnamespaced, so those names must be globa
 
 `plugins/<name>/` holds a complete Claude Code plugin: `plugin.json`, `commands/`, `agents/`, `scripts/`, its own `skills/`, and its own `tests/`, `package.json` and `CHANGELOG.md`. Each is independent and versions on its own; they share only this repo's root config.
 
-`.claude-plugin/marketplace.json` advertises all three plugins (the skills bundle, `mngr` and the council). mngr drives three CLIs: its commands take the CLI as their first word (`/mngr:delegate grok …`), `scripts/` hands that on, and each CLI keeps its own scripts, tests, contract and `CHANGELOG.md` under `plugins/mngr/clis/<cli>/`. The CLIs share mngr's one version, `package.json` (with `engines.<cli>`) and data folder, `~/.mngr/<cli>/`. `plugins/_shared/` is copied into mngr and council by `node tools/sync-shared.mjs`; `npm test` fails when a copy drifts. After touching either manifest, run:
+`.claude-plugin/marketplace.json` advertises both plugins (the skills bundle, `kit`, and `mngr`). mngr drives three CLIs: its commands take the CLI as their first word (`/mngr:delegate grok …`), `scripts/` hands that on, and each CLI keeps its own scripts, tests, contract and `CHANGELOG.md` under `plugins/mngr/clis/<cli>/`. The council is part of mngr too (`/mngr:council`, code and tests under `plugins/mngr/council/`), and runs its seats through the same delegate scripts. Everything shares mngr's one version, `package.json` (with `engines.<cli>`), the helpers in `plugins/mngr/scripts/lib/shared/`, and the data folder `~/.mngr/` (`<cli>/` per CLI, `council/` per council). After touching either manifest, run:
 
 ```
 claude plugin validate . --strict
@@ -40,7 +40,7 @@ There is no CI: these plugins are Windows-opinionated and there is no contributo
 
 ```
 npm run install:all   # once, per plugin, each keeps its own lockfile
-npm test              # shared + mngr (dispatcher, grok, agy, opencode) + council + apply-patch
+npm test              # mngr (dispatcher and shared helpers, grok, agy, opencode, council) + apply-patch + relink
 npm run test:agy      # or one CLI at a time
 ```
 
@@ -54,7 +54,7 @@ The marketplace is registered from this directory, not from GitHub:
 
 ```
 claude plugin marketplace add "C:/Users/Ahmed Ibrahim/Documents/GitHub/skills"
-claude plugin install kit@ahmadghoniem   # and mngr@, council@
+claude plugin install kit@ahmadghoniem   # and mngr@ahmadghoniem
 ```
 
 Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<name>/<version>/`, so out of the box an edit here is not live: `claude plugin update` sees the same version number and does nothing, and `claude plugin marketplace update` refreshes only the marketplace listing. Verified, not assumed.
@@ -62,20 +62,19 @@ Installing **copies** each plugin into `~/.claude/plugins/cache/ahmadghoniem/<na
 So each cached version directory is replaced by a **Windows directory junction** back into this repo:
 
 ```
-~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0      ->  <repo>
-~/.claude/plugins/cache/ahmadghoniem/mngr/0.1.0     ->  <repo>/plugins/mngr
-~/.claude/plugins/cache/ahmadghoniem/council/0.1.0  ->  <repo>/plugins/council
+~/.claude/plugins/cache/ahmadghoniem/kit/1.0.0   ->  <repo>
+~/.claude/plugins/cache/ahmadghoniem/mngr/0.2.0  ->  <repo>/plugins/mngr
 ```
 
-Made with `New-Item -ItemType Junction -Path <cache dir> -Target <repo dir>` after deleting the copied directory. Now an edit here is live in the next session, with no update step.
+`npm run relink` makes them (see below). Now an edit here is live in the next session, with no update step.
 
-The caveat: a reinstall, or an update that actually finds a new version, writes a real directory over the junction and silently goes back to copying. If edits stop taking effect, check whether the junction survived:
+The caveat: a reinstall, or an update that finds a new version, makes a real copy under the version's folder and silently goes back to copying. So after bumping a plugin's version (in its `plugin.json`, and in `marketplace.json` if listed there), or after any reinstall, run:
 
 ```
-Get-ChildItem ~/.claude/plugins/cache/ahmadghoniem -Recurse -Depth 1 | Where-Object { $_.LinkType }
+npm run relink
 ```
 
-When a plugin's version goes up, the junction keeps working under the old number, but the cache folder and `claude plugin list` show the stale version. To rename it, make a junction under the new version, point that plugin's `installPath` and `version` in `~/.claude/plugins/installed_plugins.json` at it, then remove the old link with `[System.IO.Directory]::Delete(<old dir>, $false)`, which deletes the link and not the repo behind it.
+It makes the junction under the current version (replacing Claude Code's copy there), points `installPath` and `version` in `~/.claude/plugins/installed_plugins.json` at it, and removes the links left under older versions; a real folder under an old version is left and reported. Restart Claude Code afterwards. `npm test` runs `tools/relink/relink.test.mjs`, which fails on this machine while any installed plugin isn't a junction under its current version, or while `marketplace.json` and a `plugin.json` disagree on a version.
 
 The seven skills must not also exist under `~/.claude/skills/`, or each one loads twice.
 

@@ -6,7 +6,7 @@
 
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { run } from './shared/proc.mjs';
+import { run } from '../../scripts/lib/shared/proc.mjs';
 
 const SKIP = new Set(['.git', 'node_modules']);
 /** Past this many files a folder outside git isn't watched. */

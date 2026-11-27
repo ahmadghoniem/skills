@@ -1,7 +1,7 @@
 {
   "name": "claude-mngr",
-  "version": "0.1.0",
-  "description": "Manage the Grok, Antigravity and opencode CLIs from Claude Code and delegate coding tasks to them.",
+  "version": "0.2.0",
+  "description": "Manage the Grok, Antigravity and opencode CLIs from Claude Code, delegate coding tasks to them, and convene them as a review council.",
   "type": "module",
   "license": "MIT",
   "author": {
@@ -20,7 +20,8 @@
     "agy",
     "antigravity",
     "opencode",
-    "agent-delegation"
+    "agent-delegation",
+    "council"
   ],
   "engines": {
     "node": ">=18.18",
@@ -35,10 +36,12 @@
     "plugin.json",
     "commands",
     "scripts",
-    "clis"
+    "clis",
+    "council"
   ],
   "scripts": {
-    "test": "vitest run && npm run test:grok && npm run test:agy && npm run test:opencode",
+    "test": "vitest run && npm run test:grok && npm run test:agy && npm run test:opencode && npm run test:council",
+    "test:council": "cd council && vitest run",
     "test:grok": "cd clis/grok && vitest run",
     "test:agy": "cd clis/agy && vitest run",
     "test:opencode": "cd clis/opencode && vitest run"

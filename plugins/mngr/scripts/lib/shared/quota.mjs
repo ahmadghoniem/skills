@@ -1,14 +1,16 @@
 // The last quota error each model hit, per CLI (`~/.mngr/<cli>`
-// quota.json). None of the three CLIs reports remaining quota to a headless
-// caller (`grok usage` refuses outside grok, agy and opencode have no command),
-// so this is what a run learns the hard way, kept for the next one:
+// quota.json). Only agy reports what is left to a headless caller (`agy -p
+// /usage`, shown in the council roster); `grok usage` refuses outside grok and
+// opencode has no subscription window. So this is what a run learns the hard
+// way, kept for the next one:
 //
 // - a dispatch to a model whose quota error named a reset time still ahead is
 //   refused before the CLI starts, instead of failing a minute in;
 // - the council's roster shows each seat's last quota error.
 //
-// A run that finishes clears its model's entry. See proc.mjs for how this file
-// reaches each plugin.
+// It only knows quota spent through mngr: quota used up in grok or agy by hand
+// isn't caught until the next delegated run fails. A run that finishes clears
+// its model's entry.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';

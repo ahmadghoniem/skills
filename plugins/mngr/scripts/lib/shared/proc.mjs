@@ -1,9 +1,5 @@
-// Process and command-line helpers shared by the delegate plugins.
-//
-// Source of truth: plugins/_shared. Each plugin carries a copy in
-// scripts/lib/shared/, because an installed plugin is copied on its own and
-// cannot reach a sibling folder. Edit here, then run `node tools/sync-shared.mjs`;
-// `npm test` at the root fails when a copy has drifted.
+// Process and command-line helpers shared by every CLI mngr drives and by the
+// council.
 
 import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -111,15 +107,24 @@ export function invokedAsScript(moduleUrl) {
 /**
  * Run `main(argv)` as the process entry point and exit with its code.
  *
+ * The process ends on its own when nothing is left running, and is made to
+ * exit 2 s later otherwise. Calling `process.exit` straight after a `fetch`
+ * crashes Node on Windows (`Assertion failed: !(handle->flags &
+ * UV_HANDLE_CLOSING)`, exit 127): nodejs/node#56645, fixed in Node 24.20.0.
+ *
  * @param {string} moduleUrl
  * @param {(argv: string[]) => Promise<number>} main
  */
 export function runAsScript(moduleUrl, main) {
   if (!invokedAsScript(moduleUrl)) return;
+  const exit = (code) => {
+    process.exitCode = code;
+    setTimeout(() => process.exit(code), 2_000).unref();
+  };
   main(process.argv.slice(2))
-    .then((code) => process.exit(code))
+    .then(exit)
     .catch((err) => {
       process.stderr.write(`${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
-      process.exit(1);
+      exit(1);
     });
 }

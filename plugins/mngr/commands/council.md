@@ -1,37 +1,40 @@
 ---
-description: Convene grok, agy and opencode as a review council on a question, in rounds on frozen code, and bring back what they settled and what is yours to decide.
-argument-hint: '<question>'
-allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Grep, Glob
+description: Convene grok, agy and opencode seats as a review council on a question, in rounds on frozen code, and bring back what they settled and what is yours to decide.
+argument-hint: '[seats, e.g. grok agy opencode:] <question>'
+allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Grep, Glob, AskUserQuestion
 ---
 
-`$ARGUMENTS` is the question. You are the chair. The members are other models reviewing
-the same code; they work as a team that reads each other's answers, and you keep the
-debate honest.
+`$ARGUMENTS` is the question, optionally led by the seats the user wants (`grok agy
+opencode: review the auth change`). You are the chair. The members are other models
+reviewing the same code; they work as a team that reads each other's answers, and you
+keep the debate honest.
 
 ## 1. Seat the council
 
-Write `~/.council/<short-name>/council.json`:
+There are no standing seats. Seat exactly the agents the user named. If they named none,
+propose seats with AskUserQuestion (multiSelect, one option per CLI with the model it
+would run) and seat what they pick. Never add a seat they didn't ask for.
+
+Write `~/.mngr/council/<short-name>/council.json`:
 
 ```json
 {
   "seats": [
-    { "name": "grok", "member": "grok", "effort": "medium" },
-    { "name": "neon", "member": "agy", "model": "gemini-4-neon-high" },
-    { "name": "muse", "member": "opencode", "model": "meta/muse-wonder-1.0" },
+    { "name": "grok", "member": "grok" },
+    { "name": "neon", "member": "agy" },
+    { "name": "muse", "member": "opencode" },
     { "name": "auditor", "member": "agy", "model": "gemini-4-hydrogen-high", "auditor": true }
   ]
 }
 ```
 
-`member` is the plugin the seat runs on; `model` and `effort` are optional (agy and
-opencode carry effort in the model id). Every seat gets the same question and the same
-brief: no roles, focus areas or per-seat assignments, so each member decides for itself
-what matters. Seats marked `auditor` sit out the rounds and read the settled result on
-frozen code.
-
-The standing council is the three seats above: Grok, Neon and Muse Wonder. Muse Wonder
-runs on opencode through its `meta` provider, so it reads the repo like the others. Swap
-or add seats only when the user names them or a model is blocked on quota.
+`member` is the CLI the seat runs on. Every seat runs an exact model, never an account
+default: with no `model`, it gets its member's pinned seat model (grok `grok-4.7`, agy
+`gemini-4-neon-high`, opencode `meta/muse-wonder-1.0#high`). Set `model` when the user names
+another; `effort` is grok's only (agy and opencode carry effort in the model id). Every
+seat gets the same question and the same brief: no roles, focus areas or per-seat
+assignments, so each member decides for itself what matters. Seats marked `auditor` sit
+out the rounds and read the settled result on frozen code.
 
 **Seats don't see each other's model names.** The round script gives each seat a random
 letter (Seat A, B, C …) and shows the others only that letter plus what the seat could
@@ -41,23 +44,29 @@ the repo. In everything a seat reads (briefs, the dispute log, follow-ups) name 
 letter only. You and the user see the real names: the round summary maps names to letters,
 and your report uses real names.
 
-Then show the user the roster and wait for a go:
+Then show the user the roster, as-is, and wait for a go:
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/roster.mjs" -- --council <short-name>
+    node "${CLAUDE_PLUGIN_ROOT}/council/roster.mjs" -- --council <short-name>
 
-It lists each seat's kind (core or auditor), model, effort, CLI version and last quota error. No cost
-estimate. Swap a seat whose model is blocked on quota before starting.
+It lists each seat's kind (core or auditor), exact model, effort, CLI version and quota
+(what agy and grok have left; the last quota error for every seat). No cost estimate. Offer to swap
+a seat whose model is blocked on quota or low. Once the user says go, record it:
+
+    node "${CLAUDE_PLUGIN_ROOT}/council/roster.mjs" -- --council <short-name> --approve
+
+`round.mjs` refuses round 1 until the roster is approved, and again if a seat or model
+changed after that.
 
 ## 2. Write your own position first
 
 Before any member answers, write your round-1 position to
-`~/.council/<short-name>/chair.md`: your answer and why. You read the members only after
+`~/.mngr/council/<short-name>/chair.md`: your answer and why. You read the members only after
 that, so their answers test yours instead of replacing it. `round.mjs` refuses round 1
 until `chair.md` exists.
 
 ## 3. The brief
 
-Write it to `~/.council/<short-name>/brief-1.md`. It holds:
+Write it to `~/.mngr/council/<short-name>/brief-1.md`. It holds:
 
 - **The question**, and what a good answer lets the user do.
 - **Facts**, with how each is known (file:line, command output), apart from **hypotheses**.
@@ -75,7 +84,7 @@ format.
 Commit or stash first when you can: the round is stamped with the commit, and members
 read the working tree as it is. Then, with the Bash tool and `run_in_background: true`:
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/round.mjs" -- --council <short-name> --brief "<path>" [--timeout-min 30]
+    node "${CLAUDE_PLUGIN_ROOT}/council/round.mjs" -- --council <short-name> --brief "<path>" [--timeout-min 30]
 
 Every core seat starts at once. The round ends when all have answered or at the timeout;
 a seat still running then is stopped and marked MISSING. Do not edit the workspace while
@@ -87,7 +96,7 @@ round folder it names.
 
 ## 5. Between rounds: the dispute log
 
-Keep `~/.council/<short-name>/disputes.md`:
+Keep `~/.mngr/council/<short-name>/disputes.md`:
 
 - **D1, D2 …** each a point the seats (or you) disagree on, under its own heading
   (`### D1: <the point> (OPEN)`) with every side's position and evidence below it. The
@@ -112,7 +121,7 @@ settled answer and the closed disputes.
 
 ## 7. Report to the user
 
-Write the report to `~/.council/<short-name>/report.md`:
+Write the report to `~/.mngr/council/<short-name>/report.md`:
 
 - The answer the council settled on, with its evidence, and where you differ.
 - **For your decision**: every OPEN dispute copied verbatim from the log, heading and all,
@@ -122,4 +131,4 @@ Write the report to `~/.council/<short-name>/report.md`:
 
 Then check it, fix whatever it names, and only then give the user the report:
 
-    node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs" -- --council <short-name>
+    node "${CLAUDE_PLUGIN_ROOT}/council/check.mjs" -- --council <short-name>

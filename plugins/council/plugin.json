@@ -1,9 +1,0 @@
-{
-  "name": "council",
-  "version": "0.1.0",
-  "description": "Convene grok, agy and opencode as a review council: one brief, rounds on frozen code, a dispute log, and your decision on what stays open.",
-  "author": { "name": "Ahmed Ghoniem", "url": "https://github.com/ahmadghoniem" },
-  "homepage": "https://github.com/ahmadghoniem/skills",
-  "repository": "https://github.com/ahmadghoniem/skills",
-  "license": "MIT"
-}

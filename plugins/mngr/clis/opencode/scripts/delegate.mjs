@@ -11,13 +11,10 @@ import { parseCli, readPromptFile, runAsScript } from '../../../scripts/lib/shar
 import { latestRelease, noticeOnce } from '../../../scripts/lib/shared/release.mjs';
 import { fetchLatest } from './update.mjs';
 
-/**
- * Always passed: with no `--model`, opencode picks one of its configured models
- * on its own, which may be metered.
- */
-export const DEFAULT_MODEL = 'nebius/deepseek-ai/DeepSeek-V4.1-Flash-1017';
-
-const USAGE = 'Usage: delegate.mjs [--model <provider/model[#variant]>] [--session <ses_id>] (--prompt-file <path> | <task...>)\n';
+// opencode runs on API keys, which bill per token, so mngr picks no model for
+// it: a run without `--model` is refused rather than left to opencode, which
+// would pick one of its configured models on its own.
+const USAGE = 'Usage: delegate.mjs --model <provider/model[#variant]> [--session <ses_id>] (--prompt-file <path> | <task...>)\n';
 
 /** @param {string[]} argv */
 export async function main(argv) {
@@ -38,7 +35,11 @@ export async function main(argv) {
     process.stdout.write(USAGE);
     return 0;
   }
-  const model = values.model?.trim() || DEFAULT_MODEL;
+  const model = values.model?.trim();
+  if (!model) {
+    process.stderr.write(`Error: name a model with --model: opencode runs on API keys, so mngr picks none. \`opencode models\` lists them.\n${USAGE}`);
+    return 2;
+  }
   const session = values.session?.trim() || undefined;
   if (session && !session.startsWith('ses')) {
     process.stderr.write('Error: an opencode session id starts with `ses`.\n');

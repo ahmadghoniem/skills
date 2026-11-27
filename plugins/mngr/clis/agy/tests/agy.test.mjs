@@ -9,10 +9,6 @@ describe('buildArgs', () => {
     expect(args[args.indexOf('--input-format') + 1]).toBe('stream-json');
     expect(args).toContain('--disable-slash-commands');
   });
-
-  it('passes --sandbox when asked', () => {
-    expect(buildArgs({ addDir: 'C:/repo', sandbox: true })).toContain('--sandbox');
-  });
 });
 
 describe('listModels', () => {

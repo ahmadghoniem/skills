@@ -1,7 +1,7 @@
 {
   "name": "mngr",
-  "version": "0.1.0",
-  "description": "Manage the grok, agy and opencode CLIs from Claude Code (setup, update, papercuts) and hand them tasks.",
+  "version": "0.2.0",
+  "description": "Manage the grok, agy and opencode CLIs from Claude Code (setup, update, papercuts), hand them tasks, and convene them as a review council.",
   "author": {
     "name": "Ahmed Ghoniem",
     "url": "https://github.com/ahmadghoniem"

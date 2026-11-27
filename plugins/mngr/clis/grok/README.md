@@ -4,7 +4,7 @@ Delegate coding tasks from Claude Code to the [Grok Build CLI](https://docs.x.ai
 
 Claude writes the brief and reviews the result; grok does the editing in its own session. The plugin never commits.
 
-Sibling of [agy](../agy/README.md) and [opencode](../opencode/README.md), and a member of the [council](../../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps only what Claude can't work out on its own: how to start grok, and how to read what grok says when a run goes wrong. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
+Sibling of [agy](../agy/README.md) and [opencode](../opencode/README.md), and a member of the [council](../../council/README.md). One of the three CLIs [mngr](../../README.md) drives. mngr keeps only what Claude can't work out on its own: how to start grok, and how to read what grok says when a run goes wrong. Claude Code's background tasks already report when a run ends, keep its output and stop it, so the plugin keeps no job records.
 
 ## Install
 
@@ -61,7 +61,7 @@ Three sources have no per-run switch and still load: Claude Code plugins under `
 | `MNGR_GROK_HOME` | Where briefs, papercuts and the release cache live. Default `%USERPROFILE%\.mngr\grok`. |
 | `DELEGATE_RELEASE_CHECK` | `off` skips the release check and the update line. |
 
-`scripts/lib/shared/` is a copy of `plugins/_shared`; edit it there and run `node tools/sync-shared.mjs`.
+The process, release, papercut and quota helpers are mngr's, in `scripts/lib/shared/` at its root.
 
 ## Licence
 

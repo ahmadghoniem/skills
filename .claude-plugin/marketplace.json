@@ -20,31 +20,18 @@
     },
     {
       "name": "mngr",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./plugins/mngr",
-      "description": "Manage the grok, agy and opencode CLIs from Claude Code (setup, update, papercuts) and delegate coding tasks to them.",
+      "description": "Manage the grok, agy and opencode CLIs from Claude Code (setup, update, papercuts), delegate coding tasks to them, and convene them as a review council.",
       "category": "engineering",
       "keywords": [
         "grok",
         "agy",
         "antigravity",
         "opencode",
-        "agent-delegation"
-      ],
-      "strict": false
-    },
-    {
-      "name": "council",
-      "source": "./plugins/council",
-      "description": "Convene grok, agy and opencode as a review council chaired by Claude.",
-      "category": "engineering",
-      "keywords": [
+        "agent-delegation",
         "council",
-        "review",
-        "multi-agent",
-        "grok",
-        "agy",
-        "opencode"
+        "review"
       ],
       "strict": false
     }

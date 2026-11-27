@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { main as round } from '../scripts/round.mjs';
-import { main as roster } from '../scripts/roster.mjs';
-import { main as check } from '../scripts/check.mjs';
-import { seatArgs, sessionFrom } from '../scripts/lib/members.mjs';
+import { main as round } from '../round.mjs';
+import { agyQuotaLeft, grokQuotaLeft, main as roster } from '../roster.mjs';
+import { main as check } from '../check.mjs';
+import { seatArgs, sessionFrom } from '../lib/members.mjs';
+import { rosterOf } from '../lib/council.mjs';
 
 const STUB = fileURLToPath(new URL('./fixtures/member-stub.mjs', import.meta.url));
 const AGY_STUB = fileURLToPath(new URL('./fixtures/agy-member.mjs', import.meta.url));
@@ -31,9 +32,9 @@ async function capture(fn) {
   }
 }
 
-function council(seats, { chair = true } = {}) {
+function council(seats, { chair = true, approved = true } = {}) {
   mkdirSync(join(dir, 'home', 'c1'), { recursive: true });
-  writeFileSync(join(dir, 'home', 'c1', 'council.json'), JSON.stringify({ seats }));
+  writeFileSync(join(dir, 'home', 'c1', 'council.json'), JSON.stringify({ seats, ...(approved ? { approved: rosterOf(seats) } : {}) }));
   if (chair) writeFileSync(join(dir, 'home', 'c1', 'chair.md'), 'My position.');
 }
 const state = () => JSON.parse(readFileSync(join(dir, 'home', 'c1', 'council.json'), 'utf8'));
@@ -58,6 +59,8 @@ beforeEach(() => {
     COUNCIL_GROK_DELEGATE: STUB,
     COUNCIL_AGY_DELEGATE: AGY_STUB,
     COUNCIL_OPENCODE_DELEGATE: STUB,
+    // No grok sign-in here, so the roster never calls grok's billing endpoint.
+    COUNCIL_GROK_HOME: join(dir, 'no-grok'),
     STUB_LOG: join(dir, 'stub.jsonl'),
   });
 });
@@ -68,10 +71,10 @@ afterEach(() => {
 });
 
 describe('members', () => {
-  it('continues each member with its own flag and reads its id line', () => {
+  it('always passes an exact model, continues each member with its own flag and reads its id line', () => {
     expect(seatArgs({ member: 'agy', model: 'gemini-4-neon-high', session: 'c1' }, 'b.md')).toEqual(['--prompt-file', 'b.md', '--model', 'gemini-4-neon-high', '--conversation', 'c1']);
-    expect(seatArgs({ member: 'grok', effort: 'low', session: 's1' }, 'b.md')).toEqual(['--prompt-file', 'b.md', '--effort', 'low', '--session', 's1']);
-    expect(seatArgs({ member: 'opencode', effort: 'high' }, 'b.md')).toEqual(['--prompt-file', 'b.md']);
+    expect(seatArgs({ member: 'grok', effort: 'low', session: 's1' }, 'b.md')).toEqual(['--prompt-file', 'b.md', '--model', 'grok-4.7', '--effort', 'low', '--session', 's1']);
+    expect(seatArgs({ member: 'opencode', effort: 'high' }, 'b.md')).toEqual(['--prompt-file', 'b.md', '--model', 'meta/muse-wonder-1.0#high']);
     expect(sessionFrom('agy', 'x\n\nconversation: abc\n')).toBe('abc');
     expect(sessionFrom('grok', 'conversation: abc\n')).toBeNull();
   });
@@ -160,6 +163,22 @@ describe('round.mjs', () => {
     expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
   });
 
+  it('refuses round 1 until the user has approved the roster, and again after a seat changes', async () => {
+    council([{ name: 'g', member: 'grok', model: 'one' }], { approved: false });
+    const r = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('not approved');
+    process.env.COUNCIL_GROK_CLI = 'git';
+    await capture(() => roster(['--council', 'c1', '--approve']));
+    const c = state();
+    c.seats[0].model = 'two';
+    writeFileSync(join(dir, 'home', 'c1', 'council.json'), JSON.stringify(c));
+    const r2 = await capture(() => round(['--council', 'c1', '--brief', brief('q')]));
+    expect(r2.code).toBe(2);
+    expect(r2.stderr).toContain('roster changed');
+    expect(existsSync(join(dir, 'stub.jsonl'))).toBe(false);
+  });
+
   it('refuses unknown seats and members before starting anything', async () => {
     council([{ name: 'g', member: 'grok' }]);
     expect((await capture(() => round(['--council', 'c1', '--brief', brief('q'), '--seats', 'nope']))).code).toBe(2);
@@ -202,6 +221,36 @@ describe('roster.mjs', () => {
     const r = await capture(() => roster(['--council', 'c1']));
     expect(r.stdout).toContain('| neon | core | agy | gemini-4-neon-high | high |');
     expect(r.stdout).toContain('Individual quota reached., blocked until 2999-01-01 00:00 UTC');
-    expect(r.stdout).toContain('| g | core | grok | the account default | low |');
+    expect(r.stdout).toContain('| g | core | grok | grok-4.7 | low |');
+  });
+
+  it('has no standing seats: a council must be named', async () => {
+    const r = await capture(() => roster([]));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('--council');
+  });
+
+  it("reads what agy has left for the seat model's group", () => {
+    const bucket = (window, remaining_fraction, reset_time) => ({ window, remaining_fraction, reset_time });
+    const usage = { command: { data: { groups: [
+      { name: 'Gemini Models', buckets: [bucket('weekly', 0.9991, '2026-12-03T18:35:20Z'), bucket('5h', 1, '1970-01-01T00:00:00Z')] },
+      { name: 'Claude and GPT models', buckets: [bucket('weekly', 0.5, '2026-12-01T00:00:00Z')] },
+    ] } } };
+    expect(agyQuotaLeft(usage, 'gemini-4-neon-high')).toBe('left: 99% weekly (full 2026-12-03 18:35 UTC), 100% 5-hour');
+    expect(agyQuotaLeft(usage, 'claude-opus-5-5')).toBe('left: 50% weekly (full 2026-12-01 00:00 UTC)');
+    expect(agyQuotaLeft(null, 'gemini-4-neon-high')).toBeNull();
+  });
+
+  it('reads what grok has left this week from its billing response', () => {
+    const billing = (creditUsagePercent) => ({ config: {
+      currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', start: '2026-11-23T20:11:26.718+00:00', end: '2026-11-30T20:11:26.718+00:00' },
+      creditUsagePercent,
+      productUsage: [{ product: 'GrokBuild', usagePercent: 74 }, { product: 'GrokChat', usagePercent: 4 }],
+    } });
+    expect(grokQuotaLeft(billing(78))).toBe('left: 22% weekly (full 2026-11-30 20:11 UTC)');
+    expect(grokQuotaLeft(billing(0))).toBe('left: 100% weekly');
+    expect(grokQuotaLeft(billing(104))).toBe('left: 0% weekly (full 2026-11-30 20:11 UTC)');
+    expect(grokQuotaLeft(null)).toBeNull();
+    expect(grokQuotaLeft({ config: {} })).toBeNull();
   });
 });
